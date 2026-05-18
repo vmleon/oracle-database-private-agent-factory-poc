@@ -1,0 +1,5 @@
+click>=8.1
+python-dotenv>=1.0
+InquirerPy>=0.3
+jinja2>=3.1
+rich>=13.0

@@ -1,0 +1,60 @@
+databaseChangeLog:
+  # TODO (D2): enforce max_string_size=EXTENDED on the local Oracle Free 26ai
+  # container before PAF is added. PAF requires it (per docs/PAF.md §5.1).
+  # The right place is a podman init script / ALTER SYSTEM at first boot,
+  # not a Liquibase changeset (sqlCheck is a precondition, not a change).
+  - changeSet:
+      id: 001-create-app-user
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              CREATE USER APP IDENTIFIED BY "${db_password}"
+                DEFAULT TABLESPACE USERS
+                QUOTA UNLIMITED ON USERS
+        - sql:
+            sql: |-
+              GRANT CREATE SESSION, CREATE TABLE, CREATE VIEW, CREATE SEQUENCE,
+                    CREATE PROCEDURE, CREATE TRIGGER, CREATE TYPE TO APP
+
+  - changeSet:
+      id: 001-create-reporting-user
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              CREATE USER REPORTING IDENTIFIED BY "${db_password}"
+                DEFAULT TABLESPACE USERS
+                QUOTA UNLIMITED ON USERS
+        - sql:
+            sql: |-
+              GRANT CREATE SESSION, CREATE VIEW TO REPORTING
+
+  - changeSet:
+      id: 001-create-agent-tools-user
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              CREATE USER AGENT_TOOLS IDENTIFIED BY "${db_password}"
+                DEFAULT TABLESPACE USERS
+                QUOTA UNLIMITED ON USERS
+        - sql:
+            sql: |-
+              GRANT CREATE SESSION, CREATE PROCEDURE, CREATE TABLE,
+                    CREATE TYPE TO AGENT_TOOLS
+
+  - changeSet:
+      id: 001-create-agent-factory-user
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              CREATE USER AGENT_FACTORY IDENTIFIED BY "${db_password}"
+                DEFAULT TABLESPACE USERS
+                QUOTA UNLIMITED ON USERS
+        - sql:
+            sql: |-
+              GRANT CREATE SESSION, CREATE TABLE, CREATE VIEW, CREATE SEQUENCE,
+                    CREATE PROCEDURE, CREATE TRIGGER, CREATE TYPE TO AGENT_FACTORY
+

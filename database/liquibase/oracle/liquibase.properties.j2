@@ -1,0 +1,7 @@
+changeLogFile=db.changelog-master.yaml
+url=jdbc:oracle:thin:@{{ db_host }}:{{ db_port }}/{{ db_service }}
+username={{ db_admin_user }}
+password={{ db_admin_password }}
+driver=oracle.jdbc.OracleDriver
+classpath={{ liquibase_classpath }}
+logLevel=info

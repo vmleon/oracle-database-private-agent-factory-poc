@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+*.egg-info/
+
+# Node
+node_modules/
+dist/
+build/
+
+# Java / Gradle
+.gradle/
+out/
+*.class
+*.jar
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+wallets/
+*.wallet
+**/wallet/
+
+# Terraform
+**/.terraform/
+**/terraform.tfstate*
+**/terraform.tfvars
+**/.terraform.lock.hcl
+**/generated/
+
+# Ansible
+deploy/ansible/**/.vars.*.yml
+deploy/ansible/**/*.retry
+
+# Liquibase
+**/liquibase.properties
+
+# OCR
+ocr/models/
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Logs
+*.log
+logs/

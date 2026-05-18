@@ -1,0 +1,39 @@
+- name: Resolve absolute Liquibase changelog directory
+  ansible.builtin.set_fact:
+    liquibase_oracle_abs: "{{ liquibase_oracle_dir | realpath }}"
+
+- name: Ensure local Liquibase lib cache
+  ansible.builtin.file:
+    path: "{{ liquibase_cache_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Download ojdbc11 driver if missing
+  ansible.builtin.get_url:
+    url: "{{ ojdbc_url }}"
+    dest: "{{ liquibase_cache_dir }}/ojdbc11-{{ ojdbc_version }}.jar"
+    mode: "0644"
+    timeout: 60
+
+- name: Render liquibase.properties
+  ansible.builtin.template:
+    src: "{{ liquibase_oracle_abs }}/liquibase.properties.j2"
+    dest: "{{ liquibase_oracle_abs }}/liquibase.properties"
+    mode: "0600"
+  vars:
+    liquibase_classpath: "{{ liquibase_cache_dir }}/ojdbc11-{{ ojdbc_version }}.jar"
+
+- name: Run Liquibase update
+  ansible.builtin.command:
+    cmd: >-
+      liquibase
+      --defaults-file=liquibase.properties
+      update
+      -Ddb_password={{ db_password }}
+    chdir: "{{ liquibase_oracle_abs }}"
+  register: liquibase_update
+  changed_when: "'Update has been successful' in liquibase_update.stdout or 'Run:' in liquibase_update.stdout"
+
+- name: Show Liquibase output
+  ansible.builtin.debug:
+    var: liquibase_update.stdout_lines
