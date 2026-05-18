@@ -18,27 +18,27 @@ A small, opinionated PoC showing that Oracle AI Database 26ai + Private Agent Fa
 
 ## Design Decisions (Consolidated)
 
-| # | Decision | Why |
-|---|----------|-----|
-| 1 | Bank-agnostic — no country / region / bureau / regulator hard-coded | Demo must be reusable across institutions in different jurisdictions |
-| 2 | Credit score, DTI/PTI caps, weights, currencies are runtime **configuration**, not literals in code | Same demo, different parameters per audience |
-| 3 | Generic data-protection framework (rights + restrictions common to most regimes) | Avoids country-specific compliance claims; signals "we know there are obligations" |
-| 4 | OPA chosen — used in banking, open-source, gives full control of policy code | No comparison to commercial BRMS; scope is intentionally limited |
-| 5 | No auto-approve as a default headline | When in doubt → human. Toggleable hard requirement via backoffice flag |
-| 6 | Mandatory-HITL flag — global override forces all decisions to HITL queue | Audit periods, warm-up, sensitive products, drift suspicion |
-| 7 | Observability over determinism | Deterministic systems can still be wrong; the recoverable failure mode is a complete trail |
-| 8 | Append-only decision history on **Oracle Database Blockchain Table** | Immutable, queryable, retention-friendly, no extra infra |
-| 9 | Region-agnostic deployment — any OCI region, also portable to ExaCC / on-prem 26ai | No tenant / region constraint baked in |
-| 10 | Open-source OCR (PaddleOCR / Tesseract) + YOLO for ID-card field detection | Lightweight, no external SaaS, demonstrable on a laptop |
-| 11 | OCR tiers: usable → HITL with full context; marginal → HITL; unusable → auto-decline | Don't reject under the radar; don't saturate humans with garbage |
-| 12 | Fair Lending Review = generalized non-discrimination backoffice process | Periodic disparate-impact sampling across configured protected attributes |
-| 13 | Simplest possible pricing engine — rate card + risk-band adjustment | Approval without a rate is not a decision; keep it minimal |
-| 14 | Affordability stress = backoffice Risk Management Dashboard | Portfolio-level shock view, not per-application gating; consistent across banks |
-| 15 | No counter-offer logic | Out of scope |
-| 16 | No effort budget / timeline in this doc | Not relevant; PoC is delivered when the demo is convincing |
-| 17 | Standalone stack — does not depend on, or align with, any concurrent engagement | Clean architectural story; one stack, one demo |
-| 18 | Customer UI = chat + document upload. Backoffice UI = traditional CRUD + queue + reports | Two distinct surfaces, two distinct audiences |
-| 19 | Test bench is for **functionality + observability**, not performance | Cover all decision paths and prove every step is observable |
+| #   | Decision                                                                                            | Why                                                                                        |
+| --- | --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| 1   | Bank-agnostic — no country / region / bureau / regulator hard-coded                                 | Demo must be reusable across institutions in different jurisdictions                       |
+| 2   | Credit score, DTI/PTI caps, weights, currencies are runtime **configuration**, not literals in code | Same demo, different parameters per audience                                               |
+| 3   | Generic data-protection framework (rights + restrictions common to most regimes)                    | Avoids country-specific compliance claims; signals "we know there are obligations"         |
+| 4   | OPA chosen — used in banking, open-source, gives full control of policy code                        | No comparison to commercial BRMS; scope is intentionally limited                           |
+| 5   | No auto-approve as a default headline                                                               | When in doubt → human. Toggleable hard requirement via backoffice flag                     |
+| 6   | Mandatory-HITL flag — global override forces all decisions to HITL queue                            | Audit periods, warm-up, sensitive products, drift suspicion                                |
+| 7   | Observability over determinism                                                                      | Deterministic systems can still be wrong; the recoverable failure mode is a complete trail |
+| 8   | Append-only decision history on **Oracle Database Blockchain Table**                                | Immutable, queryable, retention-friendly, no extra infra                                   |
+| 9   | Region-agnostic deployment — any OCI region, also portable to ExaCC / on-prem 26ai                  | No tenant / region constraint baked in                                                     |
+| 10  | Open-source OCR (PaddleOCR / Tesseract) + YOLO for ID-card field detection                          | Lightweight, no external SaaS, demonstrable on a laptop                                    |
+| 11  | OCR tiers: usable → HITL with full context; marginal → HITL; unusable → auto-decline                | Don't reject under the radar; don't saturate humans with garbage                           |
+| 12  | Fair Lending Review = generalized non-discrimination backoffice process                             | Periodic disparate-impact sampling across configured protected attributes                  |
+| 13  | Simplest possible pricing engine — rate card + risk-band adjustment                                 | Approval without a rate is not a decision; keep it minimal                                 |
+| 14  | Affordability stress = backoffice Risk Management Dashboard                                         | Portfolio-level shock view, not per-application gating; consistent across banks            |
+| 15  | No counter-offer logic                                                                              | Out of scope                                                                               |
+| 16  | No effort budget / timeline in this doc                                                             | Not relevant; PoC is delivered when the demo is convincing                                 |
+| 17  | Standalone stack — does not depend on, or align with, any concurrent engagement                     | Clean architectural story; one stack, one demo                                             |
+| 18  | Customer UI = chat + document upload. Backoffice UI = traditional CRUD + queue + reports            | Two distinct surfaces, two distinct audiences                                              |
+| 19  | Test bench is for **functionality + observability**, not performance                                | Cover all decision paths and prove every step is observable                                |
 
 ---
 
@@ -83,21 +83,21 @@ A **Mandatory-HITL** toggle in the backoffice routes 100% of cases to human revi
 
 ### Component Map
 
-| Component               | Tech                                                  | Role                                                                         |
-|-------------------------|-------------------------------------------------------|------------------------------------------------------------------------------|
-| Customer Chat UI        | Web app (React / Next / similar)                      | Chat-style request flow + document upload                                    |
-| Backoffice UI           | Web app (React / Next / similar)                      | CRUD, HITL queue, rule editor, reports, dashboards, parameter management     |
-| API Gateway             | OCI API Gateway                                       | Auth, throttling, request validation                                         |
-| Application Service     | Spring Boot (Java) stub                               | App CRUD, document upload, pre-checks, agent invocation                      |
-| Object Storage          | OCI Object Storage                                    | Uploaded document PDFs / images                                              |
-| OCR + Detection         | YOLO (field detection) + PaddleOCR/Tesseract          | Open-source extraction; composite confidence tiering                         |
-| Decisioning Agent       | Oracle Private Agent Factory (Select AI Agent) in ADB | Tool-calling agent                                                           |
-| Data plane              | Oracle AI Database 26ai                               | All banking data; RLS/VPD enforced at the DB layer                           |
-| Vector store            | Oracle AI Vector Search (same 26ai)                   | `policy_corpus` + `case_history` embeddings                                  |
-| LLM + embeddings        | OCI Generative AI (model-agnostic — pick what's sanctioned in the target region) | Reasoning + rationale + embeddings                  |
-| Rule engine             | OPA + OPA MCP server (Python FastMCP wrapper)         | Eligibility, AML, KYC, escalation, fair-lending rules in Rego                |
-| Decision history        | Oracle Database Blockchain Table                      | Append-only credit-decision audit; retention-friendly                        |
-| HITL surface            | Backoffice UI (queue + decision form)                 | Bank employee picks up, reviews evidence, decides                            |
+| Component           | Tech                                                                             | Role                                                                     |
+| ------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Customer Chat UI    | Web app (React / Next / similar)                                                 | Chat-style request flow + document upload                                |
+| Backoffice UI       | Web app (React / Next / similar)                                                 | CRUD, HITL queue, rule editor, reports, dashboards, parameter management |
+| API Gateway         | OCI API Gateway                                                                  | Auth, throttling, request validation                                     |
+| Application Service | Spring Boot (Java) stub                                                          | App CRUD, document upload, pre-checks, agent invocation                  |
+| Object Storage      | OCI Object Storage                                                               | Uploaded document PDFs / images                                          |
+| OCR + Detection     | YOLO (field detection) + PaddleOCR/Tesseract                                     | Open-source extraction; composite confidence tiering                     |
+| Decisioning Agent   | Oracle Private Agent Factory (Select AI Agent) in ADB                            | Tool-calling agent                                                       |
+| Data plane          | Oracle AI Database 26ai                                                          | All banking data; RLS/VPD enforced at the DB layer                       |
+| Vector store        | Oracle AI Vector Search (same 26ai)                                              | `policy_corpus` + `case_history` embeddings                              |
+| LLM + embeddings    | OCI Generative AI (model-agnostic — pick what's sanctioned in the target region) | Reasoning + rationale + embeddings                                       |
+| Rule engine         | OPA + OPA MCP server (Python FastMCP wrapper)                                    | Eligibility, AML, KYC, escalation, fair-lending rules in Rego            |
+| Decision history    | Oracle Database Blockchain Table                                                 | Append-only credit-decision audit; retention-friendly                    |
+| HITL surface        | Backoffice UI (queue + decision form)                                            | Bank employee picks up, reviews evidence, decides                        |
 
 ---
 
@@ -107,30 +107,30 @@ The synthetic dataset is generated to **trigger every decision path** rather tha
 
 ### Entities
 
-| Table                        | Purpose                                                                    |
-|------------------------------|----------------------------------------------------------------------------|
-| `customer`                   | Customer master                                                            |
-| `customer_address`           | Current + historical addresses                                             |
-| `customer_identity`          | ID / passport docs with expiry                                             |
-| `customer_protected_attrs`   | Protected attributes for fair-lending review (configurable per region)     |
-| `employment`                 | Employers, salary, tenure                                                  |
-| `account`                    | Customer accounts (current, savings)                                       |
-| `account_transaction`        | Transaction history (12 months) — cashflow source                          |
-| `credit_bureau_snapshot`     | Periodic external score + bureau facilities; **scale parameterized**       |
-| `existing_facility`          | Loans/cards held elsewhere                                                 |
-| `product_catalog`            | Loan/card/mortgage products + amount/term ranges                           |
-| `rate_card`                  | Pricing per product + risk band                                            |
-| `loan_application`           | The application being decisioned                                           |
-| `loan_application_document`  | Uploaded docs + OCR-extracted JSON + quality tier                          |
-| `decision` *(blockchain)*    | Append-only decision history                                               |
-| `decision_audit`             | Step-by-step tool-call trail (inputs, outputs, durations)                  |
-| `hitl_task`                  | HITL queue entry, state, assignment                                        |
-| `policy_corpus`              | Policy chunks + embeddings (for RAG)                                       |
-| `case_history`               | Past anonymized decisions for similarity retrieval                         |
-| `sanctions_list`             | Synthetic sanctions / PEP list                                             |
-| `system_config`              | Tunable parameters (caps, thresholds, weights, Mandatory-HITL flag, etc.)  |
-| `policy_parameter_history`   | Versioned changes to `system_config` (who changed what, when, why)         |
-| `fair_lending_review`        | Periodic disparate-impact sampling + bank reviewer notes                   |
+| Table                       | Purpose                                                                   |
+| --------------------------- | ------------------------------------------------------------------------- |
+| `customer`                  | Customer master                                                           |
+| `customer_address`          | Current + historical addresses                                            |
+| `customer_identity`         | ID / passport docs with expiry                                            |
+| `customer_protected_attrs`  | Protected attributes for fair-lending review (configurable per region)    |
+| `employment`                | Employers, salary, tenure                                                 |
+| `account`                   | Customer accounts (current, savings)                                      |
+| `account_transaction`       | Transaction history (12 months) — cashflow source                         |
+| `credit_bureau_snapshot`    | Periodic external score + bureau facilities; **scale parameterized**      |
+| `existing_facility`         | Loans/cards held elsewhere                                                |
+| `product_catalog`           | Loan/card/mortgage products + amount/term ranges                          |
+| `rate_card`                 | Pricing per product + risk band                                           |
+| `loan_application`          | The application being decisioned                                          |
+| `loan_application_document` | Uploaded docs + OCR-extracted JSON + quality tier                         |
+| `decision` _(blockchain)_   | Append-only decision history                                              |
+| `decision_audit`            | Step-by-step tool-call trail (inputs, outputs, durations)                 |
+| `hitl_task`                 | HITL queue entry, state, assignment                                       |
+| `policy_corpus`             | Policy chunks + embeddings (for RAG)                                      |
+| `case_history`              | Past anonymized decisions for similarity retrieval                        |
+| `sanctions_list`            | Synthetic sanctions / PEP list                                            |
+| `system_config`             | Tunable parameters (caps, thresholds, weights, Mandatory-HITL flag, etc.) |
+| `policy_parameter_history`  | Versioned changes to `system_config` (who changed what, when, why)        |
+| `fair_lending_review`       | Periodic disparate-impact sampling + bank reviewer notes                  |
 
 ### Schema sketch (key tables)
 
@@ -339,7 +339,7 @@ Volumes calibrated to the test bench, not statistical realism:
 - ~500 case-history rows for similarity retrieval.
 - ~50 synthetic sanctions / PEP entries.
 
-**No circular logic** — risk-band labels are used to generate plausible features (income, score, NSF count, document quality), then *forgotten*. The agent operates only on observable features, not on the label. This way the demo path is engineered, but the agent does real work given the inputs.
+**No circular logic** — risk-band labels are used to generate plausible features (income, score, NSF count, document quality), then _forgotten_. The agent operates only on observable features, not on the label. This way the demo path is engineered, but the agent does real work given the inputs.
 
 ---
 
@@ -465,11 +465,11 @@ Not for the decision itself — that's OPA. RAG grounds the rationale text and a
 
 ### Behavior by tier
 
-| Tier       | System behavior                                                                                                                       |
-|------------|---------------------------------------------------------------------------------------------------------------------------------------|
-| USABLE     | Feed extracted fields to agent; continue decisioning. If everything else is clean and confidence is high, agent may auto-approve.     |
-| MARGINAL   | Route to **HITL** with the full original document, OCR output, and confidence map. **Do not silently reject.** Human picks up.        |
-| UNUSABLE   | Auto-decline with a customer-facing reason ("please re-upload — image was not readable"). Don't saturate humans on garbage uploads.   |
+| Tier     | System behavior                                                                                                                     |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| USABLE   | Feed extracted fields to agent; continue decisioning. If everything else is clean and confidence is high, agent may auto-approve.   |
+| MARGINAL | Route to **HITL** with the full original document, OCR output, and confidence map. **Do not silently reject.** Human picks up.      |
+| UNUSABLE | Auto-decline with a customer-facing reason ("please re-upload — image was not readable"). Don't saturate humans on garbage uploads. |
 
 Thresholds (`USABLE_min_confidence`, `MARGINAL_floor`) are in `system_config` and editable from the backoffice.
 
@@ -494,22 +494,22 @@ END;
 
 ### Tools
 
-| Tool                          | Type                       | Bound to                                                            | Purpose                                                                |
-|-------------------------------|----------------------------|---------------------------------------------------------------------|------------------------------------------------------------------------|
-| `query_customer_profile`      | SQL (Select AI / NL2SQL)   | View over `customer` + `employment` + `existing_facility`           | Pull profile, compute DTI / PTI                                        |
-| `query_transaction_summary`   | SQL (Select AI)            | View over `account_transaction`                                     | Cashflow aggregates                                                    |
-| `query_credit_bureau`         | SQL                        | `credit_bureau_snapshot`                                            | Latest snapshot per customer                                           |
-| `search_policy`               | Vector Search              | `policy_corpus`                                                     | RAG over policy text                                                   |
-| `search_similar_cases`        | Vector Search              | `case_history`                                                      | Similarity over past decisions                                         |
-| `extract_document`            | Function tool              | OCR + YOLO pipeline                                                 | Extract fields + per-field confidence + quality tier                   |
-| `evaluate_eligibility`        | MCP                        | OPA MCP server                                                      | Eligibility rules                                                      |
-| `evaluate_aml`                | MCP                        | OPA MCP server                                                      | AML rules                                                              |
-| `evaluate_kyc`                | MCP                        | OPA MCP server                                                      | KYC + doc validity + quality gates                                     |
-| `evaluate_fair_lending_flags` | MCP                        | OPA MCP server                                                      | Pre-flight fairness flag on a single decision                          |
-| `evaluate_escalation`         | MCP                        | OPA MCP server                                                      | Routing rule (REFER_HUMAN)                                             |
-| `lookup_pricing`              | SQL + OPA                  | `rate_card` + OPA pricing                                           | Map risk band → rate                                                   |
-| `create_hitl_task`            | Function tool              | `hitl_task`                                                         | Open backoffice review task                                            |
-| `record_decision`             | SQL                        | `decision` (blockchain) + `decision_audit`                          | Persist outcome + per-tool audit trail                                 |
+| Tool                          | Type                     | Bound to                                                  | Purpose                                              |
+| ----------------------------- | ------------------------ | --------------------------------------------------------- | ---------------------------------------------------- |
+| `query_customer_profile`      | SQL (Select AI / NL2SQL) | View over `customer` + `employment` + `existing_facility` | Pull profile, compute DTI / PTI                      |
+| `query_transaction_summary`   | SQL (Select AI)          | View over `account_transaction`                           | Cashflow aggregates                                  |
+| `query_credit_bureau`         | SQL                      | `credit_bureau_snapshot`                                  | Latest snapshot per customer                         |
+| `search_policy`               | Vector Search            | `policy_corpus`                                           | RAG over policy text                                 |
+| `search_similar_cases`        | Vector Search            | `case_history`                                            | Similarity over past decisions                       |
+| `extract_document`            | Function tool            | OCR + YOLO pipeline                                       | Extract fields + per-field confidence + quality tier |
+| `evaluate_eligibility`        | MCP                      | OPA MCP server                                            | Eligibility rules                                    |
+| `evaluate_aml`                | MCP                      | OPA MCP server                                            | AML rules                                            |
+| `evaluate_kyc`                | MCP                      | OPA MCP server                                            | KYC + doc validity + quality gates                   |
+| `evaluate_fair_lending_flags` | MCP                      | OPA MCP server                                            | Pre-flight fairness flag on a single decision        |
+| `evaluate_escalation`         | MCP                      | OPA MCP server                                            | Routing rule (REFER_HUMAN)                           |
+| `lookup_pricing`              | SQL + OPA                | `rate_card` + OPA pricing                                 | Map risk band → rate                                 |
+| `create_hitl_task`            | Function tool            | `hitl_task`                                               | Open backoffice review task                          |
+| `record_decision`             | SQL                      | `decision` (blockchain) + `decision_audit`                | Persist outcome + per-tool audit trail               |
 
 ### Agent instructions (sketch)
 
@@ -640,18 +640,18 @@ Nothing here claims compliance with any specific regulator. The point is the **o
 
 A baseline most banks will recognize regardless of region:
 
-| Concern                          | Implementation                                                                                                                                |
-|----------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------|
-| Purpose limitation               | All tables tagged with a `purpose` policy in `system_config`; the agent rejects tool calls outside the registered purposes.                   |
-| Data minimization                | Select AI tools target **views**, not raw tables. Views expose only fields needed for the decision.                                           |
-| Access control                   | RLS / VPD on `customer_id`. Backoffice users have role-scoped views.                                                                          |
-| Sensitive attributes             | `customer_protected_attrs` separated from `customer`; access logged separately; never sent to the LLM unless explicitly needed.               |
-| Retention                        | `decision` is a Blockchain Table with `NO DROP UNTIL 7 YEARS IDLE` (configurable). Other tables follow policy-driven retention jobs.          |
-| Right of explanation             | Every decision has reason codes + replayable audit trail. The bank can produce a customer-facing explanation from the trail.                  |
-| Append-only audit                | Blockchain Tables for `decision`; standard tables for `decision_audit` (with archive-to-blockchain option configurable).                      |
-| Data portability                 | Customer record export job in backoffice — JSON dump per customer, signed.                                                                    |
-| Erasure                          | Configurable in backoffice: which fields are eraseable on customer request and which are retained under legal-hold (e.g., the blockchain decision is not erased; supporting docs may be).  |
-| Region-agnostic                  | All of the above implemented as configuration. No region pinned in the code.                                                                  |
+| Concern              | Implementation                                                                                                                                                                            |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Purpose limitation   | All tables tagged with a `purpose` policy in `system_config`; the agent rejects tool calls outside the registered purposes.                                                               |
+| Data minimization    | Select AI tools target **views**, not raw tables. Views expose only fields needed for the decision.                                                                                       |
+| Access control       | RLS / VPD on `customer_id`. Backoffice users have role-scoped views.                                                                                                                      |
+| Sensitive attributes | `customer_protected_attrs` separated from `customer`; access logged separately; never sent to the LLM unless explicitly needed.                                                           |
+| Retention            | `decision` is a Blockchain Table with `NO DROP UNTIL 7 YEARS IDLE` (configurable). Other tables follow policy-driven retention jobs.                                                      |
+| Right of explanation | Every decision has reason codes + replayable audit trail. The bank can produce a customer-facing explanation from the trail.                                                              |
+| Append-only audit    | Blockchain Tables for `decision`; standard tables for `decision_audit` (with archive-to-blockchain option configurable).                                                                  |
+| Data portability     | Customer record export job in backoffice — JSON dump per customer, signed.                                                                                                                |
+| Erasure              | Configurable in backoffice: which fields are eraseable on customer request and which are retained under legal-hold (e.g., the blockchain decision is not erased; supporting docs may be). |
+| Region-agnostic      | All of the above implemented as configuration. No region pinned in the code.                                                                                                              |
 
 ---
 
@@ -659,29 +659,29 @@ A baseline most banks will recognize regardless of region:
 
 ### Customer-facing API (Application Service)
 
-| Method | Path                                       | Purpose                                                  |
-|--------|--------------------------------------------|----------------------------------------------------------|
-| POST   | `/v1/applications`                         | Create draft application                                 |
-| POST   | `/v1/applications/{id}/documents`          | Upload doc (multipart → Object Storage → queue OCR)      |
-| POST   | `/v1/applications/{id}/submit`             | Submit; triggers Decisioning Agent                       |
-| GET    | `/v1/applications/{id}`                    | Status + sanitized decision view                         |
-| POST   | `/v1/applications/{id}/chat`               | Conversational interface — clarifications, doc re-upload |
+| Method | Path                              | Purpose                                                  |
+| ------ | --------------------------------- | -------------------------------------------------------- |
+| POST   | `/v1/applications`                | Create draft application                                 |
+| POST   | `/v1/applications/{id}/documents` | Upload doc (multipart → Object Storage → queue OCR)      |
+| POST   | `/v1/applications/{id}/submit`    | Submit; triggers Decisioning Agent                       |
+| GET    | `/v1/applications/{id}`           | Status + sanitized decision view                         |
+| POST   | `/v1/applications/{id}/chat`      | Conversational interface — clarifications, doc re-upload |
 
 ### Backoffice API
 
-| Method | Path                                  | Purpose                                                            |
-|--------|---------------------------------------|--------------------------------------------------------------------|
-| GET    | `/v1/hitl/tasks?assignee=me&state=open` | HITL queue                                                       |
-| GET    | `/v1/hitl/tasks/{id}`                 | Full application + audit + documents + agent rationale             |
-| POST   | `/v1/hitl/tasks/{id}/decision`        | Submit human decision + note → closes task → updates decision      |
-| GET    | `/v1/config`                          | Read all `system_config` entries                                   |
-| PUT    | `/v1/config/{key}`                    | Update a parameter (writes `policy_parameter_history`)             |
-| GET    | `/v1/rules`                           | List OPA policy versions                                           |
-| GET    | `/v1/dashboard/risk`                  | Risk Management Dashboard data                                     |
-| GET    | `/v1/dashboard/fair-lending`          | Fair-lending review data                                           |
-| POST   | `/v1/dashboard/fair-lending/review`   | Submit a fair-lending review                                       |
-| GET    | `/v1/audit/{decision_id}`             | Full replayable decision audit                                     |
-| POST   | `/v1/audit/{decision_id}/replay`      | Re-run agent against the stored audit input, compare output        |
+| Method | Path                                    | Purpose                                                       |
+| ------ | --------------------------------------- | ------------------------------------------------------------- |
+| GET    | `/v1/hitl/tasks?assignee=me&state=open` | HITL queue                                                    |
+| GET    | `/v1/hitl/tasks/{id}`                   | Full application + audit + documents + agent rationale        |
+| POST   | `/v1/hitl/tasks/{id}/decision`          | Submit human decision + note → closes task → updates decision |
+| GET    | `/v1/config`                            | Read all `system_config` entries                              |
+| PUT    | `/v1/config/{key}`                      | Update a parameter (writes `policy_parameter_history`)        |
+| GET    | `/v1/rules`                             | List OPA policy versions                                      |
+| GET    | `/v1/dashboard/risk`                    | Risk Management Dashboard data                                |
+| GET    | `/v1/dashboard/fair-lending`            | Fair-lending review data                                      |
+| POST   | `/v1/dashboard/fair-lending/review`     | Submit a fair-lending review                                  |
+| GET    | `/v1/audit/{decision_id}`               | Full replayable decision audit                                |
+| POST   | `/v1/audit/{decision_id}/replay`        | Re-run agent against the stored audit input, compare output   |
 
 ---
 
@@ -724,50 +724,50 @@ The test bench is for **functionality and observability**, not performance. Each
 
 ### Scenarios
 
-| #  | Scenario                                                          | Expected outcome | Why this case matters                                                        |
-|----|-------------------------------------------------------------------|------------------|------------------------------------------------------------------------------|
-| 1  | Clean profile, low DTI, high score, all docs USABLE               | APPROVE          | Happy path — proves the auto-approve route is wired                          |
-| 2  | DTI above hard cap                                                | REJECT           | OPA hard deny path; rationale cites eligibility chunk                        |
-| 3  | Score below configured floor                                      | REJECT           | OPA hard deny path; parameterized floor                                      |
-| 4  | Expired ID document                                               | REJECT           | KYC deny; reason code surfaced to customer                                   |
-| 5  | Sanctions hit on AML                                              | REJECT           | AML deny; cheap pre-check short-circuit (agent not invoked)                  |
-| 6  | Mid-band score                                                    | REFER_HUMAN      | OPA `warn[]`; HITL with full context                                         |
-| 7  | Amount above auto-approve cap                                     | REFER_HUMAN      | OPA `warn[]`; HITL                                                           |
-| 8  | One document MARGINAL quality                                     | REFER_HUMAN      | OCR tier → HITL with original doc + extraction map                           |
-| 9  | All documents UNUSABLE                                            | REJECT (silent)  | Auto-decline path with "please re-upload" customer message                   |
-| 10 | Mandatory-HITL flag is ON                                         | REFER_HUMAN      | Regardless of clean profile, mandatory flag routes to human; audit captures rule outputs anyway |
-| 11 | Fair-lending pre-flight flag raised                               | REFER_HUMAN      | Bank reviewer steps in before automated decision lands                       |
-| 12 | Configuration changed mid-flight (DTI cap tightened)              | Outcome shifts on rerun | Parameter history visible; both old and new audits readable           |
-| 13 | Audit replay matches original decision                            | Reproducible     | Observability headline — same input, same audit, same outcome                |
-| 14 | Blockchain row tamper attempt rejected by DB                      | Tamper detected  | Blockchain integrity demonstration                                           |
-| 15 | Customer asks the agent "why was I declined?" in chat             | Agent answers from `decision.rationale` + policy chunks | Right-of-explanation surface                          |
+| #   | Scenario                                              | Expected outcome                                        | Why this case matters                                                                           |
+| --- | ----------------------------------------------------- | ------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| 1   | Clean profile, low DTI, high score, all docs USABLE   | APPROVE                                                 | Happy path — proves the auto-approve route is wired                                             |
+| 2   | DTI above hard cap                                    | REJECT                                                  | OPA hard deny path; rationale cites eligibility chunk                                           |
+| 3   | Score below configured floor                          | REJECT                                                  | OPA hard deny path; parameterized floor                                                         |
+| 4   | Expired ID document                                   | REJECT                                                  | KYC deny; reason code surfaced to customer                                                      |
+| 5   | Sanctions hit on AML                                  | REJECT                                                  | AML deny; cheap pre-check short-circuit (agent not invoked)                                     |
+| 6   | Mid-band score                                        | REFER_HUMAN                                             | OPA `warn[]`; HITL with full context                                                            |
+| 7   | Amount above auto-approve cap                         | REFER_HUMAN                                             | OPA `warn[]`; HITL                                                                              |
+| 8   | One document MARGINAL quality                         | REFER_HUMAN                                             | OCR tier → HITL with original doc + extraction map                                              |
+| 9   | All documents UNUSABLE                                | REJECT (silent)                                         | Auto-decline path with "please re-upload" customer message                                      |
+| 10  | Mandatory-HITL flag is ON                             | REFER_HUMAN                                             | Regardless of clean profile, mandatory flag routes to human; audit captures rule outputs anyway |
+| 11  | Fair-lending pre-flight flag raised                   | REFER_HUMAN                                             | Bank reviewer steps in before automated decision lands                                          |
+| 12  | Configuration changed mid-flight (DTI cap tightened)  | Outcome shifts on rerun                                 | Parameter history visible; both old and new audits readable                                     |
+| 13  | Audit replay matches original decision                | Reproducible                                            | Observability headline — same input, same audit, same outcome                                   |
+| 14  | Blockchain row tamper attempt rejected by DB          | Tamper detected                                         | Blockchain integrity demonstration                                                              |
+| 15  | Customer asks the agent "why was I declined?" in chat | Agent answers from `decision.rationale` + policy chunks | Right-of-explanation surface                                                                    |
 
 ---
 
 ## Feature → Function → Data → Integration Map
 
-| Feature                                  | Agent function / tool                          | Data                                                                       | Integration                  |
-|------------------------------------------|------------------------------------------------|----------------------------------------------------------------------------|------------------------------|
-| Submit application                       | `record_decision`, orchestration               | `loan_application`                                                         | API → App Service → Agent    |
-| Upload document                          | `extract_document` (YOLO + OCR)                | `loan_application_document`, Object Storage                                | OCR pipeline (sidecar)       |
-| Eligibility evaluation                   | `evaluate_eligibility` (MCP)                   | view(applicant, application, product), `system_config`                     | OPA MCP                      |
-| AML screening                            | `evaluate_aml` (MCP)                           | `customer`, `sanctions_list`                                               | OPA MCP                      |
-| KYC validation                           | `evaluate_kyc` (MCP)                           | `loan_application_document.ocr_payload`, `customer_identity`, quality_tier | OPA MCP                      |
-| DTI / PTI / cashflow                     | `query_transaction_summary`, `query_credit_bureau` | `account_transaction`, `existing_facility`, `credit_bureau_snapshot`    | Select AI NL2SQL             |
-| Policy citations                         | `search_policy`                                | `policy_corpus` (vector)                                                   | Oracle AI Vector Search      |
-| Similar past cases                       | `search_similar_cases`                         | `case_history` (vector)                                                    | Oracle AI Vector Search      |
-| Pricing                                  | `lookup_pricing`                               | `rate_card`, `product_catalog`                                             | SQL + OPA                    |
-| Refer-to-human routing                   | `evaluate_escalation` + `create_hitl_task`     | `hitl_task`                                                                | OPA MCP + DB                 |
-| Mandatory-HITL override                  | agent reads `system_config.mandatory_hitl`     | `system_config`                                                            | DB                           |
-| Fair-lending pre-flight                  | `evaluate_fair_lending_flags`                  | `customer_protected_attrs`                                                 | OPA MCP                      |
-| Append-only decision                     | `record_decision`                              | `decision` (blockchain)                                                    | DB-internal                  |
-| Per-tool audit                           | DB triggers + tool wrappers                    | `decision_audit`                                                           | DB-internal                  |
-| Customer chat                            | Agent conversational tool                      | `decision`, `policy_corpus`                                                | Customer UI ↔ API ↔ Agent    |
-| Backoffice HITL                          | Backoffice API → close task → finalize         | `hitl_task`, `decision`                                                    | Backoffice UI                |
-| Parameter change                         | Backoffice API → write `system_config`         | `system_config`, `policy_parameter_history`                                | Backoffice UI                |
-| Risk dashboard                           | aggregation queries                            | `decision`, `loan_application`, `credit_bureau_snapshot`                   | Backoffice UI                |
-| Fair-lending review                      | scheduled job + reviewer flow                  | `fair_lending_review`                                                      | Backoffice UI + DB job       |
-| Audit replay                             | replay endpoint                                | `decision_audit`                                                           | Backoffice UI                |
+| Feature                 | Agent function / tool                              | Data                                                                       | Integration               |
+| ----------------------- | -------------------------------------------------- | -------------------------------------------------------------------------- | ------------------------- |
+| Submit application      | `record_decision`, orchestration                   | `loan_application`                                                         | API → App Service → Agent |
+| Upload document         | `extract_document` (YOLO + OCR)                    | `loan_application_document`, Object Storage                                | OCR pipeline (sidecar)    |
+| Eligibility evaluation  | `evaluate_eligibility` (MCP)                       | view(applicant, application, product), `system_config`                     | OPA MCP                   |
+| AML screening           | `evaluate_aml` (MCP)                               | `customer`, `sanctions_list`                                               | OPA MCP                   |
+| KYC validation          | `evaluate_kyc` (MCP)                               | `loan_application_document.ocr_payload`, `customer_identity`, quality_tier | OPA MCP                   |
+| DTI / PTI / cashflow    | `query_transaction_summary`, `query_credit_bureau` | `account_transaction`, `existing_facility`, `credit_bureau_snapshot`       | Select AI NL2SQL          |
+| Policy citations        | `search_policy`                                    | `policy_corpus` (vector)                                                   | Oracle AI Vector Search   |
+| Similar past cases      | `search_similar_cases`                             | `case_history` (vector)                                                    | Oracle AI Vector Search   |
+| Pricing                 | `lookup_pricing`                                   | `rate_card`, `product_catalog`                                             | SQL + OPA                 |
+| Refer-to-human routing  | `evaluate_escalation` + `create_hitl_task`         | `hitl_task`                                                                | OPA MCP + DB              |
+| Mandatory-HITL override | agent reads `system_config.mandatory_hitl`         | `system_config`                                                            | DB                        |
+| Fair-lending pre-flight | `evaluate_fair_lending_flags`                      | `customer_protected_attrs`                                                 | OPA MCP                   |
+| Append-only decision    | `record_decision`                                  | `decision` (blockchain)                                                    | DB-internal               |
+| Per-tool audit          | DB triggers + tool wrappers                        | `decision_audit`                                                           | DB-internal               |
+| Customer chat           | Agent conversational tool                          | `decision`, `policy_corpus`                                                | Customer UI ↔ API ↔ Agent |
+| Backoffice HITL         | Backoffice API → close task → finalize             | `hitl_task`, `decision`                                                    | Backoffice UI             |
+| Parameter change        | Backoffice API → write `system_config`             | `system_config`, `policy_parameter_history`                                | Backoffice UI             |
+| Risk dashboard          | aggregation queries                                | `decision`, `loan_application`, `credit_bureau_snapshot`                   | Backoffice UI             |
+| Fair-lending review     | scheduled job + reviewer flow                      | `fair_lending_review`                                                      | Backoffice UI + DB job    |
+| Audit replay            | replay endpoint                                    | `decision_audit`                                                           | Backoffice UI             |
 
 ---
 
@@ -800,14 +800,14 @@ The test bench is for **functionality and observability**, not performance. Each
 
 ## Risks & Open Questions
 
-| Risk                                                                | Mitigation                                                                                                            |
-|---------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------|
-| Demo dataset is engineered to exercise paths — not real evaluation  | Explicit messaging: the PoC proves the **architecture pattern**, not credit model quality. With minor tweaks (real data, real bureau, calibrated thresholds), the same plumbing becomes a production-grade system. |
-| Sanctioned LLM model varies by region                                | Configuration parameter; pick at deploy time. No code change.                                                          |
-| Open-source OCR quality on real-world documents                      | Acceptable for the PoC. Production swap to a commercial ID-verification vendor is a parameter change in `extract_document`. |
-| Observability volume                                                 | `decision_audit` retention policy is configurable; older audits can be archived to Object Storage + the decision row remains on blockchain for traceability. |
-| OPA bundle reload latency on parameter change                        | Acceptable for the PoC (seconds). Pin reload-on-write + show the timestamp in the backoffice.                          |
-| Fair-lending review defaults                                         | Defaults to the 4/5 rule as a reasonable starting point. Every bank tunes.                                             |
+| Risk                                                               | Mitigation                                                                                                                                                                                                         |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Demo dataset is engineered to exercise paths — not real evaluation | Explicit messaging: the PoC proves the **architecture pattern**, not credit model quality. With minor tweaks (real data, real bureau, calibrated thresholds), the same plumbing becomes a production-grade system. |
+| Sanctioned LLM model varies by region                              | Configuration parameter; pick at deploy time. No code change.                                                                                                                                                      |
+| Open-source OCR quality on real-world documents                    | Acceptable for the PoC. Production swap to a commercial ID-verification vendor is a parameter change in `extract_document`.                                                                                        |
+| Observability volume                                               | `decision_audit` retention policy is configurable; older audits can be archived to Object Storage + the decision row remains on blockchain for traceability.                                                       |
+| OPA bundle reload latency on parameter change                      | Acceptable for the PoC (seconds). Pin reload-on-write + show the timestamp in the backoffice.                                                                                                                      |
+| Fair-lending review defaults                                       | Defaults to the 4/5 rule as a reasonable starting point. Every bank tunes.                                                                                                                                         |
 
 ---
 
@@ -821,12 +821,3 @@ The test bench is for **functionality and observability**, not performance. Each
 - Walk the test bench end-to-end; every scenario green with a complete audit trail.
 
 ---
-
-## Appendix — Provenance
-
-This document consolidates:
-
-- `temp/decisioning-engine-poc.md` — initial draft.
-- `temp/decisioning-engine-poc-feedback.md` — adversarial review (core-banking lens). Key corrections that landed in this version: removal of region-specific entities; parametrization of credit scoring; removal of auto-approve headline; observability over determinism; OCR ≠ ID verification (replaced with open-source pipeline + quality tiers); generalized fair-lending review; append-only decision on Blockchain Tables; explicit data-protection baseline.
-- Direction (this round) — bank-agnostic posture; configurable everything; human-in-the-loop default with Mandatory-HITL switch; observability headline; standalone stack with no external alignment; simple pricing engine; affordability stress as a backoffice dashboard; out-of-scope: counter-offer, effort estimates, region constraints.
-

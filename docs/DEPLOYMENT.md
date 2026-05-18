@@ -28,7 +28,7 @@ Both options drive the same source tree, the same Liquibase changelogs (with sep
 
 ## 2. `manage.py` command surface
 
-Modelled after the [oracle-selectai-adb-sidecar-architecture](../) reference repo. Single Click-based CLI in `manage.py` at the repository root.
+Single Click-based CLI in `manage.py` at the repository root.
 
 | Command                      | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                          | Touches                                                 |
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------- |
@@ -45,7 +45,7 @@ Modelled after the [oracle-selectai-adb-sidecar-architecture](../) reference rep
 | `manage.py info`             | Prints LB IP / mobile-UI URL / backoffice-UI URL / agent run URL / ops SSH command.                                                                                                                                                                                                                                                                                                                                                              | —                                                       |
 | `manage.py clean`            | Cloud teardown safeguard: refuses if Terraform state still has resources; otherwise prunes generated files.                                                                                                                                                                                                                                                                                                                                      | `deploy/tf/app/generated/`, `.env` (optional)           |
 
-`build` and `info` mirror the reference repo verb-for-verb. `setup` is intentionally **split into `setup local` and `setup cloud`** because the two flows ask non-overlapping questions and produce different `.env` shapes. `local provision` (and the cloud equivalent on the `ops` compute) is the single point that runs the schema-setup Ansible playbook against the active target — `manage.py` itself never invokes Liquibase or sqlcl directly; that lives in Ansible, mirroring the reference repo pattern.
+`build` and `info` are intentionally familiar verbs from common OCI deployment scripts. `setup` is **split into `setup local` and `setup cloud`** because the two flows ask non-overlapping questions and produce different `.env` shapes. `local provision` (and the cloud equivalent on the `ops` compute) is the single point that runs the schema-setup Ansible playbook against the active target — `manage.py` itself never invokes Liquibase or sqlcl directly; that lives in Ansible.
 
 ## 3. Local deployment (podman)
 
@@ -148,9 +148,9 @@ GPU shape for the `model` compute is chosen at `manage.py setup cloud` time (e.g
 | `front`             | Compute for both Angular dists, cloud-init runs Ansible                                                         |
 | `ops`               | Small bastion compute with admin tooling                                                                        |
 | `network` (in root) | VCN, subnets, security lists, NAT, public LB, listeners, backend sets                                           |
-| `storage` (in root) | Object Storage bucket + 7-day PARs for every artefact zip (matches reference repo pattern)                      |
+| `storage` (in root) | Object Storage bucket + 7-day PARs for every artefact zip                                                       |
 
-Cloud-init on each instance pulls its artefact via PAR and runs Ansible **locally** — no SSH between instances. This mirrors the reference repo's approach so the same operational mental model carries over.
+Cloud-init on each instance pulls its artefact via PAR and runs Ansible **locally** — no SSH between instances.
 
 ### 4.3 Ansible roles
 
@@ -175,7 +175,7 @@ Cloud-init on each instance pulls its artefact via PAR and runs Ansible **locall
 
 ### 4.5 Cleanup
 
-`cd deploy/tf/app && terraform destroy` then `python manage.py clean`. `clean` refuses if Terraform state still has resources, mirroring the reference repo guardrail.
+`cd deploy/tf/app && terraform destroy` then `python manage.py clean`. `clean` refuses if Terraform state still has resources.
 
 ## 5. Liquibase strategy
 

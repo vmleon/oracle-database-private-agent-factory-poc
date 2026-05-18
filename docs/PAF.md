@@ -1,6 +1,6 @@
 # Oracle AI Database Private Agent Factory — Practical Study Guide
 
-Architecture, technologies, samples, and integration patterns. Generated study notes from Oracle docs, product pages, uploaded decks, and linked articles.
+Architecture, technologies, samples, and integration patterns. Generated study notes from Oracle docs, product pages, and linked articles.
 
 Originally extracted from an Oracle PAF study-guide PDF; the PDF has been removed and this Markdown is the canonical in-repo reference. Diagrams from the original PDF are noted as text captions.
 
@@ -10,7 +10,7 @@ Originally extracted from an Oracle PAF study-guide PDF; the PDF has been remove
 
 This is a pragmatic, implementation-oriented study guide for Oracle AI Database Private Agent Factory, also referred to as Agent Factory or PAF in some community material. It is written for someone who already understands how to build agents manually and wants to understand the platform: what it abstracts, what still needs engineering, and where Oracle Database integration fits.
 
-The guide uses source tags such as `[DOC-AGENT-BUILDER]` or `[DECK2-p13]`. The full source list is at the end. The two uploaded decks are cited by deck number and page because they are local files rather than public URLs.
+The guide uses source tags such as `[DOC-AGENT-BUILDER]` or `[DOC-COMPONENTS]` to cite Oracle public docs, product pages, and blogs. The full source list is at the end.
 
 The practical mindset:
 
@@ -41,7 +41,7 @@ The key idea is not that Agent Factory replaces agent engineering. It packages t
 | App integration               | REST calls, APEX integration, API Gateway, ORDS, services                |
 | Governance                    | SSO, roles, source-linked answers, database controls, evaluation roadmap |
 
-From the uploaded decks, Oracle emphasizes several differentiators: enterprise-grade support and security, full database integration, rapid adoption of new database features, prebuilt data-centric agents, container deployment near the database, custom LLM/MCP/data-source choices, and the ability to bring agents built elsewhere through Open Agent Specification. [DECK1-p7][DECK2-p3]
+Oracle emphasizes several differentiators: enterprise-grade support and security, full database integration, rapid adoption of new database features, prebuilt data-centric agents, container deployment near the database, custom LLM/MCP/data-source choices, and the ability to bring agents built elsewhere through Open Agent Specification.
 
 ---
 
@@ -49,24 +49,24 @@ From the uploaded decks, Oracle emphasizes several differentiators: enterprise-g
 
 ### 2.1 The enterprise problem it is trying to solve
 
-Most companies want AI agents for productivity, customer service, operations, analytics, and automation. The hard part is not only prompting. A production agent stack needs secure data access, model serving, tool integration, CI/CD, monitoring, evaluation, observability, lifecycle management, and governance. The uploaded introductory deck frames the problem as "bring AI to data" using Oracle AI Database 26ai, Private Agent Factory for agent building, and Private AI Service Container or other endpoints for model serving. [DECK1-p2]
+Most companies want AI agents for productivity, customer service, operations, analytics, and automation. The hard part is not only prompting. A production agent stack needs secure data access, model serving, tool integration, CI/CD, monitoring, evaluation, observability, lifecycle management, and governance. Oracle frames the problem as "bring AI to data" using Oracle AI Database 26ai, Private Agent Factory for agent building, and Private AI Service Container or other endpoints for model serving.
 
 In manual frameworks, you can build anything, but every team tends to rebuild the same infrastructure: authentication, ingestion, vector schema, tool discovery, prompt testing, deployment endpoints, and operations. Agent Factory is Oracle's attempt to make those things platform features.
 
 ### 2.2 Where it sits among Oracle AI offerings
 
-The uploaded deck distinguishes Agent Factory from other Oracle AI agent builders:
+Oracle distinguishes Agent Factory from its other AI agent builders:
 
 - OCI AI Agent platform: general-purpose agent runtime/orchestrator in OCI.
 - Oracle AI Data Platform: data-centric agents in Oracle Analytics Cloud.
 - Oracle Fusion AI Agent Studio: agents inside Fusion applications.
-- Oracle AI Database Private Agent Factory: no-code runtime/orchestrator designed for Oracle AI Database customers, available for multicloud and on-premises use. [DECK1-p5]
+- Oracle AI Database Private Agent Factory: no-code runtime/orchestrator designed for Oracle AI Database customers, available for multicloud and on-premises use.
 
 The practical takeaway: use Agent Factory when the center of gravity is Oracle Database, private enterprise data, and a need to deploy close to that data. Use app-specific studios when the work is mainly inside a SaaS application. Use open-source frameworks when you need maximum code-level control or want to build your own platform.
 
 ### 2.3 Open-source frameworks versus Agent Factory
 
-The deck compares Agent Factory with open-source agent builders such as LangGraph, CrewAI, LlamaIndex, and AutoGen. The claimed advantage is not that Agent Factory is more flexible than code. It is license/support posture, enterprise-grade security, and Oracle AI Database integration. [DECK1-p4]
+Compared with open-source agent builders such as LangGraph, CrewAI, LlamaIndex, and AutoGen, the claimed advantage is not that Agent Factory is more flexible than code. It is license/support posture, enterprise-grade security, and Oracle AI Database integration.
 
 A useful decision rule:
 
@@ -86,13 +86,13 @@ _Diagram (PDF p9 — "Overall architecture"): Authoring and consumption layer (A
 
 At a high level, Agent Factory has these layers:
 
-1. **User and design layer.** The browser UI provides Getting Started, Template Gallery, Knowledge Agents, Data Analysis Agents, Agent Builder, Prompt Lab, datasets, data sources, LLM management, SSO, users, and SMTP configuration. The second uploaded deck shows the design layer as Visual Agent Builder, user chat interface, and API/SDK surface. [DECK2-p15]
-2. **Flow execution and orchestration layer.** This is where the runtime executes Agent Builder graphs. The deck calls out data/control-flow engine, component manager, agent runtime, and external service adapters. Agent execution can be near-database, in-database, or hybrid. [DECK2-p13][DECK2-p15]
-3. **External services and infrastructure.** Model endpoints, embedding endpoints, enterprise data sources, SSO providers, MCP servers, external MCPs, REST APIs, and hosting infrastructure live here. [DECK1-p8][DECK2-p15]
+1. **User and design layer.** The browser UI provides Getting Started, Template Gallery, Knowledge Agents, Data Analysis Agents, Agent Builder, Prompt Lab, datasets, data sources, LLM management, SSO, users, and SMTP configuration. The design layer is Visual Agent Builder plus the user chat interface and API/SDK surface.
+2. **Flow execution and orchestration layer.** This is where the runtime executes Agent Builder graphs. It comprises a data/control-flow engine, component manager, agent runtime, and external service adapters. Agent execution can be near-database, in-database, or hybrid.
+3. **External services and infrastructure.** Model endpoints, embedding endpoints, enterprise data sources, SSO providers, MCP servers, external MCPs, REST APIs, and hosting infrastructure live here.
 4. **Oracle AI Database.** Agent Factory requires Oracle AI Database 26ai for the application schema, metadata, and vector store. It also connects to enterprise Oracle Databases for structured data and can use Select AI to build database-side AI profiles, tools, tasks, agents, and teams. [DOC-DEPLOY][DOC-SELECT-AI]
 5. **Published integration surface.** After publishing, agents can be invoked from outside the UI through HTTP POST endpoints such as Knowledge Agent, Data Analysis Agent, or Agent Builder run URLs. [DOC-AGENT-BUILDER]
 
-The uploaded diagram on page 8 of the first deck is a useful mental model: Agent Factory container includes the no-code UI, SSO, Agent Runtime, Visual Agent Builder, Select AI, Open Agent Spec, SQLcl MCP, prebuilt agents, and ingestion service. It connects to LLM/embedding providers, Oracle Private AI Services Container or cloud GenAI services, and Oracle AI Database 26ai for schema and vector store. [DECK1-p8]
+A useful mental model: Agent Factory container includes the no-code UI, SSO, Agent Runtime, Visual Agent Builder, Select AI, Open Agent Spec, SQLcl MCP, prebuilt agents, and ingestion service. It connects to LLM/embedding providers, Oracle Private AI Services Container or cloud GenAI services, and Oracle AI Database 26ai for schema and vector store.
 
 ---
 
@@ -100,11 +100,11 @@ The uploaded diagram on page 8 of the first deck is a useful mental model: Agent
 
 _Diagram (PDF p11 — "Runtime modes"): three execution shapes converging on Oracle Database — (1) Near-DB workflow runs in Agent Factory container and uses LLM, MCP, REST, SQL nodes; (2) In-DB workflow runs inside Oracle Database via Select AI profiles, tasks, tools, teams; (3) Hybrid workflow runs in the container and invokes in-DB agents/tools._
 
-The second uploaded deck explicitly describes three execution modes. This is one of the most important concepts for an Oracle Database practitioner. [DECK2-p13]
+Oracle describes three execution modes explicitly. This is one of the most important concepts for an Oracle Database practitioner.
 
 ### 4.1 Near-database agent/workflow
 
-A near-DB workflow runs in the Agent Factory container. It can call LLM endpoints, MCP servers, OpenAPI/REST tools, SQL Query nodes, file/CSV nodes, and other components. The deck says Agent Factory creates near-database agents/workflows in the container using the Wayflow runtime. [DECK2-p13]
+A near-DB workflow runs in the Agent Factory container. It can call LLM endpoints, MCP servers, OpenAPI/REST tools, SQL Query nodes, file/CSV nodes, and other components. Oracle says Agent Factory creates near-database agents/workflows in the container using the Wayflow runtime.
 
 Use near-DB when:
 
@@ -125,7 +125,7 @@ Use in-DB when:
 
 ### 4.3 Hybrid agent/workflow
 
-A hybrid workflow runs in the Agent Factory container but invokes in-database agents or tools during execution. This lets an Agent Builder flow orchestrate multiple systems while delegating data-heavy, policy-sensitive, or SQL-heavy work to Select AI inside the database. [DECK2-p13]
+A hybrid workflow runs in the Agent Factory container but invokes in-database agents or tools during execution. This lets an Agent Builder flow orchestrate multiple systems while delegating data-heavy, policy-sensitive, or SQL-heavy work to Select AI inside the database.
 
 Use hybrid when:
 
@@ -169,11 +169,11 @@ Important practical notes:
 
 The public download page lists Linux x86-64 and ARM64 tarballs, including versions certified for Linux and Mac architectures. The docs say to choose the ARM64 kit for Apple Silicon/Linux ARM64 and the x86-64 kit for Intel Mac/Linux x86-64. [DOWNLOAD][DOC-DOWNLOAD]
 
-The uploaded deck lists three getting-started paths:
+Oracle lists three getting-started paths:
 
 - Oracle.com / OTN download package with full source.
-- Oracle Container Registry plus GitHub support files as an upcoming path in the slide.
-- Oracle Marketplace one-click setup in your tenancy. [DECK1-p24]
+- Oracle Container Registry plus GitHub support files (listed as an upcoming path).
+- Oracle Marketplace one-click setup in your tenancy.
 
 ### 5.4 Linux and macOS setup flow
 
@@ -192,7 +192,7 @@ The Linux and macOS docs are similar. The practical sequence is:
 11. Configure LLM and optionally embedding model.
 12. Log into the application. [DOC-LINUX][DOC-MAC]
 
-The decks compress this setup from source into five pictures: build image on VM, start the container, register user, configure DB and LLM endpoints, then land on the Agent Factory page. [DECK1-p25][DECK1-p26]
+Conceptually, setup from source compresses into five steps: build image on VM, start the container, register user, configure DB and LLM endpoints, then land on the Agent Factory page.
 
 ### 5.5 OCI Marketplace deployment
 
@@ -206,14 +206,14 @@ The lifecycle docs describe Makefile targets for routine operations. Practical c
 
 ```
 # run from the staging directory
-make up        # start the full app stack through deploy.sh
-make start     # start stopped containers after reboot
-make stop      # stop containers but keep state
-make restart   # stop + start
-make down      # stop/remove containers and networks, not DB schema
-make logs      # stream logs from all services
-make logsaai   # stream AAI container logs
-make diagnose  # create diagnostic zip for troubleshooting
+make up # start the full app stack through deploy.sh
+make start # start stopped containers after reboot
+make stop # stop containers but keep state
+make restart # stop + start
+make down # stop/remove containers and networks, not DB schema
+make logs # stream logs from all services
+make logsaai # stream AAI container logs
+make diagnose # create diagnostic zip for troubleshooting
 make uninstall # destructive cleanup; may clear DB schema
 ```
 
@@ -372,7 +372,7 @@ _Diagram (PDF p21 — "Knowledge Agent pipeline"): data sources (PDF/TXT/RTF, we
 
 A Knowledge Agent augments AI Vector Search and LLM capabilities with organization-approved content from repositories such as SharePoint, Google Drive, internal sites, uploaded files, and permitted public web sources. The docs list contextual retrieval from unstructured sources, grounded responses traceable to enterprise-approved sources, unauthenticated web sources, file system sources, context-based suggestions, web crawling for dynamic pages, and PDF metadata detection. [DOC-KNOWLEDGE]
 
-The uploaded decks call it a prebuilt agent that combines enterprise data, AI Vector Search, and LLMs to produce context-rich answers from knowledge bases, documents, and web sources. [DECK1-p9][DECK2-p18]
+In short, it is a prebuilt agent that combines enterprise data, AI Vector Search, and LLMs to produce context-rich answers from knowledge bases, documents, and web sources.
 
 ### 8.2 Ingestion stages
 
@@ -385,7 +385,7 @@ The docs describe automated processing as soon as a data source is configured, n
 5. Embedding: convert chunks into vectors.
 6. Ingestion: store vectors in the vector database.
 
-The first uploaded deck shows the same conceptual chain: data sources → document loaders → document transformation → embedding models → vector database → similarity search → LLM → user. [DECK1-p10]
+The same conceptual chain is: data sources → document loaders → document transformation → embedding models → vector database → similarity search → LLM → user.
 
 ### 8.3 How to build one
 
@@ -451,11 +451,11 @@ _Diagram (PDF p24 — "Data Analysis Agent pipeline"): user question → enriche
 
 A Data Analysis Agent works directly with enterprise databases. It understands schema, analyzes structured data, translates questions into SQL, runs the query safely, and returns insights with charts, tables, explanations, and SQL. The docs state it connects directly to Oracle Database 19c and above. [DOC-DATA-ANALYSIS]
 
-The uploaded decks describe it as a prebuilt structured-data agent that uses schema structure, variation analysis, LLM explanations, and automatic visualization generation. [DECK1-p11][DECK1-p12][DECK2-p19]
+It is a prebuilt structured-data agent that uses schema structure, variation analysis, LLM explanations, and automatic visualization generation.
 
 ### 9.2 What variation analysis means pragmatically
 
-The decks show examples of variation analysis on a movie dataset: high-cardinality title, type distribution, release year min/max/common values, rating distribution, genre distribution, duration frequency, and uniqueness of IDs. [DECK1-p11][DECK2-p19]
+An illustrative example is variation analysis on a movie dataset: high-cardinality title, type distribution, release year min/max/common values, rating distribution, genre distribution, duration frequency, and uniqueness of IDs.
 
 Practical interpretation: the agent profiles the data enough to build better questions and prompts. It is not just blindly passing a table name to an LLM. It uses schema and statistics to guide question generation and answer generation.
 
@@ -479,16 +479,16 @@ Even when the platform can inspect tables, your best enterprise pattern is to ex
 ```sql
 CREATE OR REPLACE VIEW sales_agent_v AS
 SELECT
-    s.order_id,
-    s.order_date,
-    c.customer_name,
-    c.customer_segment,
-    r.region_name,
-    p.product_category,
-    p.product_name,
-    s.quantity,
-    s.net_amount,
-    s.margin_amount
+ s.order_id,
+ s.order_date,
+ c.customer_name,
+ c.customer_segment,
+ r.region_name,
+ p.product_category,
+ p.product_name,
+ s.quantity,
+ s.net_amount,
+ s.margin_amount
 FROM sales_orders s
 JOIN customers c ON c.customer_id = s.customer_id
 JOIN regions r ON r.region_id = c.region_id
@@ -544,7 +544,7 @@ _Diagram (PDF p27 — "Agent Builder flow"): Chat/Text/File/CSV Input → Prompt
 
 Agent Builder is the no-code canvas for custom agents and workflows. The docs list drag-and-drop workflow construction, AI/automation integration, custom agent creation, multi-agent orchestration, enterprise connectivity, reusable templates, conversational context, and validation/error messaging. [DOC-AGENT-BUILDER]
 
-The uploaded decks call it custom-built agent authoring for building, testing, and deploying custom agents and workflows. Components include LLMs, Agents, MCP servers, OpenAPI REST APIs, inputs, outputs, file/CSV/SQL data, and extensibility through new nodes. [DECK1-p15][DECK2-p12]
+Put another way: it is custom-built agent authoring for building, testing, and deploying custom agents and workflows. Components include LLMs, Agents, MCP servers, OpenAPI REST APIs, inputs, outputs, file/CSV/SQL data, and extensibility through new nodes.
 
 ### 10.2 Core data types
 
@@ -578,24 +578,24 @@ This matters because many bugs in visual flows are type mismatch bugs. Use Type 
 
 **Processing nodes** — Condition, Parser, Type Convert, and Combine JSON Data are the glue nodes. They are critical for turning LLM text into structured JSON, gating actions, merging API results, and formatting outputs. [DOC-COMPONENTS]
 
-### 10.4 Node catalog from the decks
+### 10.4 Node catalog
 
-The deck node catalog includes: [DECK1-p16][DECK2-p12]
+The full node catalog includes:
 
 - Inputs: Chat Input, Prompt, Text Input.
 - Agents and LLM: Agent, LLM.
 - Outputs: Chat Output, Email Output.
-- Tools: MCP Server, REST API Tools, Calculator, Bug Tools in newer deck material.
+- Tools: MCP Server, REST API Tools, Calculator, Bug Tools in newer material.
 - Data: Vector node, CSV, File Upload, SQL, URL Fetch/URL to Markdown, Conversational Memory, Message History.
 - Processing: Condition/Branching, JSON Combiner, Parser, Type Convert, Regex Extractor.
 - Select AI: Select AI, Select AI Agent, Select AI Task, Select AI Tool, Select AI Team, Select AI Workflow/Bridge.
 - Utilities: Sticky Note.
 
-Treat the deck catalog as product-direction-rich. Always verify exact available nodes in your installed version.
+Treat this catalog as product-direction-rich. Always verify exact available nodes in your installed version.
 
 ### 10.5 Authoring-to-execution pipeline
 
-The second uploaded deck shows a useful pipeline for near-DB runtime: user drags/drops nodes; topological sorting creates a directed acyclic graph; JSON payload is sent to the backend APIs; data is transformed into data-flow/control-flow structures; a dynamic agent/workflow is created based on transformed data; the workflow executes; the result is returned to the user. [DECK2-p14]
+A useful pipeline view for the near-DB runtime is: user drags/drops nodes; topological sorting creates a directed acyclic graph; JSON payload is sent to the backend APIs; data is transformed into data-flow/control-flow structures; a dynamic agent/workflow is created based on transformed data; the workflow executes; the result is returned to the user.
 
 That means an Agent Builder flow is not just a static prompt. It is compiled into an executable graph. You should design it like a workflow:
 
@@ -635,13 +635,13 @@ This is a practical pattern for safe automation:
 
 ```
 Chat Input
-  -> Prompt that outputs strict JSON
-  -> LLM
-  -> Type Convert
-  -> Parser(response_to_the_user) -> Chat Output preview
-  -> Parser(send_email_flag) -> Condition
-      false -> Chat Output only
-      true  -> Parse recipients/subject/body -> Email Output -> Chat Output status
+ -> Prompt that outputs strict JSON
+ -> LLM
+ -> Type Convert
+ -> Parser(response_to_the_user) -> Chat Output preview
+ -> Parser(send_email_flag) -> Condition
+ false -> Chat Output only
+ true -> Parse recipients/subject/body -> Email Output -> Chat Output status
 ```
 
 Key lesson: do not let natural language directly trigger side effects. Create structured decisions, parse them, and gate action nodes.
@@ -655,16 +655,16 @@ Generalize this to enterprise APIs:
 ```
 REST API Tools (OpenAPI)
 Chat Input
-  -> Agent with instructions
-      tools: REST API Tools
-  -> Chat Output
+ -> Agent with instructions
+ tools: REST API Tools
+ -> Chat Output
 ```
 
 Example enterprise APIs:
 
 ```
-GET  /orders/{orderId}
-GET  /customers/{customerId}/open-cases
+GET /orders/{orderId}
+GET /customers/{customerId}/open-cases
 POST /refund-requests
 POST /tickets
 POST /notifications/slack
@@ -703,24 +703,24 @@ from typing import Dict
 from mcp.server.fastmcp import FastMCP
 
 mcp = FastMCP(
-    "order-tools",
-    host="0.0.0.0",
-    port=8000,
+ "order-tools",
+ host="0.0.0.0",
+ port=8000,
 )
 
 @mcp.tool()
 def get_order_status(order_id: str) -> Dict[str, str]:
-    """Return order status for a known order id."""
-    # Replace with controlled service or DB access.
-    return {
-        "order_id": order_id,
-        "status": "DELAYED",
-        "estimated_delivery": "19:45",
-        "actual_delivery": "20:35"
-    }
+ """Return order status for a known order id."""
+ # Replace with controlled service or DB access.
+ return {
+ "order_id": order_id,
+ "status": "DELAYED",
+ "estimated_delivery": "19:45",
+ "actual_delivery": "20:35"
+ }
 
 if __name__ == "__main__":
-    mcp.run(transport="streamable-http", mount_path="/mcp")
+ mcp.run(transport="streamable-http", mount_path="/mcp")
 ```
 
 In Agent Factory, configure the MCP Server URL:
@@ -735,7 +735,7 @@ Then connect the MCP Server node to the Agent node's Tools connector.
 
 _Diagram (PDF p32 — "QuickBite multi-agent flow"): Customer refund request → Refund Manager (main orchestrator) → Order Verification Agent / Refund Policy Agent / Refund Processing Agent / Feedback Agent → final response._
 
-The sample docs and the uploaded deck both describe a food-delivery refund assistant. The deck calls it QuickBite Multi Agent Assistant and breaks it into Order Verification Agent, Refund Policy Agent, Refund Processing Agent, and Feedback Agent. [DECK2-p24][DECK2-p26]
+Oracle samples describe a food-delivery refund assistant ("QuickBite Multi Agent Assistant") and breaks it into Order Verification Agent, Refund Policy Agent, Refund Processing Agent, and Feedback Agent.
 
 The docs call a similar pattern Multi-Agent Refund Orchestrator: a central Refund Manager coordinates sub-agents to verify order data, enforce policy, issue mock refunds, and collect feedback. It emphasizes role boundaries, no hallucinated data, policy compliance, safe execution, and post-resolution feedback. [DOC-SAMPLES]
 
@@ -749,7 +749,7 @@ This is the most important sample for manual-agent builders because it maps dire
 | Resolution Specialist | Process refund                   | Payment/refund API; must be gated            |
 | Feedback Agent        | Ask survey, detect escalation    | Feedback system, CRM, ticketing              |
 
-The deck trace shows a late order scenario: user reports a delivery delay; the main assistant passes to Order Verification; Policy Agent determines eligibility for partial refund; Refund Processing initiates refund; Feedback Agent asks for feedback. [DECK2-p46]
+An illustrative late-order trace: user reports a delivery delay; the main assistant passes to Order Verification; Policy Agent determines eligibility for partial refund; Refund Processing initiates refund; Feedback Agent asks for feedback.
 
 Enterprise version:
 
@@ -815,7 +815,7 @@ Do not connect an MCP tool directly to privileged production tables unless the t
 
 ### 12.5 SQLcl MCP and Oracle database tools
 
-The uploaded deck highlights SQLcl MCP as part of the broader architecture. [DECK1-p8] The second uploaded deck lists Oracle's MCP Server with OAuth as a way to execute database tools and functions as standardized tools for agents. [DECK2-p16]
+Oracle material highlights SQLcl MCP as part of the broader architecture, and lists Oracle MCP Server with OAuth as a way to execute database tools and functions as standardized tools for agents.
 
 Practical interpretation: expect Oracle database tools to increasingly be exposed as MCP-compatible capabilities. For now, verify the exact SQLcl MCP support status in your installed release and docs before designing around it.
 
@@ -856,20 +856,20 @@ Therefore, when you design internal APIs for Agent Factory:
 ### 13.3 Example OpenAPI-friendly tool set
 
 ```
-GET  /orders/{orderId}
-  Summary: Get order facts for refund eligibility.
+GET /orders/{orderId}
+ Summary: Get order facts for refund eligibility.
 
 POST /refund-requests
-  Summary: Create a refund request for human approval.
-  Body: { orderId, amount, reason, policyDecisionId }
+ Summary: Create a refund request for human approval.
+ Body: { orderId, amount, reason, policyDecisionId }
 
 POST /case-notes
-  Summary: Append a note to the customer support case.
-  Body: { caseId, note, sourceAgent }
+ Summary: Append a note to the customer support case.
+ Body: { caseId, note, sourceAgent }
 
 POST /notifications/slack
-  Summary: Send a workflow notification to an approved Slack channel.
-  Body: { channel, severity, message }
+ Summary: Send a workflow notification to an approved Slack channel.
+ Body: { channel, severity, message }
 ```
 
 ---
@@ -937,10 +937,10 @@ General pattern:
 
 ```
 User question
-  -> Agent / router
-      -> RAG tool for unstructured docs
-      -> SQL/NL2SQL tool for database facts
-  -> Combine answer with source explanation
+ -> Agent / router
+ -> RAG tool for unstructured docs
+ -> SQL/NL2SQL tool for database facts
+ -> Combine answer with source explanation
 ```
 
 Use this pattern for any domain with both docs and relational data:
@@ -980,13 +980,13 @@ Generic flow:
 ```bash
 # 1. Get a session cookie. Official docs describe loginValidation with Basic auth.
 curl -k -i -u "user@example.com:password" \
-  "https://<host>/agentFactory/v1/loginValidation"
+ "https://<host>/agentFactory/v1/loginValidation"
 
 # 2. Call a published agent endpoint with the cookie returned above.
 curl -k --location "https://<host>/agentFactory/v1/agentBuilder/run/<agentId>" \
-  --header "Content-Type: application/json" \
-  --header "Cookie: <cookie_name>=<cookie_value>" \
-  --data '{"message":"what tools are available?"}'
+ --header "Content-Type: application/json" \
+ --header "Cookie: <cookie_name>=<cookie_value>" \
+ --data '{"message":"what tools are available?"}'
 ```
 
 For conversation continuity, include `roomId` from the first response:
@@ -1015,7 +1015,7 @@ _Diagram (PDF p42 — "APEX integration"): APEX user → Oracle APEX app (chat U
 
 ### 16.1 Why APEX integration is important
 
-The second uploaded deck explicitly lists Oracle APEX as a database capability used with Agent Factory, saying APEX applications can use REST APIs against agents in Agent Factory. It also includes an APEX architecture slide with APEX → API Gateway → OCI Agent Factory → MCP/tools/data → Oracle Database. [DECK2-p16][DECK2-p35]
+Oracle explicitly lists Oracle APEX as a database capability used with Agent Factory, saying APEX applications can use REST APIs against agents in Agent Factory. The reference APEX architecture is: APEX → API Gateway → OCI Agent Factory → MCP/tools/data → Oracle Database.
 
 The linked Medium article gives a step-by-step community implementation for connecting Oracle Agent Factory to APEX using API Gateway, Web Credentials, and PL/SQL. It is not official documentation, but it is very useful for practical integration. [MEDIUM-APEX]
 
@@ -1035,9 +1035,9 @@ The article's solution is to use OCI API Gateway as a bridge:
 
 ```
 APEX app
-  -> OCI API Gateway with public trusted TLS
-      -> private Agent Factory backend in same VCN
-          -> published agent endpoint
+ -> OCI API Gateway with public trusted TLS
+ -> private Agent Factory backend in same VCN
+ -> published agent endpoint
 ```
 
 The gateway exposes routes for login and agent calls. The article notes that the gateway can connect to private PAF backends and can disable SSL verification for self-signed backend certificates. [MEDIUM-APEX]
@@ -1058,23 +1058,23 @@ Pseudo-code, intentionally shortened:
 ```sql
 -- Login: get fresh Agent Factory session cookie
 l_login_resp := apex_web_service.make_rest_request(
-    p_url               => 'https://<gateway>/login/loginValidation',
-    p_http_method       => 'GET',
-    p_credential_static_id => 'AF_LOGIN');
+ p_url => 'https://<gateway>/login/loginValidation',
+ p_http_method => 'GET',
+ p_credential_static_id => 'AF_LOGIN');
 
 -- Inspect apex_web_service.g_headers for Set-Cookie.
 -- Extract cookie value into l_cookie.
 
 -- Send chat message
-apex_web_service.g_request_headers(1).name  := 'Content-Type';
+apex_web_service.g_request_headers(1).name := 'Content-Type';
 apex_web_service.g_request_headers(1).value := 'application/json';
-apex_web_service.g_request_headers(2).name  := 'Cookie';
+apex_web_service.g_request_headers(2).name := 'Cookie';
 apex_web_service.g_request_headers(2).value := '<cookie_name>=' || l_cookie;
 
 l_resp := apex_web_service.make_rest_request(
-    p_url => 'https://<gateway>/agent/factory',
-    p_http_method => 'POST',
-    p_body        => json_object('message' value l_msg, 'roomId' value l_room returning clob));
+ p_url => 'https://<gateway>/agent/factory',
+ p_http_method => 'POST',
+ p_body => json_object('message' value l_msg, 'roomId' value l_room returning clob));
 ```
 
 ### 16.5 Production hardening for APEX
@@ -1153,7 +1153,7 @@ Use direct SQL Query for read-only enrichment. Use REST/MCP for side effects so 
 
 ### 17.6 Evaluation and observability status
 
-The product page describes built-in evaluation and security/governance features such as source links, guardrails, and embedded evaluation. The FAQ says an Agent Evaluation/Monitoring layer is under development and planned for a future release. The uploaded decks also list evaluation, observability, metering, guardrails, and tracing in roadmap/future-looking sections. [PROD][DOC-FAQ][DECK1-p27][DECK2-p44]
+The product page describes built-in evaluation and security/governance features such as source links, guardrails, and embedded evaluation. The FAQ says an Agent Evaluation/Monitoring layer is under development and planned for a future release. Oracle product material also lists evaluation, observability, metering, guardrails, and tracing as roadmap items. [PROD][DOC-FAQ]
 
 Practical advice: verify which evaluation/observability features are present in your installed release. Until then, add your own evaluation harness:
 
@@ -1169,7 +1169,7 @@ Practical advice: verify which evaluation/observability features are present in 
 
 The product page and blogs mention Open Agent Specification as a portability mechanism. Oracle's Open Agent Specification blog describes Agent Spec as a framework-agnostic declarative representation for agents and workflows that aims to improve portability, reuse, and execution across compatible frameworks. It also says Agent Spec has synergies with MCP and includes a reference runtime called WayFlow. [OAS-BLOG]
 
-The uploaded deck explains the motivation: the agent framework ecosystem is fragmented, and Open Agent Specification lets Oracle meet customers where they are. The page shows a portability path: export from LangGraph/AutoGen or other agents to Open Agent Spec, then import into Agent Factory as an active agent. [DECK1-p23]
+The motivation: the agent framework ecosystem is fragmented, and Open Agent Specification lets Oracle meet customers where they are. The portability path: export from LangGraph/AutoGen or other agents to Open Agent Spec, then import into Agent Factory as an active agent.
 
 Practical takeaway:
 
@@ -1184,7 +1184,7 @@ Practical takeaway:
 
 ### 19.1 Database capabilities used by Agent Factory
 
-The second uploaded deck lists these Oracle Database capabilities leveraged by Agent Factory: [DECK2-p16]
+Oracle Database capabilities leveraged by Agent Factory include:
 
 - Oracle Vector Search for RAG.
 - Oracle APEX for applications calling Agent Factory REST APIs.
@@ -1209,35 +1209,35 @@ The second uploaded deck lists these Oracle Database capabilities leveraged by A
 For each agent use case, create an `AGENT_*` schema or controlled package layer:
 
 ```
-APP schema           -> production tables
-REPORTING schema     -> views, redaction, row filters
-AGENT_TOOLS schema   -> packages/functions exposed via MCP/Select AI
-AGENT_FACTORY user   -> Agent Factory metadata only
+APP schema -> production tables
+REPORTING schema -> views, redaction, row filters
+AGENT_TOOLS schema -> packages/functions exposed via MCP/Select AI
+AGENT_FACTORY user -> Agent Factory metadata only
 ```
 
 This separation prevents the platform metadata user from becoming a broad production data user.
 
 ---
 
-## 20. SRE Agent walkthrough from the deck
+## 20. SRE Agent walkthrough
 
-The first uploaded deck includes a walkthrough: build an SRE Agent that connects to diagnostic data and knowledge bases to deliver guided triage and root-cause recommendations. It shows custom agent building with MCP servers for issue repository, diagnostic analysis, knowledge base, and notifications. [DECK1-p18][DECK1-p20]
+Oracle product material includes an SRE Agent walkthrough: build an SRE Agent that connects to diagnostic data and knowledge bases to deliver guided triage and root-cause recommendations. It shows custom agent building with MCP servers for issue repository, diagnostic analysis, knowledge base, and notifications.
 
 A practical SRE agent design:
 
 ```
 Chat Input
-  -> Prompt: role = SRE triage assistant; require evidence and source links
-  -> Agent: SRE manager
-      Tools:
-        MCP Issue Repository
-        MCP Diagnostic Analysis
-        Knowledge Agent / RAG over runbooks
-        MCP Notifications
-        SQL Query over monitoring summary view
-  -> Parser: action recommendations
-  -> Condition: human approval required?
-  -> Chat Output and optional Email/Slack notification
+ -> Prompt: role = SRE triage assistant; require evidence and source links
+ -> Agent: SRE manager
+ Tools:
+ MCP Issue Repository
+ MCP Diagnostic Analysis
+ Knowledge Agent / RAG over runbooks
+ MCP Notifications
+ SQL Query over monitoring summary view
+ -> Parser: action recommendations
+ -> Condition: human approval required?
+ -> Chat Output and optional Email/Slack notification
 ```
 
 Tool split:
@@ -1372,10 +1372,10 @@ Use for case creation, refund request, ticket updates, notifications.
 
 ```
 Agent Builder manager
-  -> Knowledge Agent or RAG tool for docs
-  -> Select AI SQL tool for data
-  -> MCP/REST for actions
-  -> Chat Output
+ -> Knowledge Agent or RAG tool for docs
+ -> Select AI SQL tool for data
+ -> MCP/REST for actions
+ -> Chat Output
 ```
 
 Use for contract renewal, incident triage, movie concierge, inventory assistant.
@@ -1384,11 +1384,11 @@ Use for contract renewal, incident triage, movie concierge, inventory assistant.
 
 ```
 APEX frontend
-  -> APEX backend AJAX callback
-  -> Web Credential loginValidation
-  -> API Gateway
-  -> Published Agent Factory endpoint
-  -> Agent Factory tools and Oracle Database
+ -> APEX backend AJAX callback
+ -> Web Credential loginValidation
+ -> API Gateway
+ -> Published Agent Factory endpoint
+ -> Agent Factory tools and Oracle Database
 ```
 
 Use for embedding agents in enterprise applications without exposing Agent Factory directly to end users.
@@ -1414,9 +1414,9 @@ Use for embedding agents in enterprise applications without exposing Agent Facto
 
 ## 24. Roadmap and what to verify in your installed release
 
-The uploaded decks include roadmap/future-looking items. Treat these as directional and verify in your release notes before relying on them. [DECK1-p27][DECK2-p44]
+Oracle product material includes roadmap/future-looking items. Treat these as directional and verify in your release notes before relying on them.
 
-Roadmap items shown in decks include:
+Roadmap items include:
 
 - Agent Factory SDK and REST APIs.
 - Integration with vector services.
@@ -1434,7 +1434,7 @@ Roadmap items shown in decks include:
 - Agent Builder enhancements: vector store node, Select AI node, multi-agent support, filesystem node for large files, long-term memory, parsing/preprocessing, routing/loops/branches, custom Python components, Slack/Confluence connectors.
 - UI/UX enhancements: streaming chat, tool visibility, tracing/prompt diagnostics, file upload during chat.
 
-Some of these appear partially present in public docs or product pages, while others are clearly future-looking in the slides. For production planning, maintain a release matrix:
+Some of these appear partially present in public docs or product pages, while others are clearly future-looking. For production planning, maintain a release matrix:
 
 | Capability               | Needed by project? | Present in installed version?                        | Workaround                 |
 | ------------------------ | ------------------ | ---------------------------------------------------- | -------------------------- |
@@ -1461,17 +1461,17 @@ Some of these appear partially present in public docs or product pages, while ot
 
 **MCP** — Model Context Protocol, used to expose tools to agents through a standardized interface.
 
-**Near-DB runtime** — Workflow running near the database in the Agent Factory container. [DECK2-p13]
+**Near-DB runtime** — Workflow running near the database in the Agent Factory container.
 
-**In-DB runtime** — Workflow running inside Oracle Database through Select AI components. [DECK2-p13]
+**In-DB runtime** — Workflow running inside Oracle Database through Select AI components.
 
-**Hybrid runtime** — Near-DB workflow that invokes in-database agents/tools. [DECK2-p13]
+**Hybrid runtime** — Near-DB workflow that invokes in-database agents/tools.
 
 **Select AI** — Oracle Database AI feature set for profiles, NL2SQL, RAG, tools, tasks, agents, and teams used from Agent Factory. [DOC-SELECT-AI]
 
 **SQL Query node** — Agent Builder node that executes SELECT-like SQL against configured databases. [DOC-COMPONENTS]
 
-**Wayflow** — Runtime referenced by Oracle in relation to Open Agent Specification and Agent Factory execution. [OAS-BLOG][DECK2-p13]
+**Wayflow** — Runtime referenced by Oracle in relation to Open Agent Specification and Agent Factory execution. [OAS-BLOG]
 
 ---
 
@@ -1516,18 +1516,18 @@ Chat Input -> Prompt -> Agent -> Chat Output
 
 ```
 Chat Input -> Prompt -> LLM strict JSON
-  -> Type Convert
-  -> Parser decision flag
-  -> Condition
-      false -> Chat Output
-      true  -> REST/MCP action -> Chat Output
+ -> Type Convert
+ -> Parser decision flag
+ -> Condition
+ false -> Chat Output
+ true -> REST/MCP action -> Chat Output
 ```
 
 ### 27.4 Published endpoint call
 
 ```
-GET  /agentFactory/v1/loginValidation      # basic auth, get cookie
-POST /agentFactory/v1/agentBuilder/run/id  # message + optional roomId
+GET /agentFactory/v1/loginValidation # basic auth, get cookie
+POST /agentFactory/v1/agentBuilder/run/id # message + optional roomId
 ```
 
 ### 27.5 Oracle view pattern
@@ -1582,31 +1582,3 @@ GRANT SELECT ON reporting.agent_sales_v TO agent_reader;
 
 - `[MEDIUM-APEX]` Lavkesh Singh, Connecting Oracle Agent Factory to APEX: <https://lavkeshhh.medium.com/connecting-oracle-agent-factory-to-apex-heres-exactly-how-step-by-step-d19f5cef15c5>
 
-### Uploaded decks
-
-- `[DECK1]` Uploaded PDF: `agent-factory_resources_Agent Factory introduction .pdf`, 28 pages.
-- `[DECK2]` Uploaded PDF: `Agent Factory.pdf`, 59 pages.
-
-Notable deck pages used:
-
-- `[DECK1-p2]` Case for starting with AI and bringing AI to data.
-- `[DECK1-p4]` Open-source framework comparison.
-- `[DECK1-p5]` Oracle AI agent builders and Agent Factory positioning.
-- `[DECK1-p7]` Agent Factory overview and technology included.
-- `[DECK1-p8]` Agent Factory container architecture.
-- `[DECK1-p9-p10]` Knowledge Agent and RAG pipeline.
-- `[DECK1-p11-p12]` Data Analysis Agent and structured pipeline.
-- `[DECK1-p15-p16]` Agent Builder and node catalog.
-- `[DECK1-p18-p22]` SRE Agent walkthrough.
-- `[DECK1-p23]` Open Agent Specification portability.
-- `[DECK1-p24-p26]` Download and setup from source.
-- `[DECK1-p27]` Roadmap.
-- `[DECK2-p3]` Agent Factory capabilities and differentiators.
-- `[DECK2-p12]` Agent Builder nodes.
-- `[DECK2-p13-p16]` Runtime modes, execution, and Oracle DB capabilities.
-- `[DECK2-p18-p22]` Knowledge/Data Analysis/Reasoning RAG agent material.
-- `[DECK2-p24-p32]` QuickBite multi-agent assistant workflow.
-- `[DECK2-p35-p36]` APEX integration architecture and example.
-- `[DECK2-p44]` Roadmap.
-- `[DECK2-p46]` QuickBite execution trace.
-- `[DECK2-p57-p58]` Agent Builder agent types and APEX integration examples.

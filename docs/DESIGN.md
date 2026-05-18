@@ -131,7 +131,7 @@ Mapping the use case to PAF's component types:
 
 ### 6.2 Database (`database/`)
 
-Liquibase changelogs in two parallel directories (per the [reference repo](https://github.com/) pattern):
+Liquibase changelogs in two parallel directories:
 
 - `database/liquibase/oracle/` — local Oracle Free 26ai.
 - `database/liquibase/adb/` — cloud Autonomous Database 26ai.
@@ -176,7 +176,7 @@ Every write to `system_config` produces a row in `policy_parameter_history` (who
 
 ```
 oracle-database-private-agent-factory-poc/
-├── manage.py                 # CLI; mirrors the reference repo pattern
+├── manage.py                 # Click-based CLI
 ├── requirements.txt
 ├── .env                      # rendered by `manage.py setup`; not committed
 ├── LOCAL.md                  # user-facing local-deployment playbook
