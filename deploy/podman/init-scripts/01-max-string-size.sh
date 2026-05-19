@@ -1,23 +1,26 @@
 #!/bin/bash
-# Startup hook: switch the CDB + FREEPDB1 to MAX_STRING_SIZE=EXTENDED and
-# ensure FREEPDB1 is OPEN with a saved state.
+# Startup hook: switch the CDB, PDB$SEED, and FREEPDB1 to
+# MAX_STRING_SIZE=EXTENDED and leave all PDBs OPEN with saved states.
 # Required by Private Agent Factory (PAF §5.1). Mounted under
 # /opt/oracle/scripts/startup so it runs every boot — the script is
-# idempotent: opens the PDB if closed, and skips the upgrade dance when
+# idempotent: opens PDBs if closed, and skips the upgrade dance when
 # max_string_size is already EXTENDED. scripts/setup is skipped on
 # Oracle Free 26ai because the image ships with a prebuilt database.
 #
-# The migration is two-phase: CDB first, then PDB after CDB has restarted
-# with the new MAX_STRING_SIZE active (the SCOPE=SPFILE setting isn't
-# live in the running instance until that second startup, so utl32k in
-# the PDB has to run afterwards).
+# The migration is three-phase: CDB first, then each PDB after the CDB
+# has restarted with the new MAX_STRING_SIZE active (the SCOPE=SPFILE
+# setting isn't live in the running instance until that second startup).
+# utl32k must run in every container — CDB$ROOT, PDB$SEED, and FREEPDB1.
+# Skipping any of them leaves the PDB stuck in MOUNTED with ORA-14694
+# on subsequent OPEN, which also breaks the image's checkDBStatus.sh.
 set -euo pipefail
 
-echo "[init] Ensuring FREEPDB1 is open + state saved..."
+echo "[init] Ensuring all PDBs are open + state saved..."
 sqlplus -s -L / as sysdba <<'SQL'
 WHENEVER SQLERROR CONTINUE;
+ALTER PLUGGABLE DATABASE "PDB$SEED" OPEN READ ONLY;
 ALTER PLUGGABLE DATABASE FREEPDB1 OPEN;
-ALTER PLUGGABLE DATABASE FREEPDB1 SAVE STATE;
+ALTER PLUGGABLE DATABASE ALL SAVE STATE;
 EXIT;
 SQL
 
@@ -45,7 +48,20 @@ STARTUP;
 EXIT;
 SQL
 
-echo "[init] Phase 2: FREEPDB1 upgrade..."
+echo "[init] Phase 2a: PDB\$SEED upgrade..."
+sqlplus -s -L / as sysdba <<'SQL'
+WHENEVER SQLERROR EXIT SQL.SQLCODE;
+ALTER PLUGGABLE DATABASE "PDB$SEED" OPEN UPGRADE;
+ALTER SESSION SET CONTAINER="PDB$SEED";
+@?/rdbms/admin/utl32k.sql
+ALTER SESSION SET CONTAINER=CDB$ROOT;
+ALTER PLUGGABLE DATABASE "PDB$SEED" CLOSE IMMEDIATE;
+ALTER PLUGGABLE DATABASE "PDB$SEED" OPEN READ ONLY;
+ALTER PLUGGABLE DATABASE "PDB$SEED" SAVE STATE;
+EXIT;
+SQL
+
+echo "[init] Phase 2b: FREEPDB1 upgrade..."
 sqlplus -s -L / as sysdba <<'SQL'
 WHENEVER SQLERROR EXIT SQL.SQLCODE;
 ALTER PLUGGABLE DATABASE FREEPDB1 OPEN UPGRADE;
@@ -58,4 +74,4 @@ ALTER PLUGGABLE DATABASE FREEPDB1 SAVE STATE;
 EXIT;
 SQL
 
-echo "[init] max_string_size is now EXTENDED and FREEPDB1 is OPEN."
+echo "[init] max_string_size is now EXTENDED and all PDBs are OPEN."

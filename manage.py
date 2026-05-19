@@ -77,12 +77,12 @@ def _run(cmd: list, **kwargs) -> subprocess.CompletedProcess:
 
 
 def _wait_for_db(container: str = "paf-oracle-free-26ai", timeout: int = 900) -> None:
-    """Wait until DB is healthy AND the startup hook has set max_string_size=EXTENDED.
+    """Wait until FREEPDB1 is READ WRITE and max_string_size=EXTENDED.
 
-    The hook runs SHUTDOWN/STARTUP UPGRADE/utl32k/SHUTDOWN/STARTUP after the
-    initial 'DATABASE IS READY TO USE!', which can take 3–5 min. Plain health
-    flips healthy → unhealthy → healthy during the dance; both conditions
-    together are the real readiness signal.
+    The startup hook runs a SHUTDOWN/STARTUP/utl32k dance after the initial
+    'DATABASE IS READY TO USE!'. We poll the SQL state directly rather than
+    checkDBStatus.sh — the image's healthcheck also gates on PDB$SEED's
+    open_mode, which transitions through MOUNTED during the dance.
     """
     sql = (
         "SET HEAD OFF FEEDBACK OFF PAGES 0 ECHO OFF\n"
@@ -91,22 +91,8 @@ def _wait_for_db(container: str = "paf-oracle-free-26ai", timeout: int = 900) ->
         "EXIT;\n"
     )
     deadline = time.time() + timeout
-    saw_healthy = False
-    saw_upgrade = False
+    last_state = None
     while time.time() < deadline:
-        health = subprocess.run(
-            ["podman", "exec", container, "/opt/oracle/checkDBStatus.sh"],
-            capture_output=True, text=True,
-        )
-        if health.returncode != 0:
-            if saw_healthy and not saw_upgrade:
-                console.print("[dim]DB restarting for max_string_size upgrade...[/dim]")
-                saw_upgrade = True
-            time.sleep(5)
-            continue
-        if not saw_healthy:
-            console.print("[green]✓[/green] Oracle DB up; verifying max_string_size + FREEPDB1...")
-            saw_healthy = True
         check = subprocess.run(
             ["podman", "exec", "-i", container, "sqlplus", "-s", "-L", "/", "as", "sysdba"],
             input=sql, capture_output=True, text=True,
@@ -115,6 +101,10 @@ def _wait_for_db(container: str = "paf-oracle-free-26ai", timeout: int = 900) ->
         if output == "EXTENDED|READWRITE":
             console.print("[green]✓[/green] max_string_size=EXTENDED, FREEPDB1=READ WRITE. Ready.")
             return
+        state = output or "starting"
+        if state != last_state:
+            console.print(f"[dim]Waiting for Oracle DB ({state})...[/dim]")
+            last_state = state
         time.sleep(5)
     console.print(
         f"[red]Timed out after {timeout}s waiting for Oracle DB.[/red] "
