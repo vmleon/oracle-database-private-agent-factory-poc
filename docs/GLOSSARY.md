@@ -33,6 +33,7 @@ A non-technical glossary of the banking, credit, and compliance terms used acros
 - **PEP (Politically Exposed Person)** — a senior public figure (or close associate) who needs extra scrutiny because they're a higher corruption-risk profile. _Example: a finance minister applying for a personal loan triggers enhanced review — not denial, but more checks._
 - **Sanctions list** — a public list of individuals/entities the bank is legally barred from doing business with (e.g. OFAC SDN in the US, HMT in the UK). _Example: a name match → reject, no exceptions._
 - **MRZ (Machine Readable Zone)** — the two lines of letters and numbers at the bottom of a passport's photo page. _Example: OCR extracts the MRZ and verifies its checksum so a photoshopped passport fails the check._
+- **Document requirements matrix** — a lookup table that says _which_ documents are required for _this_ applicant, keyed by product type, employment type, residency status, and amount band. Drives the agent-to-customer conversation about uploads. _Example: salaried + resident + small loan → ID + payslip + statement; self-employed + resident + small loan → ID + tax return + statement instead._
 
 ## Decision outcomes
 

@@ -69,19 +69,24 @@ A **Mandatory-HITL** toggle in the backoffice routes 100% of cases to human revi
 
 ### Flow
 
-1. Customer opens chat UI → submits loan request → uploads documents.
-2. **Application Service** persists application + documents (Object Storage), runs cheap **pre-checks** via OPA REST (sanctions, age, doc presence) — short-circuits obvious denies. For each uploaded document, it enqueues an OCR job on `OCR_REQUEST` (TxEventQ).
-3. **OCR + Document Detection** worker dequeues from `OCR_REQUEST` (open-source: YOLO + PaddleOCR/Tesseract), extracts structured fields and produces per-field confidence; writes back composite **document-quality tier** (usable / marginal / unusable). Failures are retried up to `max_retries`; poison messages land in `OCR_EXCEPTION_Q` for triage.
-4. **Decisioning Agent** (Private Agent Factory inside 26ai) orchestrates tool calls:
+The customer chat is driven by the agent: it asks for what _this_ applicant needs (different for salaried vs. self-employed, resident vs. expat, small vs. large loan) and only proceeds to the decision once everything is in place.
+
+1. Customer opens chat UI, says what they want (product, amount, purpose, term). Agent asks structured follow-ups (employment type, residency status, salary band, existing facilities) to build a partial applicant profile.
+2. **Agent calls OPA `required_documents(applicant_so_far, product)`** → returns the required doc set keyed by `(product_type, employment_type, residency_status, amount_band)`. The matrix lives in `system_config.document_requirements_matrix`; Select AI RAG can retrieve policy snippets to explain _why_ each document is needed.
+3. Agent presents the list in chat and requests uploads. Each upload → Application Service writes a `loan_application_document` row, uploads the file to Object Storage, enqueues `OCR_REQUEST` (TxEventQ).
+4. **OCR + Document Detection** worker dequeues from `OCR_REQUEST` (open-source: YOLO + PaddleOCR/Tesseract), **classifies** the document (`doc_type` ∈ `ID` / `PAYSLIP` / `STATEMENT` / `TAX_RETURN` / `ADDRESS_PROOF` / `OTHER`), extracts per-field values, and writes back `doc_type`, `ocr_payload`, `ocr_confidence`, `quality_tier`. Failures retry up to `max_retries`; poison messages land in `OCR_EXCEPTION_Q` for triage.
+5. Agent verifies completeness via `check_document_completeness`: every required `doc_type` has at least one USABLE document with required fields extracted. Missing / MARGINAL / UNUSABLE / mismatched (statement uploaded when ID requested → classifier catches it) → agent re-asks. Only when complete does the conversation move on.
+6. Application Service runs **cheap OPA pre-checks** over REST (sanctions, age, doc presence) — short-circuits obvious denies.
+7. **Decisioning Agent** completes its turn by orchestrating the remaining tools:
    - SQL (Select AI) → customer profile, transactions, credit bureau, existing facilities.
    - OPA MCP tools → eligibility, AML, KYC, escalation, fair-lending hooks.
    - Vector Search → policy citations, similar cases.
    - Pricing tool → rate card lookup + risk-band adjustment.
-5. Composite **confidence score** computed from configurable weights (OCR quality + data completeness + policy proximity).
-6. Outcome decided by OPA + confidence + Mandatory-HITL flag.
-7. **Decision** persisted to a Blockchain Table (append-only). Full audit trail (per tool call) persisted in `decision_audit`.
-8. If REFER_HUMAN, the agent (via `create_hitl_task`) writes a row to `hitl_task` and enqueues `HITL_REQUEST` (TxEventQ) in the same transaction. Backoffice reviewers `deqone` to atomically claim a task (queue dequeue + `hitl_task` state transition OPEN → IN_REVIEW commit together); the bell on the backoffice UI shows the role-filtered pending count.
-9. Customer status surfaces back through the chat UI with reason codes (no decision detail leak).
+8. Composite **confidence score** computed from configurable weights (OCR quality + data completeness + policy proximity).
+9. Outcome decided by OPA + confidence + Mandatory-HITL flag.
+10. **Decision** persisted to a Blockchain Table (append-only). Full audit trail (per tool call) persisted in `decision_audit`.
+11. If REFER_HUMAN, the agent (via `create_hitl_task`) writes a row to `hitl_task` and enqueues `HITL_REQUEST` (TxEventQ) in the same transaction. Backoffice reviewers `deqone` to atomically claim a task (queue dequeue + `hitl_task` state transition OPEN → IN_REVIEW commit together); the bell on the backoffice UI shows the role-filtered pending count.
+12. Customer status surfaces back through the chat UI with reason codes (no decision detail leak).
 
 ### Component Map
 
@@ -109,30 +114,30 @@ The synthetic dataset is generated to **trigger every decision path** rather tha
 
 ### Entities
 
-| Table                       | Purpose                                                                   |
-| --------------------------- | ------------------------------------------------------------------------- |
-| `customer`                  | Customer master                                                           |
-| `customer_address`          | Current + historical addresses                                            |
-| `customer_identity`         | ID / passport docs with expiry                                            |
-| `customer_protected_attrs`  | Protected attributes for fair-lending review (configurable per region)    |
-| `employment`                | Employers, salary, tenure                                                 |
-| `account`                   | Customer accounts (current, savings)                                      |
-| `account_transaction`       | Transaction history (12 months) — cashflow source                         |
-| `credit_bureau_snapshot`    | Periodic external score + bureau facilities; **scale parameterized**      |
-| `existing_facility`         | Loans/cards held elsewhere                                                |
-| `product_catalog`           | Loan/card/mortgage products + amount/term ranges                          |
-| `rate_card`                 | Pricing per product + risk band                                           |
-| `loan_application`          | The application being decisioned                                          |
-| `loan_application_document` | Uploaded docs + OCR-extracted JSON + quality tier                         |
-| `decision` _(blockchain)_   | Append-only decision history                                              |
-| `decision_audit`            | Step-by-step tool-call trail (inputs, outputs, durations)                 |
-| `hitl_task`                 | HITL queue entry, state, assignment                                       |
-| `policy_corpus`             | Policy chunks + embeddings (for RAG)                                      |
-| `case_history`              | Past anonymized decisions for similarity retrieval                        |
-| `sanctions_list`            | Synthetic sanctions / PEP list                                            |
-| `system_config`             | Tunable parameters (caps, thresholds, weights, Mandatory-HITL flag, etc.) |
-| `policy_parameter_history`  | Versioned changes to `system_config` (who changed what, when, why)        |
-| `fair_lending_review`       | Periodic disparate-impact sampling + bank reviewer notes                  |
+| Table                       | Purpose                                                                                                       |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `customer`                  | Customer master                                                                                               |
+| `customer_address`          | Current + historical addresses                                                                                |
+| `customer_identity`         | ID / passport docs with expiry                                                                                |
+| `customer_protected_attrs`  | Protected attributes for fair-lending review (configurable per region)                                        |
+| `employment`                | Employers, salary, tenure                                                                                     |
+| `account`                   | Customer accounts (current, savings)                                                                          |
+| `account_transaction`       | Transaction history (12 months) — cashflow source                                                             |
+| `credit_bureau_snapshot`    | Periodic external score + bureau facilities; **scale parameterized**                                          |
+| `existing_facility`         | Loans/cards held elsewhere                                                                                    |
+| `product_catalog`           | Loan/card/mortgage products + amount/term ranges                                                              |
+| `rate_card`                 | Pricing per product + risk band                                                                               |
+| `loan_application`          | The application being decisioned                                                                              |
+| `loan_application_document` | Uploaded docs + classifier `doc_type` + OCR-extracted JSON + quality tier                                     |
+| `decision` _(blockchain)_   | Append-only decision history                                                                                  |
+| `decision_audit`            | Step-by-step tool-call trail (inputs, outputs, durations)                                                     |
+| `hitl_task`                 | HITL queue entry, state, assignment                                                                           |
+| `policy_corpus`             | Policy chunks + embeddings (for RAG)                                                                          |
+| `case_history`              | Past anonymized decisions for similarity retrieval                                                            |
+| `sanctions_list`            | Synthetic sanctions / PEP list                                                                                |
+| `system_config`             | Tunable parameters (caps, thresholds, weights, Mandatory-HITL flag, **`document_requirements_matrix`**, etc.) |
+| `policy_parameter_history`  | Versioned changes to `system_config` (who changed what, when, why)                                            |
+| `fair_lending_review`       | Periodic disparate-impact sampling + bank reviewer notes                                                      |
 
 ### Schema sketch (key tables)
 
@@ -204,7 +209,8 @@ CREATE TABLE loan_application (
 CREATE TABLE loan_application_document (
   doc_id          NUMBER PRIMARY KEY,
   application_id  NUMBER REFERENCES loan_application,
-  doc_type        VARCHAR2(40),       -- generic: ID / INCOME_PROOF / ADDRESS_PROOF / BANK_STATEMENT / OTHER
+  doc_type        VARCHAR2(40),       -- ID / PAYSLIP / STATEMENT / TAX_RETURN / ADDRESS_PROOF / OTHER (set by the OCR classifier, not by the customer)
+  requested_type  VARCHAR2(40),       -- what the agent asked the customer to upload (so mismatches are auditable)
   storage_uri     VARCHAR2(500),
   uploaded_at     TIMESTAMP,
   ocr_status      VARCHAR2(20),
@@ -360,6 +366,7 @@ packages/
 ├── eligibility.rego         # age, residency, income, DTI, PTI, score floor (all parameterized)
 ├── aml.rego                 # sanctions / PEP / suspicious pattern flags
 ├── kyc.rego                 # ID validity, doc expiry, quality-tier gates
+├── required_documents.rego  # required doc set per (product_type, employment_type, residency, amount_band)
 ├── product.rego             # product-specific amount/term caps
 ├── escalation.rego          # routing rules: when to REFER_HUMAN
 ├── fair_lending.rego        # disparate-impact pre-flight on a single decision
@@ -420,6 +427,7 @@ allow {
 
 - **OPA MCP server** wraps OPA's `/v1/data/...` HTTP endpoints as typed MCP tools.
 - Tools exposed to the agent:
+  - `required_documents(applicant_so_far, product)` → `{ required: [doc_type, ...], rationale }` — looked up against `system_config.document_requirements_matrix` keyed by `(product_type, employment_type, residency_status, amount_band)`
   - `evaluate_eligibility(applicant, application, product)` → `{ allow, deny[], warn[] }`
   - `evaluate_aml(customer, application)` → `{ allow, deny[] }`
   - `evaluate_kyc(documents, quality_tiers)` → `{ allow, deny[] }`
@@ -459,21 +467,23 @@ Not for the decision itself — that's OPA. RAG grounds the rationale text and a
 
 ### Pipeline
 
-1. **YOLO** — detects regions on the uploaded image / PDF (ID front, ID back, MRZ, photo area, document edges, payslip header, statement table). Open-source weights, fine-tuned on a small synthetic set of mock IDs and payslips.
-2. **OCR engine** — open-source (PaddleOCR or Tesseract — pick whichever localizes better for the demo). Extracts text from each detected region.
-3. **Per-field confidence** — composite from YOLO detection score + OCR per-character confidence + structural sanity checks (date parses, ID format matches the expected pattern, MRZ checksum where applicable).
-4. **Document quality tier** — composite:
-   - `USABLE` — every required field detected with per-field confidence ≥ configured threshold.
+1. **Document classification** — a lightweight classifier head returns the actual `doc_type` (`ID` / `PAYSLIP` / `STATEMENT` / `TAX_RETURN` / `ADDRESS_PROOF` / `OTHER`) so the agent can detect mismatches (customer uploaded a statement when an ID was asked for).
+2. **YOLO** — detects regions on the uploaded image / PDF specific to the classified `doc_type` (ID front / back / MRZ / photo area for IDs; payslip header + line items for payslips; statement table for statements; etc.). Open-source weights, fine-tuned on a small synthetic set of mock documents.
+3. **OCR engine** — open-source (PaddleOCR or Tesseract — pick whichever localizes better for the demo). Extracts text from each detected region.
+4. **Per-field confidence** — composite from classifier score + YOLO detection score + OCR per-character confidence + structural sanity checks (date parses, ID format matches the expected pattern, MRZ checksum where applicable).
+5. **Document quality tier** — composite:
+   - `USABLE` — every required field detected with per-field confidence ≥ configured threshold, and the classified `doc_type` matches what was requested.
    - `MARGINAL` — one or more fields below threshold but image is human-readable.
-   - `UNUSABLE` — image too dark / blurred / cropped / not-an-ID.
+   - `UNUSABLE` — image too dark / blurred / cropped / not a recognisable document.
 
 ### Behavior by tier
 
-| Tier     | System behavior                                                                                                                     |
-| -------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| USABLE   | Feed extracted fields to agent; continue decisioning. If everything else is clean and confidence is high, agent may auto-approve.   |
-| MARGINAL | Route to **HITL** with the full original document, OCR output, and confidence map. **Do not silently reject.** Human picks up.      |
-| UNUSABLE | Auto-decline with a customer-facing reason ("please re-upload — image was not readable"). Don't saturate humans on garbage uploads. |
+| Tier       | System behavior                                                                                                                                                                                  |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| USABLE     | Counts toward completeness; the agent moves on once every required `doc_type` is covered.                                                                                                        |
+| MARGINAL   | Agent asks the customer to re-upload (cite the field that failed). If the re-upload is still MARGINAL → REFER_HUMAN with the original + OCR output + confidence map. **Do not silently reject.** |
+| UNUSABLE   | Agent asks the customer to re-upload with a clear reason ("please re-upload — image was not readable"). No human is bothered with garbage uploads.                                               |
+| MISMATCHED | Classified `doc_type` differs from the requested one — agent re-asks for the correct document type.                                                                                              |
 
 Thresholds (`USABLE_min_confidence`, `MARGINAL_floor`) are in `system_config` and editable from the backoffice.
 
@@ -498,77 +508,95 @@ END;
 
 ### Tools
 
-| Tool                          | Type                     | Bound to                                                  | Purpose                                              |
-| ----------------------------- | ------------------------ | --------------------------------------------------------- | ---------------------------------------------------- |
-| `query_customer_profile`      | SQL (Select AI / NL2SQL) | View over `customer` + `employment` + `existing_facility` | Pull profile, compute DTI / PTI                      |
-| `query_transaction_summary`   | SQL (Select AI)          | View over `account_transaction`                           | Cashflow aggregates                                  |
-| `query_credit_bureau`         | SQL                      | `credit_bureau_snapshot`                                  | Latest snapshot per customer                         |
-| `search_policy`               | Vector Search            | `policy_corpus`                                           | RAG over policy text                                 |
-| `search_similar_cases`        | Vector Search            | `case_history`                                            | Similarity over past decisions                       |
-| `extract_document`            | Function tool            | OCR + YOLO pipeline                                       | Extract fields + per-field confidence + quality tier |
-| `evaluate_eligibility`        | MCP                      | OPA MCP server                                            | Eligibility rules                                    |
-| `evaluate_aml`                | MCP                      | OPA MCP server                                            | AML rules                                            |
-| `evaluate_kyc`                | MCP                      | OPA MCP server                                            | KYC + doc validity + quality gates                   |
-| `evaluate_fair_lending_flags` | MCP                      | OPA MCP server                                            | Pre-flight fairness flag on a single decision        |
-| `evaluate_escalation`         | MCP                      | OPA MCP server                                            | Routing rule (REFER_HUMAN)                           |
-| `lookup_pricing`              | SQL + OPA                | `rate_card` + OPA pricing                                 | Map risk band → rate                                 |
-| `create_hitl_task`            | Function tool            | `hitl_task`                                               | Open backoffice review task                          |
-| `record_decision`             | SQL                      | `decision` (blockchain) + `decision_audit`                | Persist outcome + per-tool audit trail               |
+| Tool                          | Type                     | Bound to                                                  | Purpose                                                                                                      |
+| ----------------------------- | ------------------------ | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `query_customer_profile`      | SQL (Select AI / NL2SQL) | View over `customer` + `employment` + `existing_facility` | Pull profile, compute DTI / PTI                                                                              |
+| `query_transaction_summary`   | SQL (Select AI)          | View over `account_transaction`                           | Cashflow aggregates                                                                                          |
+| `query_credit_bureau`         | SQL                      | `credit_bureau_snapshot`                                  | Latest snapshot per customer                                                                                 |
+| `search_policy`               | Vector Search            | `policy_corpus`                                           | RAG over policy text                                                                                         |
+| `search_similar_cases`        | Vector Search            | `case_history`                                            | Similarity over past decisions                                                                               |
+| `required_documents`          | MCP                      | OPA MCP server (`required_documents.rego`)                | Returns required `doc_type` set for this applicant (keyed by product / employment / residency / amount band) |
+| `check_document_completeness` | Function tool            | `loan_application_document` + required set                | Returns missing / MARGINAL / UNUSABLE / mismatched docs so the agent can re-ask the customer                 |
+| `extract_document`            | Function tool            | OCR + YOLO pipeline (via `OCR_REQUEST` queue)             | Classify `doc_type` + extract fields + per-field confidence + quality tier                                   |
+| `evaluate_eligibility`        | MCP                      | OPA MCP server                                            | Eligibility rules                                                                                            |
+| `evaluate_aml`                | MCP                      | OPA MCP server                                            | AML rules                                                                                                    |
+| `evaluate_kyc`                | MCP                      | OPA MCP server                                            | KYC + doc validity + quality gates                                                                           |
+| `evaluate_fair_lending_flags` | MCP                      | OPA MCP server                                            | Pre-flight fairness flag on a single decision                                                                |
+| `evaluate_escalation`         | MCP                      | OPA MCP server                                            | Routing rule (REFER_HUMAN)                                                                                   |
+| `lookup_pricing`              | SQL + OPA                | `rate_card` + OPA pricing                                 | Map risk band → rate                                                                                         |
+| `create_hitl_task`            | Function tool            | `hitl_task`                                               | Open backoffice review task                                                                                  |
+| `record_decision`             | SQL                      | `decision` (blockchain) + `decision_audit`                | Persist outcome + per-tool audit trail                                                                       |
 
 ### Agent instructions (sketch)
 
 ```
-You are the Decisioning Agent for retail loan applications. Your role is to evaluate
-a submitted application and produce one of three outcomes: APPROVE, REJECT, or
-REFER_HUMAN.
+You are the Decisioning Agent for retail loan applications. You drive the chat,
+collect the documents this applicant actually needs, then evaluate the application
+and produce one of three outcomes: APPROVE, REJECT, or REFER_HUMAN.
 
 HARD RULES:
 - You do not decide based on your own reasoning. Decisions are derived from OPA tool
   outputs and configured thresholds. Your text only composes the rationale and chooses
   which tools to call.
-- Read system_config.mandatory_hitl first. If true, outcome is always REFER_HUMAN —
-  call OPA tools anyway (so the audit captures rule outputs) but produce REFER_HUMAN.
+- Drive the conversation: ask the customer for product, amount, purpose, employment
+  type, residency status, salary band, existing facilities. Then call required_documents
+  and ask the customer for exactly those documents — do not ask for a fixed bundle.
+- Do not proceed to decisioning until check_document_completeness returns "complete".
+  Missing / MARGINAL / UNUSABLE / mismatched doc_type → re-ask the customer (cite the
+  policy snippet from search_policy if it helps explain). Persistent MARGINAL after
+  re-upload → REFER_HUMAN with the marginal artifacts in the HITL packet.
+- Read system_config.mandatory_hitl. If true, outcome is always REFER_HUMAN — call OPA
+  tools anyway (so the audit captures rule outputs) but produce REFER_HUMAN.
 - Always call evaluate_kyc, evaluate_aml, evaluate_eligibility, evaluate_fair_lending_flags.
 - If any OPA tool returns deny[], outcome = REJECT.
 - If any tool returns warn[], or confidence < configured auto-approve threshold,
-  or amount > configured auto-approve cap, or any document quality_tier is MARGINAL,
-  or fair-lending flag is raised — outcome = REFER_HUMAN.
+  or amount > configured auto-approve cap, or fair-lending flag is raised — outcome = REFER_HUMAN.
 - Otherwise outcome = APPROVE; call lookup_pricing for the offer.
 - Cite policy chunks via search_policy. Never invent citations.
 - Persist via record_decision before returning. Audit must be complete.
 
 WORKFLOW:
-1. Read system_config (mandatory_hitl, thresholds).
-2. Pull customer profile, transactions, credit bureau via SQL tools.
-3. For each uploaded document, call extract_document; capture quality_tier.
-4. Compute applicant payload (age, DTI, PTI, score, employment tenure).
-5. Call OPA: evaluate_kyc → evaluate_aml → evaluate_eligibility → evaluate_fair_lending_flags.
-6. Call evaluate_escalation with the combined inputs + confidence.
-7. If outcome = APPROVE, call lookup_pricing.
-8. Call search_policy on reasons; search_similar_cases on applicant features.
-9. Compose rationale with citations and reason codes.
-10. If REFER_HUMAN, call create_hitl_task with the full payload + reason_for_hitl.
-11. Call record_decision.
+1. Greet, gather product + amount + purpose + employment type + residency + salary band.
+2. Call required_documents(applicant_so_far, product). Present the list in chat.
+3. As the customer uploads, wait for OCR (async via OCR_REQUEST queue) and call
+   check_document_completeness. If incomplete → ask for what is missing/marginal/wrong;
+   loop until complete.
+4. Read system_config (mandatory_hitl, thresholds).
+5. Pull customer profile, transactions, credit bureau via SQL tools.
+6. Compute applicant payload (age, DTI, PTI, score, employment tenure).
+7. Call OPA: evaluate_kyc → evaluate_aml → evaluate_eligibility → evaluate_fair_lending_flags.
+8. Call evaluate_escalation with the combined inputs + confidence.
+9. If outcome = APPROVE, call lookup_pricing.
+10. Call search_policy on reasons; search_similar_cases on applicant features.
+11. Compose rationale with citations and reason codes.
+12. If REFER_HUMAN, call create_hitl_task with the full payload + reason_for_hitl.
+13. Call record_decision.
 ```
 
 ### Per-decision tool-call sequence
 
 ```
-1.  read system_config.mandatory_hitl + thresholds
-2.  query_customer_profile(customer_id)
-3.  query_transaction_summary(customer_id, months=12)
-4.  query_credit_bureau(customer_id)
-5.  extract_document(doc_id) × N
-6.  evaluate_kyc({ documents, quality_tiers })
-7.  evaluate_aml({ customer, application })
-8.  evaluate_eligibility({ applicant, application, product })
-9.  evaluate_fair_lending_flags({ protected_attrs, decision_draft })
-10. evaluate_escalation({ ...all + confidence })
-11. [if APPROVE candidate] lookup_pricing({ applicant, application })
-12. search_policy(deny + warn reasons)
-13. search_similar_cases(applicant features)
-14. record_decision(...)                  -- writes to blockchain decision + decision_audit
-15. [if REFER_HUMAN] create_hitl_task(payload, reason_for_hitl)
+-- Phase A: profile + document collection (multiple chat turns) --
+1.  gather profile via chat (product, amount, purpose, employment_type, residency_status, ...)
+2.  required_documents({ applicant_so_far, product })       -- OPA MCP
+3.  present list, ask uploads → OCR_REQUEST enqueued per doc (async)
+4.  check_document_completeness({ application_id })         -- loop until complete
+
+-- Phase B: decisioning (single turn, once docs are complete) --
+5.  read system_config.mandatory_hitl + thresholds
+6.  query_customer_profile(customer_id)
+7.  query_transaction_summary(customer_id, months=12)
+8.  query_credit_bureau(customer_id)
+9.  evaluate_kyc({ documents, quality_tiers })
+10. evaluate_aml({ customer, application })
+11. evaluate_eligibility({ applicant, application, product })
+12. evaluate_fair_lending_flags({ protected_attrs, decision_draft })
+13. evaluate_escalation({ ...all + confidence })
+14. [if APPROVE candidate] lookup_pricing({ applicant, application })
+15. search_policy(deny + warn reasons)
+16. search_similar_cases(applicant features)
+17. record_decision(...)                  -- writes to blockchain decision + decision_audit
+18. [if REFER_HUMAN] create_hitl_task(payload, reason_for_hitl)
 ```
 
 ### Confidence score (configurable)
@@ -740,10 +768,11 @@ A baseline most banks will recognize regardless of region:
 ### Customer UI — chat with document upload
 
 - **Mock login** — dropdown of demo customer names; selecting one fixes the `customer_id` used for the session. Logout returns to the picker. No real auth (assumed to be provided by the host bank in production).
-- Chat-style interface ("Hi, what loan are you looking for?"); agent asks structured follow-ups.
-- Document upload widget; in-line preview; per-document status (queued → extracting → ok / marginal / unusable).
-- If marginal/unusable, customer is told what is wrong and asked to re-upload (avoids silent rejection).
-- Decision delivered conversationally:
+- Chat-style interface ("Hi, what loan are you looking for?"); agent asks structured follow-ups (product, amount, purpose, employment type, residency).
+- **Agent-driven document collection** — the customer is not asked to upload a fixed bundle. After enough profile info is gathered, the agent calls `required_documents` and asks for _exactly_ the documents this applicant needs (e.g., salaried → ID + payslip + statement; self-employed → ID + tax return + statement; expat → adds address proof). The agent can paste a short policy snippet from RAG to explain _why_ each document is required.
+- Document upload widget appears inline next to the requested doc-type; per-document status (queued → classifying → extracting → ok / marginal / unusable / mismatched).
+- If marginal/unusable/mismatched, agent re-asks in chat with the specific reason ("the image was too dark — please retake"; "we asked for an ID, this looks like a bank statement"). Avoids silent rejection.
+- Decision delivered conversationally only after the agent confirms all required documents are USABLE:
   - APPROVE → priced offer with accept/decline buttons.
   - REJECT → reason codes + plain-language explanation.
   - REFER_HUMAN → "your application is being reviewed; we'll get back within X" + status tracking.
@@ -780,27 +809,31 @@ The test bench is for **functionality and observability**, not performance. Each
 
 ### Scenarios
 
-| #   | Scenario                                                     | Expected outcome                                                           | Why this case matters                                                                           |
-| --- | ------------------------------------------------------------ | -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| 1   | Clean profile, low DTI, high score, all docs USABLE          | APPROVE                                                                    | Happy path — proves the auto-approve route is wired                                             |
-| 2   | DTI above hard cap                                           | REJECT                                                                     | OPA hard deny path; rationale cites eligibility chunk                                           |
-| 3   | Score below configured floor                                 | REJECT                                                                     | OPA hard deny path; parameterized floor                                                         |
-| 4   | Expired ID document                                          | REJECT                                                                     | KYC deny; reason code surfaced to customer                                                      |
-| 5   | Sanctions hit on AML                                         | REJECT                                                                     | AML deny; cheap pre-check short-circuit (agent not invoked)                                     |
-| 6   | Mid-band score                                               | REFER_HUMAN                                                                | OPA `warn[]`; HITL with full context                                                            |
-| 7   | Amount above auto-approve cap                                | REFER_HUMAN                                                                | OPA `warn[]`; HITL                                                                              |
-| 8   | One document MARGINAL quality                                | REFER_HUMAN                                                                | OCR tier → HITL with original doc + extraction map                                              |
-| 9   | All documents UNUSABLE                                       | REJECT (silent)                                                            | Auto-decline path with "please re-upload" customer message                                      |
-| 10  | Mandatory-HITL flag is ON                                    | REFER_HUMAN                                                                | Regardless of clean profile, mandatory flag routes to human; audit captures rule outputs anyway |
-| 11  | Fair-lending pre-flight flag raised                          | REFER_HUMAN                                                                | Bank reviewer steps in before automated decision lands                                          |
-| 12  | Configuration changed mid-flight (DTI cap tightened)         | Outcome shifts on rerun                                                    | Parameter history visible; both old and new audits readable                                     |
-| 13  | Audit replay matches original decision                       | Reproducible                                                               | Observability headline — same input, same audit, same outcome                                   |
-| 14  | Blockchain row tamper attempt rejected by DB                 | Tamper detected                                                            | Blockchain integrity demonstration                                                              |
-| 15  | Customer asks the agent "why was I declined?" in chat        | Agent answers from `decision.rationale` + policy chunks                    | Right-of-explanation surface                                                                    |
-| 16  | Two backoffice reviewers click **Claim next** simultaneously | Exactly one reviewer gets the task; the other gets the next one (or empty) | `HITL_REQUEST` transactional dequeue prevents double-claim                                      |
-| 17  | OCR worker crashes mid-job                                   | Message is re-delivered after visibility timeout; succeeds on retry        | TxEventQ at-least-once delivery + idempotent worker                                             |
-| 18  | OCR worker fails `max_retries` times on the same document    | Message lands in `OCR_EXCEPTION_Q`; surfaces in Backoffice "Failed OCR"    | Poison-message containment without a custom retry table                                         |
-| 19  | New HITL task arrives while a reviewer has the queue open    | Notification bell increments; click navigates to the role-filtered queue   | The bell is a real signal, not a static badge                                                   |
+| #   | Scenario                                                     | Expected outcome                                                                                   | Why this case matters                                                                                                                           |
+| --- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Clean profile, low DTI, high score, all docs USABLE          | APPROVE                                                                                            | Happy path — proves the auto-approve route is wired                                                                                             |
+| 2   | DTI above hard cap                                           | REJECT                                                                                             | OPA hard deny path; rationale cites eligibility chunk                                                                                           |
+| 3   | Score below configured floor                                 | REJECT                                                                                             | OPA hard deny path; parameterized floor                                                                                                         |
+| 4   | Expired ID document                                          | REJECT                                                                                             | KYC deny; reason code surfaced to customer                                                                                                      |
+| 5   | Sanctions hit on AML                                         | REJECT                                                                                             | AML deny; cheap pre-check short-circuit (agent not invoked)                                                                                     |
+| 6   | Mid-band score                                               | REFER_HUMAN                                                                                        | OPA `warn[]`; HITL with full context                                                                                                            |
+| 7   | Amount above auto-approve cap                                | REFER_HUMAN                                                                                        | OPA `warn[]`; HITL                                                                                                                              |
+| 8   | One document MARGINAL quality                                | REFER_HUMAN                                                                                        | OCR tier → HITL with original doc + extraction map                                                                                              |
+| 9   | All documents UNUSABLE                                       | REJECT (silent)                                                                                    | Auto-decline path with "please re-upload" customer message                                                                                      |
+| 10  | Mandatory-HITL flag is ON                                    | REFER_HUMAN                                                                                        | Regardless of clean profile, mandatory flag routes to human; audit captures rule outputs anyway                                                 |
+| 11  | Fair-lending pre-flight flag raised                          | REFER_HUMAN                                                                                        | Bank reviewer steps in before automated decision lands                                                                                          |
+| 12  | Configuration changed mid-flight (DTI cap tightened)         | Outcome shifts on rerun                                                                            | Parameter history visible; both old and new audits readable                                                                                     |
+| 13  | Audit replay matches original decision                       | Reproducible                                                                                       | Observability headline — same input, same audit, same outcome                                                                                   |
+| 14  | Blockchain row tamper attempt rejected by DB                 | Tamper detected                                                                                    | Blockchain integrity demonstration                                                                                                              |
+| 15  | Customer asks the agent "why was I declined?" in chat        | Agent answers from `decision.rationale` + policy chunks                                            | Right-of-explanation surface                                                                                                                    |
+| 16  | Two backoffice reviewers click **Claim next** simultaneously | Exactly one reviewer gets the task; the other gets the next one (or empty)                         | `HITL_REQUEST` transactional dequeue prevents double-claim                                                                                      |
+| 17  | OCR worker crashes mid-job                                   | Message is re-delivered after visibility timeout; succeeds on retry                                | TxEventQ at-least-once delivery + idempotent worker                                                                                             |
+| 18  | OCR worker fails `max_retries` times on the same document    | Message lands in `OCR_EXCEPTION_Q`; surfaces in Backoffice "Failed OCR"                            | Poison-message containment without a custom retry table                                                                                         |
+| 19  | New HITL task arrives while a reviewer has the queue open    | Notification bell increments; click navigates to the role-filtered queue                           | The bell is a real signal, not a static badge                                                                                                   |
+| 20  | Salaried applicant vs. self-employed applicant               | Agent asks for ID + payslip + statement (salaried) vs. ID + tax return + statement (self-employed) | `required_documents` is driven by `(product_type, employment_type, residency_status, amount_band)` — bank-driven collection, not a fixed bundle |
+| 21  | Customer uploads a statement when the agent asked for an ID  | Classifier returns `STATEMENT` ≠ requested `ID`; agent re-asks for the correct doc type            | OCR worker classifies before the agent acts; mismatches don't silently pass downstream                                                          |
+| 22  | First-attempt MARGINAL doc                                   | Agent asks customer to re-upload citing the failing field; second attempt USABLE → flow continues  | Marginal docs get one explicit retry before any HITL escalation                                                                                 |
+| 23  | Persistent MARGINAL doc (still MARGINAL after re-upload)     | REFER_HUMAN with the original + OCR output + confidence map; backoffice reviewer claims the task   | The system tries to self-heal first, then escalates with full context                                                                           |
 
 ---
 
@@ -809,7 +842,9 @@ The test bench is for **functionality and observability**, not performance. Each
 | Feature                 | Agent function / tool                              | Data                                                                       | Integration                      |
 | ----------------------- | -------------------------------------------------- | -------------------------------------------------------------------------- | -------------------------------- |
 | Submit application      | `record_decision`, orchestration                   | `loan_application`                                                         | API → App Service → Agent        |
-| Upload document         | `extract_document` (YOLO + OCR)                    | `loan_application_document`, Object Storage, `OCR_REQUEST` (TxEventQ)      | OCR pipeline via TxEventQ        |
+| Required documents      | `required_documents` (MCP)                         | `system_config.document_requirements_matrix`                               | OPA MCP                          |
+| Document completeness   | `check_document_completeness` (function tool)      | `loan_application_document` + required set                                 | Agent ↔ App Service ↔ DB         |
+| Upload document         | `extract_document` (YOLO + classifier + OCR)       | `loan_application_document`, Object Storage, `OCR_REQUEST` (TxEventQ)      | OCR pipeline via TxEventQ        |
 | Eligibility evaluation  | `evaluate_eligibility` (MCP)                       | view(applicant, application, product), `system_config`                     | OPA MCP                          |
 | AML screening           | `evaluate_aml` (MCP)                               | `customer`, `sanctions_list`                                               | OPA MCP                          |
 | KYC validation          | `evaluate_kyc` (MCP)                               | `loan_application_document.ocr_payload`, `customer_identity`, quality_tier | OPA MCP                          |
@@ -836,17 +871,19 @@ The test bench is for **functionality and observability**, not performance. Each
 ## Demo Script
 
 1. **Setup walk-through** — show synthetic dataset stats, OPA Rego files + `opa test` green, the Backoffice config panel with thresholds and the **Mandatory-HITL switch**.
-2. **Approve path** — customer chats, uploads clean docs → APPROVE with priced offer; show audit trail + policy citations + blockchain row.
-3. **Reject paths** — hard DTI cap; expired ID; sanctions hit. Show reason codes surfaced to the customer; show audit.
-4. **HITL paths + concurrent reviewers** — mid-band score; amount above cap; MARGINAL OCR. Open the Backoffice in two browser tabs as different roles (e.g. HITL reviewer + admin) and hit **Claim next** at the same time — exactly one reviewer gets the task; the bell counter ticks down on both sides. Review the full picture, decide. Audit closed.
-5. **Mandatory-HITL flag** — flip the switch in the backoffice; rerun the clean profile case; observe REFER_HUMAN, with OPA tool outputs still captured in the audit.
-6. **Parameter hot-edit** — change `dti_hard_cap` in the backoffice; rerun a boundary case → different outcome. Show `policy_parameter_history` and the side-by-side audit comparison.
-7. **Risk Management Dashboard** — apply a +200bps shock; show pressure surface and the suggested threshold-tightening counterfactual.
-8. **Fair-Lending Review** — run the periodic sampler; flagged buckets; reviewer flow.
-9. **Audit replay** — pick any decision; click "Replay" → identical outcome from stored audit input.
-10. **Blockchain tamper demo** — attempt `UPDATE decision SET outcome = 'APPROVE' WHERE decision_id = …` → DB rejects.
-11. **Customer chat — right of explanation** — customer asks the agent "why was I declined?" → agent answers from rationale + policy chunks.
-12. **OCR retry demo** — upload a deliberately broken document; OCR worker fails `max_retries` times; the message lands in `OCR_EXCEPTION_Q` and surfaces in the Backoffice "Failed OCR" view. Click **Retry** → message re-enqueued onto `OCR_REQUEST` → success on the next pass.
+2. **Approve path (salaried)** — customer chats; agent asks employment type → "salaried" → agent requests ID + payslip + statement. Customer uploads clean docs → APPROVE with priced offer. Show audit trail + policy citations + blockchain row.
+3. **Same product, different doc set (self-employed)** — repeat scenario 2 but with employment type "self-employed". The agent asks for ID + tax return + statement instead, citing the policy snippet for why. Same code path, different conversation — proves the bank-driven collection.
+4. **Mismatched upload** — when the agent asks for an ID, deliberately upload a statement. Classifier flags it; agent says "we asked for an ID, this looks like a bank statement" and re-asks.
+5. **Reject paths** — hard DTI cap; expired ID; sanctions hit. Show reason codes surfaced to the customer; show audit.
+6. **HITL paths + concurrent reviewers** — mid-band score; amount above cap; MARGINAL OCR. Open the Backoffice in two browser tabs as different roles (e.g. HITL reviewer + admin) and hit **Claim next** at the same time — exactly one reviewer gets the task; the bell counter ticks down on both sides. Review the full picture, decide. Audit closed.
+7. **Mandatory-HITL flag** — flip the switch in the backoffice; rerun the clean profile case; observe REFER_HUMAN, with OPA tool outputs still captured in the audit.
+8. **Parameter hot-edit** — change `dti_hard_cap` in the backoffice; rerun a boundary case → different outcome. Show `policy_parameter_history` and the side-by-side audit comparison.
+9. **Risk Management Dashboard** — apply a +200bps shock; show pressure surface and the suggested threshold-tightening counterfactual.
+10. **Fair-Lending Review** — run the periodic sampler; flagged buckets; reviewer flow.
+11. **Audit replay** — pick any decision; click "Replay" → identical outcome from stored audit input.
+12. **Blockchain tamper demo** — attempt `UPDATE decision SET outcome = 'APPROVE' WHERE decision_id = …` → DB rejects.
+13. **Customer chat — right of explanation** — customer asks the agent "why was I declined?" → agent answers from rationale + policy chunks.
+14. **OCR retry demo** — upload a deliberately broken document; OCR worker fails `max_retries` times; the message lands in `OCR_EXCEPTION_Q` and surfaces in the Backoffice "Failed OCR" view. Click **Retry** → message re-enqueued onto `OCR_REQUEST` → success on the next pass.
 
 ---
 

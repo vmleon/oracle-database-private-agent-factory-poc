@@ -146,7 +146,7 @@ The flow follows PAF's [authoring-to-execution pipeline](PAF.md#105-authoring-to
 Two stores; nothing belongs in code:
 
 - **`.env`** (rendered by `manage.py setup`): infrastructure pointers — OCI profile, region, compartment, ADB/Local-DB connection, Ollama host:port, OCR host:port, PAF host:port, SSH key, OCI GenAI region (future), wallet path, embedding dimension.
-- **`APP.system_config`** (edited from Backoffice UI): policy parameters — `min_age`, `dti_hard_cap`, `pti_hard_cap`, `score_floor`, `score_caution_band_upper`, `auto_approve_amount_cap`, OCR confidence thresholds, fair-lending bucketing, **`mandatory_hitl`** master switch, weight set for the composite confidence score.
+- **`APP.system_config`** (edited from Backoffice UI): policy parameters — `min_age`, `dti_hard_cap`, `pti_hard_cap`, `score_floor`, `score_caution_band_upper`, `auto_approve_amount_cap`, OCR confidence thresholds, fair-lending bucketing, **`mandatory_hitl`** master switch, weight set for the composite confidence score, and **`document_requirements_matrix`** (JSON: required `doc_type` set keyed by `(product_type, employment_type, residency_status, amount_band)`).
 
 Every write to `system_config` produces a row in `policy_parameter_history` (who, when, old value, new value, reason).
 
@@ -208,21 +208,20 @@ A future `images/` directory will hold architecture diagrams once the implementa
 
 ## 8. Data flow — happy path (APPROVE)
 
-1. Customer opens mobile chat, submits application, uploads ID + payslip + statement.
-2. Application Service writes `loan_application`, `loan_application_document` rows; uploads files to Object Storage; enqueues one `OCR_REQUEST` (TxEventQ) per document. OCR worker dequeues, processes, writes back `ocr_payload` + `quality_tier`; failures retry up to `max_retries`, then poison messages land in `OCR_EXCEPTION_Q`.
-3. Application Service runs **cheap OPA pre-checks** over REST (sanctions, age, doc presence). Clean → continue. Hit → short-circuit REJECT.
-4. Application Service POSTs to the **AI Services PAF caller** with the application id.
-5. **PAF caller** acquires a session cookie against `/agentFactory/v1/loginValidation`, then POSTs to the `DECISIONING_AGENT` run URL with `{message, roomId}`.
-6. **`DECISIONING_AGENT`** executes:
-   - Reads `system_config` (`mandatory_hitl`, thresholds) via In-DB Tool.
-   - Select AI tools pull profile, transactions, bureau snapshot.
-   - OCR MCP extracts fields from each document; returns quality tier per document.
-   - OPA MCP evaluates eligibility, AML, KYC, fair-lending pre-flight, escalation.
-   - All docs USABLE, OPA `allow`, confidence ≥ threshold → calls OPA `lookup_pricing` → Select AI RAG retrieves policy citations.
-   - In-DB Tool `record_decision` writes a row to `decision` (Blockchain Table) with rationale + citations + offer.
-7. PAF returns NDJSON; AI Services parses and hands a sanitised decision view to the Application Service, which surfaces it to the mobile UI.
+The customer interacts via a chat-driven flow; every turn is a `DECISIONING_AGENT` invocation threaded by `roomId`. The agent drives document collection — it asks for what _this_ applicant needs, not a fixed bundle — and only proceeds to the formal decision once everything is in place.
 
-For REFER_HUMAN paths (any warn, marginal OCR, fair-lending flag, mandatory-HITL on), step 6 ends with `create_hitl_task` instead of `lookup_pricing`. The in-DB tool writes a row to `hitl_task` **and** enqueues `HITL_REQUEST` (TxEventQ) in the same transaction; a backoffice reviewer claims it later by `DEQONE` (atomic with the OPEN → IN_REVIEW state transition). The audit still captures all OPA outputs. For REJECT paths, the agent short-circuits after the deny is observed but still records the audit. See [DECISIONING-ENGINE-USE-CASE.md §Test Bench](DECISIONING-ENGINE-USE-CASE.md) and [§Async messaging](DECISIONING-ENGINE-USE-CASE.md#async-messaging--txeventq-queues) for the queue inventory and full path matrix.
+1. Customer opens mobile chat, says what they want (product, amount, purpose, term). Agent asks structured follow-ups (employment type, residency status, salary band, existing facilities) to build a partial applicant profile.
+2. Agent calls **OPA `required_documents(applicant_so_far, product)`** → returns the required doc set keyed by `(product_type, employment_type, residency_status, amount_band)`. The matrix lives in `system_config.document_requirements_matrix`; Select AI RAG can retrieve policy snippets to explain _why_ each document is needed.
+3. Agent presents the list in chat and requests uploads. Each upload → Application Service writes a `loan_application_document` row, uploads the file to Object Storage, enqueues `OCR_REQUEST` (TxEventQ).
+4. OCR worker dequeues, **classifies** the document (`doc_type` ∈ `ID` / `PAYSLIP` / `STATEMENT` / `TAX_RETURN` / `ADDRESS_PROOF` / `OTHER`) and extracts per-field values; writes back `doc_type`, `ocr_payload`, `ocr_confidence`, `quality_tier`. Failures retry up to `max_retries`; poison messages land in `OCR_EXCEPTION_Q`.
+5. Agent verifies completeness via `check_document_completeness`: every required `doc_type` has at least one USABLE document with required fields extracted. Missing / MARGINAL / UNUSABLE / mismatched (e.g., a statement uploaded when an ID was requested — the classifier catches it) → agent re-asks (back to step 3). Only when complete does the conversation move on.
+6. Application Service runs **cheap OPA pre-checks** over REST (sanctions, age, doc presence). Clean → continue. Hit → short-circuit REJECT.
+7. Agent reads `system_config` (`mandatory_hitl`, thresholds) via In-DB Tool, then runs Select AI tools to pull profile, transactions, bureau snapshot.
+8. OPA MCP evaluates eligibility, AML, KYC, fair-lending pre-flight, escalation. All docs USABLE, OPA `allow`, confidence ≥ threshold → calls OPA `lookup_pricing` → Select AI RAG retrieves policy citations.
+9. In-DB Tool `record_decision` writes a row to `decision` (Blockchain Table) with rationale + citations + offer.
+10. PAF returns NDJSON; AI Services parses and hands a sanitised decision view to the Application Service, which surfaces it to the mobile UI.
+
+For REFER_HUMAN paths (any warn, persistent MARGINAL OCR after re-upload, fair-lending flag, mandatory-HITL on), step 8 ends with `create_hitl_task` instead of `lookup_pricing`. The in-DB tool writes a row to `hitl_task` **and** enqueues `HITL_REQUEST` (TxEventQ) in the same transaction; a backoffice reviewer claims it later by `DEQONE` (atomic with the OPEN → IN_REVIEW state transition). The audit still captures all OPA outputs. For REJECT paths, the agent short-circuits after the deny is observed but still records the audit. See [DECISIONING-ENGINE-USE-CASE.md §Test Bench](DECISIONING-ENGINE-USE-CASE.md) and [§Async messaging](DECISIONING-ENGINE-USE-CASE.md#async-messaging--txeventq-queues) for the queue inventory and full path matrix.
 
 ## 9. Observability model
 
