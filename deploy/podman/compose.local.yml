@@ -19,6 +19,36 @@ services:
       retries: 30
       start_period: 360s
 
+  paf:
+    # Image is built locally from the kit tarball; see `manage.py paf build`.
+    # If you change PAF_APP_VERSION in .env you must rebuild the image.
+    image: "localhost/applied-ai-label:${PAF_APP_VERSION}"
+    container_name: paf-agent-factory
+    user: "0:0"
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    command: "/home/aaiuser/install/startup.sh"
+    stop_grace_period: 30s
+    depends_on:
+      oracle-free-26ai:
+        condition: service_healthy
+    volumes:
+      - ../../paf-kit/applied-ai/dev-shared:/dev-shared
+      - ../../paf-kit/applied-ai/volume:/mount
+    # PAF can't do mDNS / Bonjour, so when OLLAMA_HOST is a .local name we
+    # resolve it on the host (which does mDNS) at `local up` and inject the
+    # mapping here. Falls back to a no-op loopback entry when not needed.
+    extra_hosts:
+      - "${OLLAMA_HOSTS_ENTRY:-localhost:127.0.0.1}"
+    environment:
+      IS_UPGRADE: "false"
+      HOST_OS: "${HOST_OS:-Darwin}"
+      PYTHONPATH: "/home/aaiuser/install"
+      TAKE_SNAPSHOT: "false"
+      USE_WALLET: "false"
+      INCLUDE_KA_DATA: "false"
+
 volumes:
   oradata:
     name: paf-oradata

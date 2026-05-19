@@ -58,3 +58,40 @@ databaseChangeLog:
               GRANT CREATE SESSION, CREATE TABLE, CREATE VIEW, CREATE SEQUENCE,
                     CREATE PROCEDURE, CREATE TRIGGER, CREATE TYPE TO AGENT_FACTORY
 
+  - changeSet:
+      id: 002-grant-agent-factory-paf
+      author: paf-poc
+      # Extra grants required by Private Agent Factory 25.3 (README.txt
+      # "Creating Database User" in the kit tarball). Kept as a separate
+      # changeset so the original create-user checksum is preserved on
+      # databases where it has already run.
+      changes:
+        - sql:
+            sql: |-
+              GRANT CONNECT, RESOURCE,
+                    CREATE SYNONYM, CREATE DATABASE LINK,
+                    CREATE ANY INDEX, INSERT ANY TABLE
+                TO AGENT_FACTORY
+        - sql:
+            sql: |-
+              GRANT READ, WRITE ON DIRECTORY DATA_PUMP_DIR TO AGENT_FACTORY
+
+  - changeSet:
+      id: 003-grant-agent-factory-readonly-user-mgmt
+      author: paf-poc
+      # PAF's UI installer (step 3) creates a separate read-only DB user
+      # owned by AGENT_FACTORY. Without these grants the step fails with
+      # `ORA-01031: insufficient privileges`. These three grants are
+      # taken from the kit's quickstart startup.sh.
+      changes:
+        - sql:
+            sql: |-
+              GRANT CREATE USER TO AGENT_FACTORY
+        - sql:
+            sql: |-
+              GRANT DROP USER TO AGENT_FACTORY
+        - sql:
+            sql: |-
+              GRANT CREATE SESSION TO AGENT_FACTORY WITH ADMIN OPTION
+
+

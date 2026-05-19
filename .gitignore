@@ -42,6 +42,9 @@ deploy/ansible/**/*.retry
 # OCR
 ocr/models/
 
+# PAF kit — extracted from the vendor tarball; ~6 GB on disk, never commit
+paf-kit/
+
 # IDE / OS
 .idea/
 .vscode/

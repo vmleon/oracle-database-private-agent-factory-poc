@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 """CLI for managing the Oracle PAF Decisioning Engine PoC."""
 
+import json
 import os
+import platform
+import re
 import secrets
 import shutil
 import subprocess
 import sys
+import tarfile
 import time
 from pathlib import Path
 
@@ -22,6 +26,11 @@ ENV_FILE = PROJECT_ROOT / ".env"
 PODMAN_COMPOSE = PROJECT_ROOT / "deploy" / "podman" / "compose.local.yml"
 ANSIBLE_DIR = PROJECT_ROOT / "deploy" / "ansible" / "database-setup"
 ANSIBLE_VARS_FILE = ANSIBLE_DIR / ".vars.local.yml"
+
+PAF_KIT_DIR = PROJECT_ROOT / "paf-kit"
+PAF_VERSION_FILE = PAF_KIT_DIR / "applied-ai" / "kit" / "agent_factory" / "internal" / "version.json"
+PAF_BUILD_SCRIPT = PAF_KIT_DIR / "build-image.sh"
+PAF_IMAGE_REPO = "localhost/applied-ai-label"
 
 LOCAL_PREREQS = {
     "podman": "Install: https://podman.io/docs/installation",
@@ -141,6 +150,133 @@ def _check_max_string_size(container: str = "paf-oracle-free-26ai") -> None:
         )
         sys.exit(1)
     console.print("[green]✓[/green] max_string_size is EXTENDED.")
+
+
+def _paf_app_version() -> str | None:
+    """Read PAF_APP_VERSION from .env, or fall back to the kit's version.json."""
+    val = os.getenv("PAF_APP_VERSION")
+    if val:
+        return val
+    if PAF_VERSION_FILE.exists():
+        try:
+            return json.loads(PAF_VERSION_FILE.read_text())["app_version"]
+        except (json.JSONDecodeError, KeyError):
+            return None
+    return None
+
+
+def _paf_image_tag() -> str | None:
+    v = _paf_app_version()
+    return f"{PAF_IMAGE_REPO}:{v}" if v else None
+
+
+def _paf_image_present(tag: str) -> bool:
+    return subprocess.run(
+        ["podman", "image", "exists", tag], capture_output=True
+    ).returncode == 0
+
+
+def _compute_ollama_hosts_entry() -> str | None:
+    """Resolve OLLAMA_HOST on the host (which can do mDNS) and return the
+    `hostname:ip` string for compose's extra_hosts. Returns None when the
+    host already resolves inside the container (IP literal, localhost,
+    host.containers.internal) or can't be resolved.
+    """
+    host = os.getenv("OLLAMA_HOST", "").strip()
+    if not host or host in ("localhost", "127.0.0.1", "host.containers.internal"):
+        return None
+    if re.fullmatch(r"\d+\.\d+\.\d+\.\d+", host):
+        return None
+    try:
+        import socket
+        ip = socket.gethostbyname(host)
+        return f"{host}:{ip}"
+    except OSError:
+        console.print(
+            f"[yellow]Could not resolve {host} on this host.[/yellow] "
+            "PAF will not be able to reach Ollama by name; "
+            "paste the IP into the PAF UI instead."
+        )
+        return None
+
+
+def _grant_sysdba_only_privs(container: str = "paf-oracle-free-26ai") -> None:
+    """Grant SYS-owned privileges Liquibase can't grant as SYSTEM. PAF's
+    `testInstallationDatabaseConnection` reads V$PARAMETER to detect the
+    DB compatibility level — without SELECT on SYS.V_$PARAMETER it returns
+    HTTP 400 with `ORA-00942 SYS.V_$PARAMETER does not exist`.
+    Re-granting is a no-op, so this is safe to run every `local up`.
+    """
+    sql = (
+        "ALTER SESSION SET CONTAINER=FREEPDB1;\n"
+        "GRANT SELECT ON SYS.V_$PARAMETER TO AGENT_FACTORY;\n"
+        "EXIT;\n"
+    )
+    result = subprocess.run(
+        ["podman", "exec", "-i", container, "sqlplus", "-s", "-L", "/", "as", "sysdba"],
+        input=sql, capture_output=True, text=True,
+    )
+    if result.returncode != 0 or "ORA-" in result.stdout:
+        console.print(f"[red]sysdba grant failed:[/red]\n{result.stdout}\n{result.stderr}")
+        sys.exit(1)
+    console.print("[green]✓[/green] SYS-only grants applied to AGENT_FACTORY.")
+
+
+def _paf_post_start(container: str = "paf-agent-factory") -> None:
+    """Reproduce the post-start steps the kit's `deploy.sh` performs:
+
+    1. Start crond inside the container.
+    2. Drop `/mount/.config_complete.marker` so `startup.sh` stops polling and
+       proceeds with the install (without this PAF crash-loops every ~120 s).
+    3. Seed `/mount/data/app/latest/version/version.json` from the kit's
+       `internal/version.json` — `db_migrate.py` reads this during the UI
+       installer and fails the install otherwise.
+    All steps are idempotent.
+    """
+    deadline = time.time() + 60
+    while time.time() < deadline:
+        check = subprocess.run(
+            ["podman", "inspect", container], capture_output=True
+        )
+        if check.returncode == 0:
+            break
+        time.sleep(2)
+    else:
+        console.print(f"[red]PAF container '{container}' never appeared.[/red]")
+        sys.exit(1)
+
+    subprocess.run(["podman", "exec", container, "crond", "start"], check=False)
+
+    marker = PAF_KIT_DIR / "applied-ai" / "volume" / ".config_complete.marker"
+    if marker.exists():
+        console.print("[dim]PAF config marker already present.[/dim]")
+    else:
+        marker.touch()
+        console.print("[green]✓[/green] PAF config marker written.")
+
+    subprocess.run(
+        ["podman", "exec", container, "sh", "-c",
+         "mkdir -p /mount/data/app/latest/version && "
+         "cp -f /home/aaiuser/install/agent_factory/internal/version.json "
+         "/mount/data/app/latest/version/version.json"],
+        check=False,
+    )
+    console.print("[green]✓[/green] PAF version.json seeded into /mount/data/app/latest/version/.")
+
+
+def _write_env_key(key: str, value: str) -> None:
+    """Update or append KEY=value in .env, preserving everything else."""
+    content = ENV_FILE.read_text() if ENV_FILE.exists() else ""
+    line = f"{key}={value}"
+    pattern = re.compile(rf"^{re.escape(key)}=.*$", re.MULTILINE)
+    if pattern.search(content):
+        content = pattern.sub(line, content)
+    else:
+        if content and not content.endswith("\n"):
+            content += "\n"
+        content += line + "\n"
+    ENV_FILE.write_text(content)
+    ENV_FILE.chmod(0o600)
 
 
 def _provision_local() -> None:
@@ -273,12 +409,41 @@ def local() -> None:
 def local_up() -> None:
     """Bring the local stack up and provision the database."""
     _ensure_env()
+    paf_tag = _paf_image_tag()
+    paf_ready = bool(paf_tag) and PAF_KIT_DIR.exists()
+    if paf_ready and not _paf_image_present(paf_tag):
+        console.print(f"[bold]PAF image {paf_tag} missing — building from kit...[/bold]")
+        _run(["bash", str(PAF_BUILD_SCRIPT), "aai"], cwd=str(PAF_KIT_DIR))
+    services = ["oracle-free-26ai"]
+    # Always export so compose substitution succeeds even when paf isn't started.
+    os.environ["PAF_APP_VERSION"] = _paf_app_version() or "unset"
+    os.environ.setdefault("HOST_OS", platform.system())
+    hosts_entry = _compute_ollama_hosts_entry()
+    if hosts_entry:
+        os.environ["OLLAMA_HOSTS_ENTRY"] = hosts_entry
+        console.print(f"[dim]Injecting extra_hosts: {hosts_entry}[/dim]")
+    if paf_ready:
+        services.append("paf")
     console.print("[bold]Starting podman containers...[/bold]")
-    _run(["podman", "compose", "-f", str(PODMAN_COMPOSE), "up", "-d"])
+    _run([
+        "podman", "compose", "-f", str(PODMAN_COMPOSE),
+        "up", "-d", *services,
+    ])
     console.print("[bold]Waiting for Oracle DB to be healthy (up to 5 min)...[/bold]")
     _wait_for_db()
     console.print("[bold]Provisioning database (Ansible → Liquibase)...[/bold]")
     _provision_local()
+    console.print("[bold]Applying SYS-only grants...[/bold]")
+    _grant_sysdba_only_privs()
+    if paf_ready:
+        console.print("[bold]Configuring PAF container (post-start handshake)...[/bold]")
+        _paf_post_start()
+    if not paf_ready:
+        console.print(
+            "\n[yellow]PAF not started.[/yellow] "
+            "Run [cyan]python manage.py paf prepare <path-to-tar>[/cyan] "
+            "and re-run [cyan]local up[/cyan]."
+        )
     console.print("\n[green]✓ Local stack up.[/green] Run [cyan]python manage.py info[/cyan].")
 
 
@@ -307,6 +472,7 @@ def local_provision() -> None:
     """Apply Liquibase + grants against the local DB (idempotent)."""
     _ensure_env()
     _provision_local()
+    _grant_sysdba_only_privs()
 
 
 # ---------------------------------------------------------------- info
@@ -326,6 +492,13 @@ def info() -> None:
         console.print(f"App schemas:    APP, REPORTING, AGENT_TOOLS, AGENT_FACTORY")
         console.print(f"Ollama:         http://{os.getenv('OLLAMA_HOST')}:{os.getenv('OLLAMA_PORT')}")
         console.print(f"OCR:            http://{os.getenv('OCR_HOST')}:{os.getenv('OCR_PORT')}")
+        paf_version = _paf_app_version()
+        if paf_version:
+            console.print(f"PAF installer:  https://localhost:8080/agentFactory/installation")
+            console.print(f"PAF version:    {paf_version}")
+        else:
+            console.print(f"PAF:            [yellow]not prepared[/yellow] "
+                          f"(run `manage.py paf prepare <tar>`)")
 
 
 # ---------------------------------------------------------------- paf
@@ -335,24 +508,127 @@ def paf() -> None:
     """Private Agent Factory operations."""
 
 
+@paf.command("prepare")
+@click.argument("tarball", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def paf_prepare(tarball: Path) -> None:
+    """Extract the PAF kit tarball into ./paf-kit/ and record its version in .env."""
+    if PAF_KIT_DIR.exists():
+        console.print(f"[yellow]Removing existing {PAF_KIT_DIR}...[/yellow]")
+        shutil.rmtree(PAF_KIT_DIR)
+    PAF_KIT_DIR.mkdir()
+    console.print(f"[bold]Extracting {tarball.name} → {PAF_KIT_DIR}...[/bold]")
+    with tarfile.open(tarball, "r:gz") as tf:
+        # Filter is required from Python 3.14; harmless on earlier versions.
+        try:
+            tf.extractall(PAF_KIT_DIR, filter="tar")
+        except TypeError:
+            tf.extractall(PAF_KIT_DIR)
+    if not PAF_VERSION_FILE.exists():
+        console.print(
+            f"[red]Extracted kit is missing {PAF_VERSION_FILE.relative_to(PROJECT_ROOT)}.[/red] "
+            "Is this the right tarball?"
+        )
+        sys.exit(1)
+    # The tar ships ./applied-ai/volume but not ./applied-ai/dev-shared;
+    # the compose mounts both, so create the missing one as an empty dir.
+    (PAF_KIT_DIR / "applied-ai" / "dev-shared").mkdir(exist_ok=True)
+    version = json.loads(PAF_VERSION_FILE.read_text())["app_version"]
+    _write_env_key("PAF_APP_VERSION", version)
+    console.print(f"[green]✓[/green] PAF kit extracted. PAF_APP_VERSION={version}")
+    console.print("Next: [cyan]python manage.py paf build[/cyan] (or just [cyan]local up[/cyan])")
+
+
+@paf.command("build")
+def paf_build() -> None:
+    """Build the PAF container image from the extracted kit (idempotent)."""
+    if not PAF_BUILD_SCRIPT.exists():
+        console.print("[red]paf-kit/ not found.[/red] Run `manage.py paf prepare <tar>` first.")
+        sys.exit(1)
+    _ensure_env()
+    tag = _paf_image_tag()
+    if not tag:
+        console.print("[red]PAF_APP_VERSION not set.[/red] Re-run `manage.py paf prepare`.")
+        sys.exit(1)
+    if _paf_image_present(tag):
+        console.print(f"[green]✓[/green] {tag} already built.")
+        return
+    console.print(f"[bold]Building {tag} (this can take 10+ min)...[/bold]")
+    _run(["bash", str(PAF_BUILD_SCRIPT), "aai"], cwd=str(PAF_KIT_DIR))
+
+
+def _resolve_ollama_host() -> tuple[str, str | None]:
+    """Return (host-to-paste, advisory). If .env's OLLAMA_HOST is a `.local`
+    mDNS name, resolve it to an IPv4 and return that — containers can't do
+    mDNS, so pasting the .local hostname into the PAF form leads to
+    `ConnectError: Name or service not known`.
+    """
+    host = os.getenv("OLLAMA_HOST", "")
+    if not host.endswith(".local"):
+        return host, None
+    try:
+        import socket
+        ip = socket.gethostbyname(host)
+        return ip, (
+            f".local hostname `{host}` won't resolve inside the PAF container; "
+            f"using its IPv4 ({ip}) instead."
+        )
+    except OSError:
+        return host, (
+            f".local hostname `{host}` cannot be resolved from this machine. "
+            "Find its LAN IP manually and paste that."
+        )
+
+
 @paf.command("bootstrap")
 def paf_bootstrap() -> None:
-    """Print the manual PAF bootstrap checklist."""
-    console.print(Panel.fit("[bold]PAF Bootstrap Checklist[/bold]"))
-    steps = [
-        "Open the PAF UI (URL from `manage.py info`) and sign in.",
-        "LLM Management → add Ollama generative + embedding configurations using the host/port in .env.",
-        "Data sources → add a Database data source over REPORTING views, and a File data source for policy_corpus.",
-        "Select AI → create a profile with NL2SQL object list scoped to REPORTING.*, and a RAG vector index over policy_corpus.",
-        "MCP Servers → register opa-mcp and ocr-mcp (URLs from .env, auth as configured).",
-        "Agent Builder → import the HELLO_AGENT flow, or the DECISIONING_AGENT flow (v1+).",
-        "Publish the agent and paste the run URL when prompted.",
-    ]
-    for i, s in enumerate(steps, 1):
-        console.print(f"  [cyan]{i}.[/cyan] {s}")
+    """Print the PAF UI installer URL and the connection details to paste into it."""
+    _ensure_env()
+    console.print(Panel.fit("[bold]PAF UI Installer[/bold]"))
     console.print(
-        "\n[yellow]Note:[/yellow] API automation for these steps is planned for a later PR. "
-        "Playwright-style UI driving is deliberately avoided as too fragile across PAF versions."
+        "Open the installer in a browser and accept the self-signed certificate:\n"
+        "  [cyan]https://localhost:8080/agentFactory/installation[/cyan]\n"
+    )
+    console.print("[bold]Step 1 — admin user[/bold]")
+    console.print("  Create an admin user (username + password — record them yourself).\n")
+
+    console.print("[bold]Step 2 — database configuration[/bold]")
+    console.print(f"  Connection type:  [cyan]Basic[/cyan]")
+    console.print(f"  Protocol:         [cyan]TCP[/cyan]")
+    console.print(f"  Host:             [cyan]oracle-free-26ai[/cyan]   (compose service DNS)")
+    console.print(f"  Port:             [cyan]1521[/cyan]")
+    console.print(f"  Service name:     [cyan]{os.getenv('DB_SERVICE')}[/cyan]")
+    console.print(f"  Username:         [cyan]AGENT_FACTORY[/cyan]")
+    console.print(f"  Password:         same as DB_PASSWORD in .env")
+    console.print(f"  Air-gapped?       [cyan]No[/cyan]   (DB has outbound NAT via podman)")
+    console.print(f"  Uses a wallet?    [cyan]No[/cyan]   (TCP listener, not ADB mTLS)\n")
+
+    console.print("[bold]Step 3 — installation[/bold]")
+    console.print("  Click Install. PAF creates its metadata tables under AGENT_FACTORY")
+    console.print("  and a read-only user AAI_RO_AGENT_FACTORY.\n")
+
+    ollama_host, advisory = _resolve_ollama_host()
+    console.print("[bold]Step 4 — LLM configuration[/bold]")
+    if advisory:
+        console.print(f"  [yellow]Note:[/yellow] {advisory}")
+    console.print(f"  [bold]Generative model[/bold]")
+    console.print(f"    Provider:       [cyan]Ollama[/cyan]")
+    console.print(f"    Configuration:  [cyan]ollama-llm[/cyan]   (any name; this is just a label)")
+    console.print(f"    Model ID:       [cyan]{os.getenv('OLLAMA_LLM_MODEL')}[/cyan]")
+    console.print(f"    URL:            [cyan]{ollama_host}[/cyan]")
+    console.print(f"    Port:           [cyan]{os.getenv('OLLAMA_PORT')}[/cyan]")
+    console.print(f"  [bold]Embedding model[/bold]")
+    console.print(f"    Provider:       [cyan]Ollama[/cyan]")
+    console.print(f"    Configuration:  [cyan]ollama-embedding[/cyan]")
+    console.print(f"    Model ID:       [cyan]{os.getenv('OLLAMA_EMBED_MODEL')}[/cyan]")
+    console.print(f"    URL:            [cyan]{ollama_host}[/cyan]")
+    console.print(f"    Port:           [cyan]{os.getenv('OLLAMA_PORT')}[/cyan]\n")
+
+    console.print("[bold]After install[/bold] — sign in as the admin user and:")
+    console.print("  - Verify LLM Management shows both configurations.")
+    console.print("  - Agent Builder → build a trivial Chat→Prompt→LLM→Chat flow to smoke-test.")
+    console.print(
+        "\n[yellow]Note:[/yellow] API automation for these UI steps is intentionally out of "
+        "scope (Playwright-style driving is fragile across PAF versions)."
     )
 
 
