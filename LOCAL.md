@@ -54,6 +54,74 @@ python manage.py info              # prints JDBC URL + service users
 | `python manage.py local down`                  | Stops and removes containers. State persists in the `paf-oradata` volume.             |
 | `python manage.py local down --purge`          | Also removes the volume. Next `local up` starts with a fresh DB.                      |
 
+## Optional: Ollama on a LAN GPU host (e.g. NVIDIA DGX Spark)
+
+If your laptop can't run `llama3.3:70b-instruct-q4_K_M` (~55–60 GB resident with `bge-m3`), offload Ollama to a LAN-reachable GPU box and point `.env` at it. Steps below target a DGX Spark but apply to any NVIDIA host with a container runtime.
+
+### On the GPU host
+
+Prereqs:
+
+- NVIDIA driver installed (`nvidia-smi` works).
+- `podman` (or `docker`) with the NVIDIA Container Toolkit configured.
+
+Start Ollama as a container, bound to all interfaces so the laptop can reach it:
+
+```bash
+podman run -d --name ollama \
+  --device nvidia.com/gpu=all \
+  -p 11434:11434 \
+  -v ollama:/root/.ollama \
+  --restart unless-stopped \
+  docker.io/ollama/ollama:latest
+```
+
+(For `docker`, swap `--device nvidia.com/gpu=all` for `--gpus all`.)
+
+Pull both models inside the running container:
+
+```bash
+podman exec -it ollama ollama pull llama3.3:70b-instruct-q4_K_M
+podman exec -it ollama ollama pull bge-m3
+```
+
+First pull is ~40 GB (llama3.3) + ~1.2 GB (bge-m3); allow time and disk.
+
+Open port `11434` only to the laptop's IP — Ollama has no auth:
+
+```bash
+# Oracle Linux 8 example
+firewall-cmd --add-rich-rule="rule family=ipv4 source address=<LAPTOP_IP> port port=11434 protocol=tcp accept" --permanent
+firewall-cmd --reload
+```
+
+### From the laptop
+
+Verify reachability:
+
+```bash
+curl http://<GPU_HOST>:11434/api/tags
+```
+
+Should list both `llama3.3:70b-instruct-q4_K_M` and `bge-m3`.
+
+Re-run setup and pick the LAN host when prompted:
+
+```bash
+python manage.py setup local
+# Ollama host: <GPU_HOST>
+# Ollama port: 11434
+```
+
+Or edit `.env` directly:
+
+```
+OLLAMA_HOST=<GPU_HOST>
+OLLAMA_PORT=11434
+```
+
+Then `python manage.py local up` as usual — PAF and Select AI will resolve `OLLAMA_HOST` to the GPU box.
+
 ## Verifying
 
 Connect with `sqlcl` (or any JDBC client):
