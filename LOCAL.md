@@ -6,13 +6,14 @@ See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for the design; this file is the 
 
 ## Status
 
-The database tier and Private Agent Factory (PAF) are up. Ollama, OPA, OCR, the Spring Boot backend, and the Angular UIs land in subsequent PRs.
-
 After running the commands below, you have:
 
-- Oracle Database Free 26ai running on `localhost:1521` (service `FREEPDB1`).
-- Four schema users created: `APP`, `REPORTING`, `AGENT_TOOLS`, `AGENT_FACTORY`.
-- PAF reachable at `https://localhost:8080/agentFactory/installation` (UI installer on first run).
+- Oracle Database Free 26ai on `localhost:1521` (service `FREEPDB1`), with `max_string_size=EXTENDED` and four schema users (`APP`, `REPORTING`, `AGENT_TOOLS`, `AGENT_FACTORY`).
+- Private Agent Factory at `https://localhost:8080/` — UI installer on first boot, sign-in page thereafter — installed against the local 26ai database under `AGENT_FACTORY`.
+- LLM Configuration registered against your configured Ollama host (laptop or LAN GPU).
+- A `HELLO_AGENT` flow you can build in Agent Builder and run from Playground in under a minute (see [Smoke-test in PAF](#smoke-test-in-paf)).
+
+OPA, OCR, the Spring Boot backend, and the Angular UIs are not yet in the compose; they're tracked in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 
 ## Prerequisites
 
@@ -100,6 +101,30 @@ Run `python manage.py paf bootstrap` for the exact values to paste — in short:
 - DB port: `1521`, service: `FREEPDB1`, user: `AGENT_FACTORY`, password: same `DB_PASSWORD` as in `.env`.
 
 After install completes, sign in as the admin user you set in step 1 and register Ollama under LLM Management.
+
+## Smoke-test in PAF
+
+Once you're signed in and both LLM Configurations show as saved:
+
+1. Open Agent Builder → new flow named `HELLO_AGENT`.
+2. Add four nodes:
+   - **Chat input**
+   - **Prompt** with template:
+
+     ```
+     You are a terse assistant. Answer in under 20 words.
+
+     User: {{message}}
+     ```
+
+     Saving the prompt makes a `message` input port appear on the node (the Prompt node only grows input ports for template variables — that's why a direct Chat input → Prompt wire is impossible without a `{{…}}` reference).
+
+   - **LLM** — pick your saved generative configuration.
+   - **Chat output**
+
+3. Wire **Chat input → Prompt.message → LLM → Chat output**, save, hit **Playground**, type "say hello in three words". The model should answer.
+
+If it hangs or errors, `python manage.py local logs paf` shows the backend trace.
 
 ## Optional: Ollama on a LAN GPU host (e.g. NVIDIA DGX Spark)
 

@@ -23,7 +23,9 @@ source venv/bin/activate
 pip install -r requirements.txt
 
 python manage.py setup local
+python manage.py paf prepare ~/Downloads/oracle_agent_factory_<version>.tar.gz
 python manage.py local up
+python manage.py paf bootstrap   # prints UI installer + LLM cheatsheet
 python manage.py info
 ```
 
@@ -31,4 +33,18 @@ Detailed prerequisites, day-2 commands, and troubleshooting in [`LOCAL.md`](LOCA
 
 ## Current status
 
-Only the database tier is in place: Oracle Database Free 26ai running locally with the four-schema layout (`APP`, `REPORTING`, `AGENT_TOOLS`, `AGENT_FACTORY`). PAF, Ollama, OPA, OCR, the Spring Boot backend, and the Angular UIs are queued for subsequent PRs.
+The platform plumbing is wired end-to-end on the local stack:
+
+- Oracle Database Free 26ai running locally with the four-schema layout (`APP`, `REPORTING`, `AGENT_TOOLS`, `AGENT_FACTORY`), `max_string_size=EXTENDED`, and PAF-specific grants on `AGENT_FACTORY`.
+- Private Agent Factory container built from the vendor kit, talking to the local 26ai database under `AGENT_FACTORY` and reachable at `https://localhost:8080/`.
+- LLM Configuration registered against an Ollama endpoint (laptop or LAN GPU host, with mDNS hostnames auto-resolved into the container via `extra_hosts`).
+- A trivial `HELLO_AGENT` flow (Chat input → Prompt with `{{message}}` → LLM → Chat output) runs successfully in PAF's Playground.
+
+What is next:
+
+- Extend Liquibase with the banking + decisioning schema (`002-app-banking.yaml` onwards) so the agent has real data to work against.
+- Select AI bootstrap (profile + NL2SQL object list over `REPORTING.*`, RAG vector index over `policy_corpus`).
+- OPA MCP and OCR MCP services, then the production `DECISIONING_AGENT` flow.
+- Spring Boot Application Service + the two Angular UIs.
+
+Cloud deployment (OCI Terraform + Ansible, ADB + LB) is documented as a design target in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) but is not implemented.
