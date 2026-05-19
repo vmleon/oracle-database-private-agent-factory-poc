@@ -1,0 +1,96 @@
+databaseChangeLog:
+  # Decisioning tables under APP — the agent's write surface for a credit
+  # decision and its full audit trail. DDL follows the sketch in
+  # docs/DECISIONING-ENGINE-USE-CASE.md. Blockchain Tables on Oracle 21c+
+  # enforce append-only semantics at the kernel level; no foreign keys
+  # are permitted into or out of them, so application_id is a soft
+  # reference and the table cannot reference loan_application directly.
+
+  - changeSet:
+      id: 003-create-decision-blockchain-table
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              CREATE BLOCKCHAIN TABLE APP.decision (
+                decision_id    NUMBER GENERATED ALWAYS AS IDENTITY,
+                application_id NUMBER NOT NULL,
+                outcome        VARCHAR2(20) NOT NULL
+                  CHECK (outcome IN ('APPROVE','REJECT','REFER_HUMAN')),
+                confidence     NUMBER(5,4),
+                rationale      CLOB,
+                opa_result     JSON,
+                rag_citations  JSON,
+                pricing_offer  JSON,
+                reason_codes   JSON,
+                computed_dti   NUMBER(5,2),
+                computed_pti   NUMBER(5,2),
+                mandatory_hitl CHAR(1) DEFAULT 'N' NOT NULL
+                  CHECK (mandatory_hitl IN ('Y','N')),
+                decided_at     TIMESTAMP DEFAULT SYSTIMESTAMP NOT NULL,
+                agent_run_id   VARCHAR2(60) NOT NULL,
+                CONSTRAINT uq_decision_id UNIQUE (decision_id)
+              ) NO DROP UNTIL 2555 DAYS IDLE
+                NO DELETE LOCKED
+                HASHING USING "SHA2_512" VERSION "v1"
+        - sql:
+            sql: |-
+              CREATE INDEX APP.ix_decision_application ON APP.decision(application_id)
+        - sql:
+            sql: |-
+              CREATE INDEX APP.ix_decision_agent_run ON APP.decision(agent_run_id)
+
+  - changeSet:
+      id: 003-create-decision-audit
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              CREATE TABLE APP.decision_audit (
+                audit_id     NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                agent_run_id VARCHAR2(60) NOT NULL,
+                step_no      NUMBER NOT NULL,
+                tool_name    VARCHAR2(80) NOT NULL,
+                tool_input   JSON,
+                tool_output  JSON,
+                started_at   TIMESTAMP NOT NULL,
+                ended_at     TIMESTAMP,
+                duration_ms  NUMBER,
+                status       VARCHAR2(20) NOT NULL
+                  CHECK (status IN ('SUCCESS','FAILED','SKIPPED','TIMEOUT'))
+              )
+        - sql:
+            sql: |-
+              CREATE INDEX APP.ix_decision_audit_run ON APP.decision_audit(agent_run_id)
+        - sql:
+            sql: |-
+              CREATE UNIQUE INDEX APP.uq_decision_audit_step
+                ON APP.decision_audit(agent_run_id, step_no)
+
+  - changeSet:
+      id: 003-create-hitl-task
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              CREATE TABLE APP.hitl_task (
+                task_id         NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                application_id  NUMBER NOT NULL
+                  REFERENCES APP.loan_application(application_id),
+                assigned_to     VARCHAR2(120),
+                state           VARCHAR2(20) DEFAULT 'OPEN' NOT NULL
+                  CHECK (state IN ('OPEN','IN_REVIEW','APPROVED','REJECTED','EXPIRED')),
+                reason_for_hitl VARCHAR2(200),
+                decision_note   CLOB,
+                created_at      TIMESTAMP DEFAULT SYSTIMESTAMP NOT NULL,
+                closed_at       TIMESTAMP
+              )
+        - sql:
+            sql: |-
+              CREATE INDEX APP.ix_hitl_task_application ON APP.hitl_task(application_id)
+        - sql:
+            sql: |-
+              CREATE INDEX APP.ix_hitl_task_state ON APP.hitl_task(state)
+        - sql:
+            sql: |-
+              CREATE INDEX APP.ix_hitl_task_assignee ON APP.hitl_task(assigned_to)

@@ -5,3 +5,6 @@ databaseChangeLog:
   - include:
       file: 002-app-banking.yaml
       relativeToChangelogFile: true
+  - include:
+      file: 003-app-decisioning.yaml
+      relativeToChangelogFile: true

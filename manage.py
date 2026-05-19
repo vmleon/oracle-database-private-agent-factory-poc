@@ -205,11 +205,17 @@ def _grant_sysdba_only_privs(container: str = "paf-oracle-free-26ai") -> None:
     `testInstallationDatabaseConnection` reads V$PARAMETER to detect the
     DB compatibility level — without SELECT on SYS.V_$PARAMETER it returns
     HTTP 400 with `ORA-00942 SYS.V_$PARAMETER does not exist`.
+
+    SYSTEM also needs TABLE RETENTION to create blockchain/immutable tables
+    with retention longer than the default 16 days (ORA-05807 otherwise);
+    APP.decision uses NO DROP UNTIL 2555 DAYS IDLE (~7 years).
+
     Re-granting is a no-op, so this is safe to run every `local up`.
     """
     sql = (
         "ALTER SESSION SET CONTAINER=FREEPDB1;\n"
         "GRANT SELECT ON SYS.V_$PARAMETER TO AGENT_FACTORY;\n"
+        "GRANT TABLE RETENTION TO SYSTEM;\n"
         "EXIT;\n"
     )
     result = subprocess.run(
