@@ -2,6 +2,7 @@
 
 **Audience:** any retail bank evaluating Oracle AI Database 26ai + Private Agent Factory as the agentic platform for credit-application decisioning.
 **Demo bank:** generic, region-agnostic. No country, currency, regulator, or bureau is hard-coded.
+**New to the banking terms?** [`GLOSSARY.md`](GLOSSARY.md) has plain-English definitions for DTI, PTI, KYC, AML, fair lending, and the rest.
 
 ---
 

@@ -13,6 +13,7 @@ Two deployment options, same source tree:
 - [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — deployment plan, `manage.py` command surface, Liquibase strategy, current scope.
 - [`docs/PAF.md`](docs/PAF.md) — Oracle PAF practical study guide (in-repo reference).
 - [`docs/DECISIONING-ENGINE-USE-CASE.md`](docs/DECISIONING-ENGINE-USE-CASE.md) — the credit-decisioning use case the PoC implements.
+- [`docs/GLOSSARY.md`](docs/GLOSSARY.md) — plain-English glossary of the banking and compliance terms used across the docs (DTI, PTI, KYC, AML, fair lending, etc.).
 
 ## Quickstart (local)
 

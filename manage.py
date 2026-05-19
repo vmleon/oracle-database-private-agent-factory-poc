@@ -155,15 +155,15 @@ def setup_local() -> None:
     ).execute()
     ollama_llm = inquirer.text(
         message="Ollama LLM model:",
-        default=existing.get("OLLAMA_LLM_MODEL", "llama3.2"),
+        default=existing.get("OLLAMA_LLM_MODEL", "llama3.3:70b-instruct-q4_K_M"),
     ).execute()
     ollama_embed = inquirer.text(
         message="Ollama embedding model:",
-        default=existing.get("OLLAMA_EMBED_MODEL", "multilingual-e5-base"),
+        default=existing.get("OLLAMA_EMBED_MODEL", "bge-m3"),
     ).execute()
     ollama_embed_dim = inquirer.text(
         message="Embedding dimension:",
-        default=existing.get("OLLAMA_EMBED_DIM", "768"),
+        default=existing.get("OLLAMA_EMBED_DIM", "1024"),
     ).execute()
     ocr_host = inquirer.text(
         message="OCR host:",
