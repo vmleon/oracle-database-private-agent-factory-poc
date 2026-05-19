@@ -6,7 +6,7 @@ See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for the design; this file is the 
 
 ## Status
 
-This is **D1** of the v0 milestone. Only the database tier is up. PAF, Ollama, OPA, OCR, the Spring Boot backend, and the Angular UIs land in subsequent PRs.
+Only the database tier is currently up. PAF, Ollama, OPA, OCR, the Spring Boot backend, and the Angular UIs land in subsequent PRs.
 
 After running the commands below, you have:
 

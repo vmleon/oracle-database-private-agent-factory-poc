@@ -293,7 +293,7 @@ def paf_bootstrap() -> None:
         "Data sources → add a Database data source over REPORTING views, and a File data source for policy_corpus.",
         "Select AI → create a profile with NL2SQL object list scoped to REPORTING.*, and a RAG vector index over policy_corpus.",
         "MCP Servers → register opa-mcp and ocr-mcp (URLs from .env, auth as configured).",
-        "Agent Builder → import the HELLO_AGENT flow (v0) or DECISIONING_AGENT flow (v1+).",
+        "Agent Builder → import the HELLO_AGENT flow, or the DECISIONING_AGENT flow (v1+).",
         "Publish the agent and paste the run URL when prompted.",
     ]
     for i, s in enumerate(steps, 1):

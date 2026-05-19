@@ -2,8 +2,6 @@
 
 Architecture, technologies, samples, and integration patterns. Generated study notes from Oracle docs, product pages, and linked articles.
 
-Originally extracted from an Oracle PAF study-guide PDF; the PDF has been removed and this Markdown is the canonical in-repo reference. Diagrams from the original PDF are noted as text captions.
-
 ---
 
 ## How to use this guide
@@ -1581,4 +1579,3 @@ GRANT SELECT ON reporting.agent_sales_v TO agent_reader;
 ### Community source
 
 - `[MEDIUM-APEX]` Lavkesh Singh, Connecting Oracle Agent Factory to APEX: <https://lavkeshhh.medium.com/connecting-oracle-agent-factory-to-apex-heres-exactly-how-step-by-step-d19f5cef15c5>
-

@@ -241,7 +241,7 @@ Policy values (DTI cap, score floor, Mandatory-HITL switch, OCR thresholds, fair
 
 ## 7. Operational notes
 
-- **OPA bundle reload on parameter change**: **deferred to v1**. In v0, OPA loads its bundle once at container start; parameter edits in the Backoffice still write `system_config` + `policy_parameter_history` (so the audit is complete) but require an OPA restart to take effect. v1 will add a reload-on-write trigger from the Application Service over the OPA REST API, with the side-by-side audit comparison shown in the demo script.
+- **OPA bundle reload on parameter change**: **planned for v1**. Currently OPA loads its bundle once at container start; parameter edits in the Backoffice still write `system_config` + `policy_parameter_history` (so the audit is complete) but require an OPA restart to take effect. v1 will add a reload-on-write trigger from the Application Service over the OPA REST API, with the side-by-side audit comparison shown in the demo script.
 - **PAF session cookie handling**: per [PAF §15.2](PAF.md#152-cookie-based-call-from-shell) and [§16.4](PAF.md#164-apex-side-pattern), the AI Services PAF caller acquires `ahffi_session` (or the build-specific equivalent) via `loginValidation`, refreshes when it expires, and threads `roomId` for conversation continuity. The mobile and backoffice UIs never see the cookie.
 - **TLS**: cloud uses a load-balancer-managed certificate; local uses self-signed via Caddy/nginx and the PAF caller is configured to bypass verification only when targeting `localhost`/`127.0.0.1`.
 - **Backup**: out of scope for the PoC. Documented in the cloud playbook as a follow-up (ADB has built-in backups; local has none and is treated as ephemeral).
@@ -250,12 +250,12 @@ Policy values (DTI cap, score floor, Mandatory-HITL switch, OCR thresholds, fair
 
 - Exact OCI compute shapes per role (chosen at `setup cloud` time; defaults in `manage.py` to be calibrated after first cloud demo).
 - Exact OPA bundle layout vs `.rego` file layout (decided when the OPA MCP server is built).
-- **`max_string_size=EXTENDED` enforcement on local Oracle Free 26ai** — required by PAF ([§5.1](PAF.md#51-supported-platforms-and-prerequisites)) but deferred from D1. Belongs as a podman init step / `ALTER SYSTEM ... SCOPE=SPFILE` + restart on first boot, **not** a Liquibase changeset (`sqlCheck` is a precondition, not a change). Track for D2 when PAF is added to the compose.
-- Exact PAF flow JSON for the production `DECISIONING_AGENT` DAG (decided after `manage.py local up` is green and the in-DB Select AI tools exist; the v0 hello-world flow is a trivial `Chat Input → Prompt → LLM → Chat Output`).
+- **`max_string_size=EXTENDED` enforcement on local Oracle Free 26ai** — required by PAF ([§5.1](PAF.md#51-supported-platforms-and-prerequisites)) but not yet implemented. Belongs as a podman init step / `ALTER SYSTEM ... SCOPE=SPFILE` + restart on first boot, **not** a Liquibase changeset (`sqlCheck` is a precondition, not a change). Will be added when PAF is added to the compose.
+- Exact PAF flow JSON for the production `DECISIONING_AGENT` DAG (decided after `manage.py local up` is green and the in-DB Select AI tools exist; the current hello-world flow is a trivial `Chat Input → Prompt → LLM → Chat Output`).
 - HITL assignment policy beyond "queue-claim".
 - Backup, log retention, and monitoring beyond the audit-trail observability defined in [DESIGN.md §9](DESIGN.md#9-observability-model).
 
-## 9. v0 milestone — "Hello agent"
+## 9. Current scope — "Hello agent"
 
 The first deliverable, before any decisioning logic, is end-to-end platform wiring:
 
@@ -265,4 +265,4 @@ The first deliverable, before any decisioning logic, is end-to-end platform wiri
 4. `python manage.py info` — prints the agent run URL.
 5. `curl` (or browser) hits the run URL and the agent answers using Ollama.
 
-That is the v0 done-bar. OPA, OCR, Spring Boot backend, both Angular UIs, Select AI tools, Blockchain Table writes, and the decisioning DAG are all v1+ additions on top of this working foundation.
+That is the current done-bar. OPA, OCR, Spring Boot backend, both Angular UIs, Select AI tools, Blockchain Table writes, and the decisioning DAG are all v1+ additions on top of this foundation.

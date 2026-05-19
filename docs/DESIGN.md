@@ -1,6 +1,6 @@
 # Decisioning Engine PoC — Design
 
-This document is the **architectural plan** for the PoC. It does not prescribe code. The use case it supports is fully described in [decisioning-engine-use-case.md](decisioning-engine-use-case.md); the platform it runs on is summarised in [PAF.md](PAF.md). Deployment specifics live in [DEPLOYMENT.md](DEPLOYMENT.md).
+This document is the **architectural plan** for the PoC. It does not prescribe code. The use case it supports is fully described in [DECISIONING-ENGINE-USE-CASE.md](DECISIONING-ENGINE-USE-CASE.md); the platform it runs on is summarised in [PAF.md](PAF.md). Deployment specifics live in [DEPLOYMENT.md](DEPLOYMENT.md).
 
 The PoC is intentionally a _scaffolding_ — the repository layout, deployment topology, and component boundaries are fixed early so subsequent work can fill each component without re-arguing the seams.
 
@@ -186,7 +186,7 @@ oracle-database-private-agent-factory-poc/
 │   ├── DESIGN.md
 │   ├── DEPLOYMENT.md
 │   ├── PAF.md
-│   └── decisioning-engine-use-case.md
+│   └── DECISIONING-ENGINE-USE-CASE.md
 ├── src/
 │   ├── backend/              # Spring Boot Application Service
 │   ├── ai/                   # Python services: PAF caller, OPA MCP, OCR MCP
@@ -244,7 +244,7 @@ A future `images/` directory will hold architecture diagrams once the implementa
    - In-DB Tool `record_decision` writes a row to `decision` (Blockchain Table) with rationale + citations + offer.
 7. PAF returns NDJSON; AI Services parses and hands a sanitised decision view to the Application Service, which surfaces it to the mobile UI.
 
-For REFER_HUMAN paths (any warn, marginal OCR, fair-lending flag, mandatory-HITL on), step 6 ends with `create_hitl_task` instead of `lookup_pricing`, and the audit still captures all OPA outputs. For REJECT paths, the agent short-circuits after the deny is observed but still records the audit. See [decisioning-engine-use-case.md §Test Bench](decisioning-engine-use-case.md) for the full path matrix.
+For REFER_HUMAN paths (any warn, marginal OCR, fair-lending flag, mandatory-HITL on), step 6 ends with `create_hitl_task` instead of `lookup_pricing`, and the audit still captures all OPA outputs. For REJECT paths, the agent short-circuits after the deny is observed but still records the audit. See [DECISIONING-ENGINE-USE-CASE.md §Test Bench](DECISIONING-ENGINE-USE-CASE.md) for the full path matrix.
 
 ## 9. Observability model
 
@@ -269,12 +269,12 @@ Four layers, all inspectable from the Backoffice UI:
 
 ## 11. Locked decisions
 
-- **v0 milestone — "Hello agent" (option A2).** `manage.py setup local && manage.py local up` brings up Oracle Database Free 26ai + Ollama + PAF, runs Liquibase, and exposes a trivial Agent Builder flow (`Chat Input → Prompt → LLM → Chat Output`) calling Ollama. No OPA, no OCR, no Select AI tools, no Blockchain Table writes yet. Proves the platform wiring end-to-end before any decisioning logic is added.
+- **Initial scope — "Hello agent".** `manage.py setup local && manage.py local up` brings up Oracle Database Free 26ai + Ollama + PAF, runs Liquibase, and exposes a trivial Agent Builder flow (`Chat Input → Prompt → LLM → Chat Output`) calling Ollama. No OPA, no OCR, no Select AI tools, no Blockchain Table writes yet. Proves the platform wiring end-to-end before any decisioning logic is added.
 - **Embedding model**: `multilingual-e5-base` at **768 dimensions**. Locked at deploy time; any change requires re-ingestion of `policy_corpus` and `case_history`. (Per [PAF §6.6](PAF.md#66-embedding-models).)
 - **Local database image**: full **Oracle Database Free 26ai** container (not the _-lite_ variant), to keep parity with ADB capabilities (Blockchain Tables, Vector, Select AI).
-- **`DECISIONING_AGENT` shape**: explicit Agent Builder **DAG** (Prompt → Agent → Parser → Condition → side-effect nodes), not a single Agent-node-with-tools. Chosen because the use case's "observability over determinism" headline benefits from per-step audit, even at the cost of more nodes to maintain. The v0 hello-world flow is intentionally trivial (no tools); the DAG shape is adopted from v1 onward.
+- **`DECISIONING_AGENT` shape**: explicit Agent Builder **DAG** (Prompt → Agent → Parser → Condition → side-effect nodes), not a single Agent-node-with-tools. Chosen because the use case's "observability over determinism" headline benefits from per-step audit, even at the cost of more nodes to maintain. The current hello-world flow is intentionally trivial (no tools); the DAG shape applies to the full decisioning flow in v1+.
 - **SQL tooling**: queries against `REPORTING.*` views are exposed as **Select AI In-Database Tools** referenced from the PAF flow via the Select AI Bridge node, not as plain SQL Query nodes. (Per [PAF §14.5](PAF.md#145-agent-builder-select-ai-nodes).)
-- **OPA bundle reload on parameter change**: deferred to **v1**. v0 OPA loads its bundle once at boot; parameter edits in the Backoffice still write `policy_parameter_history` but require an OPA restart to take effect.
+- **OPA bundle reload on parameter change**: planned for **v1**. Currently OPA loads its bundle once at boot; parameter edits in the Backoffice still write `policy_parameter_history` but require an OPA restart to take effect.
 - **PAF bootstrap automation**: `manage.py paf bootstrap` prints an ordered checklist of manual UI steps (LLM Management entries, data sources, Select AI profile, MCP servers, Agent Builder flow import). API automation is added later when the PAF admin endpoints are stable enough to drive headlessly. Playwright-driven UI automation is explicitly out of scope (too fragile across PAF versions).
 
 ## 12. Decisions not yet locked

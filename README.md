@@ -1,6 +1,6 @@
-# Oracle Database Private Agent Factory — Decisioning Engine PoC
+# Oracle Database Private Agent Factory — Banking Decisioning Engine PoC
 
-A bank-agnostic proof of concept showing **Oracle AI Database 26ai + Private Agent Factory** running an end-to-end retail loan decisioning flow with full observability (per-tool audit, Blockchain Tables, parameter history).
+A banking proof of concept showing **Oracle AI Database 26ai + Private Agent Factory** running an end-to-end retail loan decisioning flow with full observability (per-tool audit, Blockchain Tables, parameter history).
 
 Two deployment options, same source tree:
 
@@ -10,9 +10,9 @@ Two deployment options, same source tree:
 ## Documentation
 
 - [`docs/DESIGN.md`](docs/DESIGN.md) — architecture, components, PAF Hybrid runtime mapping, source layout, locked decisions.
-- [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — deployment plan, `manage.py` command surface, Liquibase strategy, v0 milestone.
+- [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — deployment plan, `manage.py` command surface, Liquibase strategy, current scope.
 - [`docs/PAF.md`](docs/PAF.md) — Oracle PAF practical study guide (in-repo reference).
-- [`docs/decisioning-engine-use-case.md`](docs/decisioning-engine-use-case.md) — the credit-decisioning use case the PoC implements.
+- [`docs/DECISIONING-ENGINE-USE-CASE.md`](docs/DECISIONING-ENGINE-USE-CASE.md) — the credit-decisioning use case the PoC implements.
 
 ## Quickstart (local)
 
@@ -30,4 +30,4 @@ Detailed prerequisites, day-2 commands, and troubleshooting in [`LOCAL.md`](LOCA
 
 ## Current status
 
-**D1 (database tier only)** of the v0 milestone is in place: Oracle Database Free 26ai running locally with the four-schema layout (`APP`, `REPORTING`, `AGENT_TOOLS`, `AGENT_FACTORY`). PAF, Ollama, OPA, OCR, the Spring Boot backend, and the Angular UIs are queued for subsequent PRs.
+Only the database tier is in place: Oracle Database Free 26ai running locally with the four-schema layout (`APP`, `REPORTING`, `AGENT_TOOLS`, `AGENT_FACTORY`). PAF, Ollama, OPA, OCR, the Spring Boot backend, and the Angular UIs are queued for subsequent PRs.
