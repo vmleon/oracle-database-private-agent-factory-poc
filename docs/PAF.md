@@ -631,15 +631,26 @@ The sample docs include an email workflow that drafts and optionally sends an em
 
 This is a practical pattern for safe automation:
 
-```
-Chat Input
- -> Prompt that outputs strict JSON
- -> LLM
- -> Type Convert
- -> Parser(response_to_the_user) -> Chat Output preview
- -> Parser(send_email_flag) -> Condition
- false -> Chat Output only
- true -> Parse recipients/subject/body -> Email Output -> Chat Output status
+```mermaid
+flowchart TB
+    in[Chat Input]
+    prompt[Prompt that outputs strict JSON]
+    llm[LLM]
+    tc[Type Convert]
+    p1["Parser(response_to_the_user)"]
+    p2["Parser(send_email_flag)"]
+    cond[Condition]
+    preview[Chat Output preview]
+    only[Chat Output only]
+    parse[Parse recipients/subject/body]
+    email[Email Output]
+    status[Chat Output status]
+
+    in --> prompt --> llm --> tc
+    tc --> p1 --> preview
+    tc --> p2 --> cond
+    cond -- false --> only
+    cond -- true --> parse --> email --> status
 ```
 
 Key lesson: do not let natural language directly trigger side effects. Create structured decisions, parse them, and gate action nodes.
@@ -1223,19 +1234,19 @@ Oracle product material includes an SRE Agent walkthrough: build an SRE Agent th
 
 A practical SRE agent design:
 
-```
-Chat Input
- -> Prompt: role = SRE triage assistant; require evidence and source links
- -> Agent: SRE manager
- Tools:
- MCP Issue Repository
- MCP Diagnostic Analysis
- Knowledge Agent / RAG over runbooks
- MCP Notifications
- SQL Query over monitoring summary view
- -> Parser: action recommendations
- -> Condition: human approval required?
- -> Chat Output and optional Email/Slack notification
+```mermaid
+flowchart TB
+    in[Chat Input]
+    prompt["Prompt: SRE triage assistant<br/>require evidence and source links"]
+    agent[Agent: SRE manager]
+    tools["Tools:<br/>- MCP Issue Repository<br/>- MCP Diagnostic Analysis<br/>- Knowledge Agent / RAG over runbooks<br/>- MCP Notifications<br/>- SQL Query over monitoring summary view"]
+    parser["Parser: action recommendations"]
+    cond["Condition: human approval required?"]
+    out[Chat Output + optional Email/Slack notification]
+
+    in --> prompt --> agent
+    agent --- tools
+    agent --> parser --> cond --> out
 ```
 
 Tool split:
@@ -1512,13 +1523,21 @@ Chat Input -> Prompt -> Agent -> Chat Output
 
 ### 27.3 First safe side-effect flow
 
-```
-Chat Input -> Prompt -> LLM strict JSON
- -> Type Convert
- -> Parser decision flag
- -> Condition
- false -> Chat Output
- true -> REST/MCP action -> Chat Output
+```mermaid
+flowchart TB
+    in[Chat Input]
+    prompt[Prompt]
+    llm[LLM strict JSON]
+    tc[Type Convert]
+    parser[Parser decision flag]
+    cond[Condition]
+    out1[Chat Output]
+    action[REST/MCP action]
+    out2[Chat Output]
+
+    in --> prompt --> llm --> tc --> parser --> cond
+    cond -- false --> out1
+    cond -- true --> action --> out2
 ```
 
 ### 27.4 Published endpoint call

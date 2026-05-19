@@ -18,27 +18,28 @@ A small, opinionated PoC showing that Oracle AI Database 26ai + Private Agent Fa
 
 ## Design Decisions (Consolidated)
 
-| #   | Decision                                                                                            | Why                                                                                        |
-| --- | --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| 1   | Bank-agnostic — no country / region / bureau / regulator hard-coded                                 | Demo must be reusable across institutions in different jurisdictions                       |
-| 2   | Credit score, DTI/PTI caps, weights, currencies are runtime **configuration**, not literals in code | Same demo, different parameters per audience                                               |
-| 3   | Generic data-protection framework (rights + restrictions common to most regimes)                    | Avoids country-specific compliance claims; signals "we know there are obligations"         |
-| 4   | OPA chosen — used in banking, open-source, gives full control of policy code                        | No comparison to commercial BRMS; scope is intentionally limited                           |
-| 5   | No auto-approve as a default headline                                                               | When in doubt → human. Toggleable hard requirement via backoffice flag                     |
-| 6   | Mandatory-HITL flag — global override forces all decisions to HITL queue                            | Audit periods, warm-up, sensitive products, drift suspicion                                |
-| 7   | Observability over determinism                                                                      | Deterministic systems can still be wrong; the recoverable failure mode is a complete trail |
-| 8   | Append-only decision history on **Oracle Database Blockchain Table**                                | Immutable, queryable, retention-friendly, no extra infra                                   |
-| 9   | Region-agnostic deployment — any OCI region, also portable to ExaCC / on-prem 26ai                  | No tenant / region constraint baked in                                                     |
-| 10  | Open-source OCR (PaddleOCR / Tesseract) + YOLO for ID-card field detection                          | Lightweight, no external SaaS, demonstrable on a laptop                                    |
-| 11  | OCR tiers: usable → HITL with full context; marginal → HITL; unusable → auto-decline                | Don't reject under the radar; don't saturate humans with garbage                           |
-| 12  | Fair Lending Review = generalized non-discrimination backoffice process                             | Periodic disparate-impact sampling across configured protected attributes                  |
-| 13  | Simplest possible pricing engine — rate card + risk-band adjustment                                 | Approval without a rate is not a decision; keep it minimal                                 |
-| 14  | Affordability stress = backoffice Risk Management Dashboard                                         | Portfolio-level shock view, not per-application gating; consistent across banks            |
-| 15  | No counter-offer logic                                                                              | Out of scope                                                                               |
-| 16  | No effort budget / timeline in this doc                                                             | Not relevant; PoC is delivered when the demo is convincing                                 |
-| 17  | Standalone stack — does not depend on, or align with, any concurrent engagement                     | Clean architectural story; one stack, one demo                                             |
-| 18  | Customer UI = chat + document upload. Backoffice UI = traditional CRUD + queue + reports            | Two distinct surfaces, two distinct audiences                                              |
-| 19  | Test bench is for **functionality + observability**, not performance                                | Cover all decision paths and prove every step is observable                                |
+| #   | Decision                                                                                                | Why                                                                                                                                                                     |
+| --- | ------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Bank-agnostic — no country / region / bureau / regulator hard-coded                                     | Demo must be reusable across institutions in different jurisdictions                                                                                                    |
+| 2   | Credit score, DTI/PTI caps, weights, currencies are runtime **configuration**, not literals in code     | Same demo, different parameters per audience                                                                                                                            |
+| 3   | Generic data-protection framework (rights + restrictions common to most regimes)                        | Avoids country-specific compliance claims; signals "we know there are obligations"                                                                                      |
+| 4   | OPA chosen — used in banking, open-source, gives full control of policy code                            | No comparison to commercial BRMS; scope is intentionally limited                                                                                                        |
+| 5   | No auto-approve as a default headline                                                                   | When in doubt → human. Toggleable hard requirement via backoffice flag                                                                                                  |
+| 6   | Mandatory-HITL flag — global override forces all decisions to HITL queue                                | Audit periods, warm-up, sensitive products, drift suspicion                                                                                                             |
+| 7   | Observability over determinism                                                                          | Deterministic systems can still be wrong; the recoverable failure mode is a complete trail                                                                              |
+| 8   | Append-only decision history on **Oracle Database Blockchain Table**                                    | Immutable, queryable, retention-friendly, no extra infra                                                                                                                |
+| 9   | Region-agnostic deployment — any OCI region, also portable to ExaCC / on-prem 26ai                      | No tenant / region constraint baked in                                                                                                                                  |
+| 10  | Open-source OCR (PaddleOCR / Tesseract) + YOLO for ID-card field detection                              | Lightweight, no external SaaS, demonstrable on a laptop                                                                                                                 |
+| 11  | OCR tiers: usable → HITL with full context; marginal → HITL; unusable → auto-decline                    | Don't reject under the radar; don't saturate humans with garbage                                                                                                        |
+| 12  | Fair Lending Review = generalized non-discrimination backoffice process                                 | Periodic disparate-impact sampling across configured protected attributes                                                                                               |
+| 13  | Simplest possible pricing engine — rate card + risk-band adjustment                                     | Approval without a rate is not a decision; keep it minimal                                                                                                              |
+| 14  | Affordability stress = backoffice Risk Management Dashboard                                             | Portfolio-level shock view, not per-application gating; consistent across banks                                                                                         |
+| 15  | No counter-offer logic                                                                                  | Out of scope                                                                                                                                                            |
+| 16  | No effort budget / timeline in this doc                                                                 | Not relevant; PoC is delivered when the demo is convincing                                                                                                              |
+| 17  | Standalone stack — does not depend on, or align with, any concurrent engagement                         | Clean architectural story; one stack, one demo                                                                                                                          |
+| 18  | Customer UI = chat + document upload. Backoffice UI = traditional CRUD + queue + reports                | Two distinct surfaces, two distinct audiences                                                                                                                           |
+| 19  | Test bench is for **functionality + observability**, not performance                                    | Cover all decision paths and prove every step is observable                                                                                                             |
+| 20  | **Oracle Database TxEventQ** for HITL claim and async/offline operations (OCR, retries, future fan-out) | Stays in-DB (same engine as Blockchain Tables + Vector); transactional dequeue prevents double-claim; built-in retries + exception queues; no Kafka/RabbitMQ to operate |
 
 ---
 
@@ -68,8 +69,8 @@ A **Mandatory-HITL** toggle in the backoffice routes 100% of cases to human revi
 ### Flow
 
 1. Customer opens chat UI → submits loan request → uploads documents.
-2. **Application Service** persists application + documents (Object Storage), runs cheap **pre-checks** via OPA REST (sanctions, age, doc presence) — short-circuits obvious denies.
-3. **OCR + Document Detection** (open-source: YOLO + PaddleOCR/Tesseract) extracts structured fields and produces per-field confidence; composite **document-quality tier** (usable / marginal / unusable) drives downstream behavior.
+2. **Application Service** persists application + documents (Object Storage), runs cheap **pre-checks** via OPA REST (sanctions, age, doc presence) — short-circuits obvious denies. For each uploaded document, it enqueues an OCR job on `OCR_REQUEST` (TxEventQ).
+3. **OCR + Document Detection** worker dequeues from `OCR_REQUEST` (open-source: YOLO + PaddleOCR/Tesseract), extracts structured fields and produces per-field confidence; writes back composite **document-quality tier** (usable / marginal / unusable). Failures are retried up to `max_retries`; poison messages land in `OCR_EXCEPTION_Q` for triage.
 4. **Decisioning Agent** (Private Agent Factory inside 26ai) orchestrates tool calls:
    - SQL (Select AI) → customer profile, transactions, credit bureau, existing facilities.
    - OPA MCP tools → eligibility, AML, KYC, escalation, fair-lending hooks.
@@ -78,7 +79,7 @@ A **Mandatory-HITL** toggle in the backoffice routes 100% of cases to human revi
 5. Composite **confidence score** computed from configurable weights (OCR quality + data completeness + policy proximity).
 6. Outcome decided by OPA + confidence + Mandatory-HITL flag.
 7. **Decision** persisted to a Blockchain Table (append-only). Full audit trail (per tool call) persisted in `decision_audit`.
-8. If REFER_HUMAN, application appears in the **backoffice HITL queue** for a bank employee.
+8. If REFER_HUMAN, the agent (via `create_hitl_task`) writes a row to `hitl_task` and enqueues `HITL_REQUEST` (TxEventQ) in the same transaction. Backoffice reviewers `deqone` to atomically claim a task (queue dequeue + `hitl_task` state transition OPEN → IN_REVIEW commit together); the bell on the backoffice UI shows the role-filtered pending count.
 9. Customer status surfaces back through the chat UI with reason codes (no decision detail leak).
 
 ### Component Map
@@ -87,7 +88,6 @@ A **Mandatory-HITL** toggle in the backoffice routes 100% of cases to human revi
 | ------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
 | Customer Chat UI    | Web app (React / Next / similar)                                                 | Chat-style request flow + document upload                                |
 | Backoffice UI       | Web app (React / Next / similar)                                                 | CRUD, HITL queue, rule editor, reports, dashboards, parameter management |
-| API Gateway         | OCI API Gateway                                                                  | Auth, throttling, request validation                                     |
 | Application Service | Spring Boot (Java) stub                                                          | App CRUD, document upload, pre-checks, agent invocation                  |
 | Object Storage      | OCI Object Storage                                                               | Uploaded document PDFs / images                                          |
 | OCR + Detection     | YOLO (field detection) + PaddleOCR/Tesseract                                     | Open-source extraction; composite confidence tiering                     |
@@ -97,7 +97,8 @@ A **Mandatory-HITL** toggle in the backoffice routes 100% of cases to human revi
 | LLM + embeddings    | OCI Generative AI (model-agnostic — pick what's sanctioned in the target region) | Reasoning + rationale + embeddings                                       |
 | Rule engine         | OPA + OPA MCP server (Python FastMCP wrapper)                                    | Eligibility, AML, KYC, escalation, fair-lending rules in Rego            |
 | Decision history    | Oracle Database Blockchain Table                                                 | Append-only credit-decision audit; retention-friendly                    |
-| HITL surface        | Backoffice UI (queue + decision form)                                            | Bank employee picks up, reviews evidence, decides                        |
+| Async messaging     | Oracle Database **TxEventQ** (in-DB AQ; JSON payload)                            | HITL claim, OCR async pipeline, future fan-out — all in the same engine  |
+| HITL surface        | Backoffice UI (queue + decision form + notification bell)                        | Bank employee picks up, reviews evidence, decides                        |
 
 ---
 
@@ -309,22 +310,24 @@ CREATE TABLE fair_lending_review (
 
 ### Relationships (cardinality)
 
-```
-customer (1) ──< (N) customer_identity
-customer (1) ── (1) customer_protected_attrs
-customer (1) ──< (N) customer_address
-customer (1) ──< (N) employment
-customer (1) ──< (N) account ──< (N) account_transaction
-customer (1) ──< (N) credit_bureau_snapshot
-customer (1) ──< (N) existing_facility
-customer (1) ──< (N) loan_application
-product_catalog (1) ──< (N) loan_application
-product_catalog (1) ──< (N) rate_card
-loan_application (1) ──< (N) loan_application_document
-loan_application (1) ──── (1) decision   -- blockchain table, append-only
-decision (1) ──< (N) decision_audit       -- joined via agent_run_id
-loan_application (1) ──── (0..1) hitl_task
-system_config (1) ──< (N) policy_parameter_history
+```mermaid
+erDiagram
+    customer ||--o{ customer_identity : has
+    customer ||--|| customer_protected_attrs : has
+    customer ||--o{ customer_address : has
+    customer ||--o{ employment : has
+    customer ||--o{ account : has
+    account ||--o{ account_transaction : has
+    customer ||--o{ credit_bureau_snapshot : has
+    customer ||--o{ existing_facility : has
+    customer ||--o{ loan_application : submits
+    product_catalog ||--o{ loan_application : "applied for"
+    product_catalog ||--o{ rate_card : priced_by
+    loan_application ||--o{ loan_application_document : has
+    loan_application ||--|| decision : "yields (blockchain, append-only)"
+    decision ||--o{ decision_audit : "audited via agent_run_id"
+    loan_application ||--o| hitl_task : "may route to"
+    system_config ||--o{ policy_parameter_history : versioned_by
 ```
 
 ### Synthetic dataset — built to exercise paths, not to mimic a real bank
@@ -581,6 +584,48 @@ Default weights set to reasonable values for the demo; backoffice operators tune
 
 ---
 
+## Async messaging — TxEventQ queues
+
+Async, retryable, and multi-consumer work runs through **Oracle Database TxEventQ** (Transactional Event Queues, the modern AQ surface in 26ai). All queues live in the `APP` schema with JSON payloads and idempotent setup; producers `enqone` and consumers `deqone` with a wait timeout. Dequeues commit in the same transaction as the row state transition they trigger, so the queue and the database stay consistent.
+
+### Initial queue inventory (PoC scope)
+
+| Queue             | Producer                                    | Consumer                                  | Payload (JSON)                                                                    | Notes                                                                                                                                                                           |
+| ----------------- | ------------------------------------------- | ----------------------------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `HITL_REQUEST`    | Agent (`create_hitl_task` in `AGENT_TOOLS`) | Backoffice reviewer claim worker per role | `{ application_id, task_id, reason_for_hitl, role_hint, priority, agent_run_id }` | Single-consumer. Dequeue commits OPEN → IN_REVIEW on `hitl_task` in the same tx. `role_hint` (correlation) lets a reviewer dequeue only tasks for their role.                   |
+| `OCR_REQUEST`     | Application Service on document upload      | OCR MCP / worker                          | `{ application_id, doc_id, storage_uri, doc_type, attempt }`                      | Single-consumer. `max_retries=3`; poison messages move to `OCR_EXCEPTION_Q`. Worker writes back `ocr_payload`, `ocr_confidence`, `quality_tier` on `loan_application_document`. |
+| `OCR_EXCEPTION_Q` | TxEventQ machinery (after `max_retries`)    | Operator (manual triage)                  | Original payload + AQ error metadata                                              | Visible in the Backoffice "Failed OCR" view; operator can re-enqueue after fixing the upload or extending the timeout.                                                          |
+
+### Planned queues (future scope, same pattern)
+
+- **`NOTIFICATION`** — multi-consumer fan-out with role-scoped subscribers (HITL reviewer / admin / fair-lending). Pushes alerts (overdue tasks, drift breaches, fair-lending flags) to the backoffice bell. PoC defers this in favour of polled counts over `hitl_task`.
+- **`OPA_BUNDLE_RELOAD`** — parameter changes enqueue a reload event; OPA sidecar dequeues and calls OPA's REST `/v1/policies` reload. Replaces the "restart OPA to apply parameter changes" workaround.
+- **`FAIR_LENDING_SAMPLING`** — `DBMS_SCHEDULER` job enqueues; worker dequeues and computes disparate-impact stats into `fair_lending_review`.
+- **`ARCHIVE`** — moves older `decision_audit` rows to Object Storage (with the blockchain `decision` row retained as the system-of-record pointer).
+
+### Setup pattern (latest 26ai best practice)
+
+- Create with `dbms_aqadm.create_transactional_event_queue(queue_payload_type => 'JSON', multiple_consumers => FALSE)`; start with `dbms_aqadm.start_queue`. Wrap both calls in PL/SQL anonymous blocks that catch `ORA-24006` (queue exists) and `ORA-24010` (already started) so the changeset is idempotent.
+- Grant `EXECUTE ON DBMS_AQ` to schemas that need it; use `dbms_aqadm.grant_queue_privilege` to scope `ENQUEUE` and `DEQUEUE` per producer/consumer schema. **Avoid `aq_administrator_role`** for application schemas — it grants more than the workload needs.
+- Attach an exception queue with `dbms_aqadm.set_queue_max_retries` + `dbms_aqadm.alter_queue(retry_delay => N, max_retries => N, retention_time => N)` so poison messages have somewhere to land.
+- Set `correlation` on `msgproperties` to the `role_hint` (HITL) or `application_id` (OCR) so consumers can filter and observers can trace messages to their originating record.
+- Use `dbms_aq.register` only if we later need callback-style dequeue from PL/SQL; the PoC polls from Python/Java workers via the `python-oracledb` `connection.queue()` API.
+
+### Where the consumers live
+
+- **`HITL_REQUEST` consumer** — the **Backoffice UI's "Claim next" action** calls the Application Service, which issues a `DEQONE` with the reviewer's `role_hint` and updates `hitl_task` in the same transaction. No separate worker — claim is on-demand.
+- **`OCR_REQUEST` consumer** — long-running Python worker inside the OCR MCP container (or a sidecar). Polls with a small `wait_timeout`; processes the document; writes results back; commits.
+- **`OCR_EXCEPTION_Q` consumer** — backoffice "Failed OCR" view; operator re-enqueues after manual fix-up.
+
+### Why TxEventQ rather than a table queue
+
+- Transactional dequeue + row update in one commit → no double-claim race between concurrent backoffice reviewers.
+- Built-in retry + exception queue → no custom retry table for OCR.
+- Same engine as Blockchain Table + Vector Search → reinforces the "Oracle AI Database 26ai is the platform" narrative.
+- A clear seam to add NOTIFICATION fan-out, OPA reload propagation, and other async work without bolting on Kafka / RabbitMQ later.
+
+---
+
 ## Observability (the headline)
 
 Every decision is reproducible from the audit trail alone. The four observability layers:
@@ -640,18 +685,18 @@ Nothing here claims compliance with any specific regulator. The point is the **o
 
 A baseline most banks will recognize regardless of region:
 
-| Concern              | Implementation                                                                                                                                                                            |
-| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Purpose limitation   | All tables tagged with a `purpose` policy in `system_config`; the agent rejects tool calls outside the registered purposes.                                                               |
-| Data minimization    | Select AI tools target **views**, not raw tables. Views expose only fields needed for the decision.                                                                                       |
-| Access control       | RLS / VPD on `customer_id`. Backoffice users have role-scoped views.                                                                                                                      |
-| Sensitive attributes | `customer_protected_attrs` separated from `customer`; access logged separately; never sent to the LLM unless explicitly needed.                                                           |
-| Retention            | `decision` is a Blockchain Table with `NO DROP UNTIL 7 YEARS IDLE` (configurable). Other tables follow policy-driven retention jobs.                                                      |
-| Right of explanation | Every decision has reason codes + replayable audit trail. The bank can produce a customer-facing explanation from the trail.                                                              |
-| Append-only audit    | Blockchain Tables for `decision`; standard tables for `decision_audit` (with archive-to-blockchain option configurable).                                                                  |
-| Data portability     | Customer record export job in backoffice — JSON dump per customer, signed.                                                                                                                |
-| Erasure              | Configurable in backoffice: which fields are eraseable on customer request and which are retained under legal-hold (e.g., the blockchain decision is not erased; supporting docs may be). |
-| Region-agnostic      | All of the above implemented as configuration. No region pinned in the code.                                                                                                              |
+| Concern              | Implementation                                                                                                                                                                                           |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Purpose limitation   | All tables tagged with a `purpose` policy in `system_config`; the agent rejects tool calls outside the registered purposes.                                                                              |
+| Data minimization    | Select AI tools target **views**, not raw tables. Views expose only fields needed for the decision.                                                                                                      |
+| Access control       | Out of scope at the edge for the PoC (mock login picks the active user/role). Data-layer RLS/VPD on `customer_id` and role-scoped backoffice views are the production target once real auth is wired in. |
+| Sensitive attributes | `customer_protected_attrs` separated from `customer`; access logged separately; never sent to the LLM unless explicitly needed.                                                                          |
+| Retention            | `decision` is a Blockchain Table with `NO DROP UNTIL 7 YEARS IDLE` (configurable). Other tables follow policy-driven retention jobs.                                                                     |
+| Right of explanation | Every decision has reason codes + replayable audit trail. The bank can produce a customer-facing explanation from the trail.                                                                             |
+| Append-only audit    | Blockchain Tables for `decision`; standard tables for `decision_audit` (with archive-to-blockchain option configurable).                                                                                 |
+| Data portability     | Customer record export job in backoffice — JSON dump per customer, signed.                                                                                                                               |
+| Erasure              | Configurable in backoffice: which fields are eraseable on customer request and which are retained under legal-hold (e.g., the blockchain decision is not erased; supporting docs may be).                |
+| Region-agnostic      | All of the above implemented as configuration. No region pinned in the code.                                                                                                                             |
 
 ---
 
@@ -669,19 +714,23 @@ A baseline most banks will recognize regardless of region:
 
 ### Backoffice API
 
-| Method | Path                                    | Purpose                                                       |
-| ------ | --------------------------------------- | ------------------------------------------------------------- |
-| GET    | `/v1/hitl/tasks?assignee=me&state=open` | HITL queue                                                    |
-| GET    | `/v1/hitl/tasks/{id}`                   | Full application + audit + documents + agent rationale        |
-| POST   | `/v1/hitl/tasks/{id}/decision`          | Submit human decision + note → closes task → updates decision |
-| GET    | `/v1/config`                            | Read all `system_config` entries                              |
-| PUT    | `/v1/config/{key}`                      | Update a parameter (writes `policy_parameter_history`)        |
-| GET    | `/v1/rules`                             | List OPA policy versions                                      |
-| GET    | `/v1/dashboard/risk`                    | Risk Management Dashboard data                                |
-| GET    | `/v1/dashboard/fair-lending`            | Fair-lending review data                                      |
-| POST   | `/v1/dashboard/fair-lending/review`     | Submit a fair-lending review                                  |
-| GET    | `/v1/audit/{decision_id}`               | Full replayable decision audit                                |
-| POST   | `/v1/audit/{decision_id}/replay`        | Re-run agent against the stored audit input, compare output   |
+| Method | Path                                    | Purpose                                                                                                     |
+| ------ | --------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| GET    | `/v1/hitl/tasks?assignee=me&state=open` | HITL queue                                                                                                  |
+| GET    | `/v1/hitl/tasks/{id}`                   | Full application + audit + documents + agent rationale                                                      |
+| POST   | `/v1/hitl/tasks/claim-next`             | Atomic claim: `DEQONE` from `HITL_REQUEST` filtered by role + transition `hitl_task` to IN_REVIEW in one tx |
+| POST   | `/v1/hitl/tasks/{id}/decision`          | Submit human decision + note → closes task → updates decision                                               |
+| GET    | `/v1/notifications/inbox`               | Pending count + recent items for the active role (drives the bell)                                          |
+| GET    | `/v1/ops/queues`                        | Per-queue depth + age of oldest message (`HITL_REQUEST`, `OCR_REQUEST`, exception queue counts)             |
+| POST   | `/v1/ops/ocr/exceptions/{msgid}/retry`  | Re-enqueue a message from `OCR_EXCEPTION_Q` back onto `OCR_REQUEST`                                         |
+| GET    | `/v1/config`                            | Read all `system_config` entries                                                                            |
+| PUT    | `/v1/config/{key}`                      | Update a parameter (writes `policy_parameter_history`)                                                      |
+| GET    | `/v1/rules`                             | List OPA policy versions                                                                                    |
+| GET    | `/v1/dashboard/risk`                    | Risk Management Dashboard data                                                                              |
+| GET    | `/v1/dashboard/fair-lending`            | Fair-lending review data                                                                                    |
+| POST   | `/v1/dashboard/fair-lending/review`     | Submit a fair-lending review                                                                                |
+| GET    | `/v1/audit/{decision_id}`               | Full replayable decision audit                                                                              |
+| POST   | `/v1/audit/{decision_id}/replay`        | Re-run agent against the stored audit input, compare output                                                 |
 
 ---
 
@@ -689,6 +738,7 @@ A baseline most banks will recognize regardless of region:
 
 ### Customer UI — chat with document upload
 
+- **Mock login** — dropdown of demo customer names; selecting one fixes the `customer_id` used for the session. Logout returns to the picker. No real auth (assumed to be provided by the host bank in production).
 - Chat-style interface ("Hi, what loan are you looking for?"); agent asks structured follow-ups.
 - Document upload widget; in-line preview; per-document status (queued → extracting → ok / marginal / unusable).
 - If marginal/unusable, customer is told what is wrong and asked to re-upload (avoids silent rejection).
@@ -699,9 +749,13 @@ A baseline most banks will recognize regardless of region:
 
 ### Backoffice UI — traditional CRUD + queue + dashboards
 
+**Mock login** — dropdown of roles (HITL reviewer, admin, fair-lending reviewer, risk analyst — extend as needed). Selecting a role drives which sections are visible. Logout returns to the picker. No real auth (assumed to be provided by the host bank in production).
+
+**Notification bell** — header-bar bell that polls `/v1/notifications/inbox` (every ~10 s) and shows the role-filtered pending HITL count. Clicking opens the HITL Queue pre-filtered to the active role. Future scope: server-pushed events via the `NOTIFICATION` TxEventQ (overdue tasks, drift alerts, fair-lending flags).
+
 Sections:
 
-- **HITL Queue** — open tasks; filters by reason (mandatory_flag / opa_warn / low_confidence / ocr_marginal / amount_over_threshold / fair_lending_flag); claim, review, decide. Shows agent rationale + full audit + original documents.
+- **HITL Queue** — open tasks; filters by reason (mandatory_flag / opa_warn / low_confidence / ocr_marginal / amount_over_threshold / fair_lending_flag); **Claim next** button does an atomic `DEQONE` from `HITL_REQUEST` (role-filtered) and transitions `hitl_task` to IN_REVIEW in the same transaction — two reviewers clicking simultaneously cannot grab the same task. Shows agent rationale + full audit + original documents.
 - **Decisions** — search/browse all decisions; click into the audit trail; replay.
 - **Rule Management** — list OPA policies, view current Rego, version metadata. (Editing in-place is out of scope for the PoC; surface read-only.)
 - **Parameter Management** — edit `system_config` entries (thresholds, weights, the **Mandatory-HITL master switch**, OCR tier thresholds, fair-lending bucketing). Every change writes `policy_parameter_history`.
@@ -709,6 +763,7 @@ Sections:
 - **Fair-Lending Review** — periodic reviews, flagged samples, reviewer notes.
 - **Reports** — approval rate, refer rate, reject rate by week/month, by product, by channel. Decision drift alerts.
 - **Customer Search** — find a customer, see their applications, decisions, audit.
+- **Failed OCR** — admin-only view of `OCR_EXCEPTION_Q` messages (payload + error metadata + retry count). Retry button re-enqueues onto `OCR_REQUEST` after the operator fixes the upload.
 
 ---
 
@@ -724,50 +779,56 @@ The test bench is for **functionality and observability**, not performance. Each
 
 ### Scenarios
 
-| #   | Scenario                                              | Expected outcome                                        | Why this case matters                                                                           |
-| --- | ----------------------------------------------------- | ------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| 1   | Clean profile, low DTI, high score, all docs USABLE   | APPROVE                                                 | Happy path — proves the auto-approve route is wired                                             |
-| 2   | DTI above hard cap                                    | REJECT                                                  | OPA hard deny path; rationale cites eligibility chunk                                           |
-| 3   | Score below configured floor                          | REJECT                                                  | OPA hard deny path; parameterized floor                                                         |
-| 4   | Expired ID document                                   | REJECT                                                  | KYC deny; reason code surfaced to customer                                                      |
-| 5   | Sanctions hit on AML                                  | REJECT                                                  | AML deny; cheap pre-check short-circuit (agent not invoked)                                     |
-| 6   | Mid-band score                                        | REFER_HUMAN                                             | OPA `warn[]`; HITL with full context                                                            |
-| 7   | Amount above auto-approve cap                         | REFER_HUMAN                                             | OPA `warn[]`; HITL                                                                              |
-| 8   | One document MARGINAL quality                         | REFER_HUMAN                                             | OCR tier → HITL with original doc + extraction map                                              |
-| 9   | All documents UNUSABLE                                | REJECT (silent)                                         | Auto-decline path with "please re-upload" customer message                                      |
-| 10  | Mandatory-HITL flag is ON                             | REFER_HUMAN                                             | Regardless of clean profile, mandatory flag routes to human; audit captures rule outputs anyway |
-| 11  | Fair-lending pre-flight flag raised                   | REFER_HUMAN                                             | Bank reviewer steps in before automated decision lands                                          |
-| 12  | Configuration changed mid-flight (DTI cap tightened)  | Outcome shifts on rerun                                 | Parameter history visible; both old and new audits readable                                     |
-| 13  | Audit replay matches original decision                | Reproducible                                            | Observability headline — same input, same audit, same outcome                                   |
-| 14  | Blockchain row tamper attempt rejected by DB          | Tamper detected                                         | Blockchain integrity demonstration                                                              |
-| 15  | Customer asks the agent "why was I declined?" in chat | Agent answers from `decision.rationale` + policy chunks | Right-of-explanation surface                                                                    |
+| #   | Scenario                                                     | Expected outcome                                                           | Why this case matters                                                                           |
+| --- | ------------------------------------------------------------ | -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| 1   | Clean profile, low DTI, high score, all docs USABLE          | APPROVE                                                                    | Happy path — proves the auto-approve route is wired                                             |
+| 2   | DTI above hard cap                                           | REJECT                                                                     | OPA hard deny path; rationale cites eligibility chunk                                           |
+| 3   | Score below configured floor                                 | REJECT                                                                     | OPA hard deny path; parameterized floor                                                         |
+| 4   | Expired ID document                                          | REJECT                                                                     | KYC deny; reason code surfaced to customer                                                      |
+| 5   | Sanctions hit on AML                                         | REJECT                                                                     | AML deny; cheap pre-check short-circuit (agent not invoked)                                     |
+| 6   | Mid-band score                                               | REFER_HUMAN                                                                | OPA `warn[]`; HITL with full context                                                            |
+| 7   | Amount above auto-approve cap                                | REFER_HUMAN                                                                | OPA `warn[]`; HITL                                                                              |
+| 8   | One document MARGINAL quality                                | REFER_HUMAN                                                                | OCR tier → HITL with original doc + extraction map                                              |
+| 9   | All documents UNUSABLE                                       | REJECT (silent)                                                            | Auto-decline path with "please re-upload" customer message                                      |
+| 10  | Mandatory-HITL flag is ON                                    | REFER_HUMAN                                                                | Regardless of clean profile, mandatory flag routes to human; audit captures rule outputs anyway |
+| 11  | Fair-lending pre-flight flag raised                          | REFER_HUMAN                                                                | Bank reviewer steps in before automated decision lands                                          |
+| 12  | Configuration changed mid-flight (DTI cap tightened)         | Outcome shifts on rerun                                                    | Parameter history visible; both old and new audits readable                                     |
+| 13  | Audit replay matches original decision                       | Reproducible                                                               | Observability headline — same input, same audit, same outcome                                   |
+| 14  | Blockchain row tamper attempt rejected by DB                 | Tamper detected                                                            | Blockchain integrity demonstration                                                              |
+| 15  | Customer asks the agent "why was I declined?" in chat        | Agent answers from `decision.rationale` + policy chunks                    | Right-of-explanation surface                                                                    |
+| 16  | Two backoffice reviewers click **Claim next** simultaneously | Exactly one reviewer gets the task; the other gets the next one (or empty) | `HITL_REQUEST` transactional dequeue prevents double-claim                                      |
+| 17  | OCR worker crashes mid-job                                   | Message is re-delivered after visibility timeout; succeeds on retry        | TxEventQ at-least-once delivery + idempotent worker                                             |
+| 18  | OCR worker fails `max_retries` times on the same document    | Message lands in `OCR_EXCEPTION_Q`; surfaces in Backoffice "Failed OCR"    | Poison-message containment without a custom retry table                                         |
+| 19  | New HITL task arrives while a reviewer has the queue open    | Notification bell increments; click navigates to the role-filtered queue   | The bell is a real signal, not a static badge                                                   |
 
 ---
 
 ## Feature → Function → Data → Integration Map
 
-| Feature                 | Agent function / tool                              | Data                                                                       | Integration               |
-| ----------------------- | -------------------------------------------------- | -------------------------------------------------------------------------- | ------------------------- |
-| Submit application      | `record_decision`, orchestration                   | `loan_application`                                                         | API → App Service → Agent |
-| Upload document         | `extract_document` (YOLO + OCR)                    | `loan_application_document`, Object Storage                                | OCR pipeline (sidecar)    |
-| Eligibility evaluation  | `evaluate_eligibility` (MCP)                       | view(applicant, application, product), `system_config`                     | OPA MCP                   |
-| AML screening           | `evaluate_aml` (MCP)                               | `customer`, `sanctions_list`                                               | OPA MCP                   |
-| KYC validation          | `evaluate_kyc` (MCP)                               | `loan_application_document.ocr_payload`, `customer_identity`, quality_tier | OPA MCP                   |
-| DTI / PTI / cashflow    | `query_transaction_summary`, `query_credit_bureau` | `account_transaction`, `existing_facility`, `credit_bureau_snapshot`       | Select AI NL2SQL          |
-| Policy citations        | `search_policy`                                    | `policy_corpus` (vector)                                                   | Oracle AI Vector Search   |
-| Similar past cases      | `search_similar_cases`                             | `case_history` (vector)                                                    | Oracle AI Vector Search   |
-| Pricing                 | `lookup_pricing`                                   | `rate_card`, `product_catalog`                                             | SQL + OPA                 |
-| Refer-to-human routing  | `evaluate_escalation` + `create_hitl_task`         | `hitl_task`                                                                | OPA MCP + DB              |
-| Mandatory-HITL override | agent reads `system_config.mandatory_hitl`         | `system_config`                                                            | DB                        |
-| Fair-lending pre-flight | `evaluate_fair_lending_flags`                      | `customer_protected_attrs`                                                 | OPA MCP                   |
-| Append-only decision    | `record_decision`                                  | `decision` (blockchain)                                                    | DB-internal               |
-| Per-tool audit          | DB triggers + tool wrappers                        | `decision_audit`                                                           | DB-internal               |
-| Customer chat           | Agent conversational tool                          | `decision`, `policy_corpus`                                                | Customer UI ↔ API ↔ Agent |
-| Backoffice HITL         | Backoffice API → close task → finalize             | `hitl_task`, `decision`                                                    | Backoffice UI             |
-| Parameter change        | Backoffice API → write `system_config`             | `system_config`, `policy_parameter_history`                                | Backoffice UI             |
-| Risk dashboard          | aggregation queries                                | `decision`, `loan_application`, `credit_bureau_snapshot`                   | Backoffice UI             |
-| Fair-lending review     | scheduled job + reviewer flow                      | `fair_lending_review`                                                      | Backoffice UI + DB job    |
-| Audit replay            | replay endpoint                                    | `decision_audit`                                                           | Backoffice UI             |
+| Feature                 | Agent function / tool                              | Data                                                                       | Integration                      |
+| ----------------------- | -------------------------------------------------- | -------------------------------------------------------------------------- | -------------------------------- |
+| Submit application      | `record_decision`, orchestration                   | `loan_application`                                                         | API → App Service → Agent        |
+| Upload document         | `extract_document` (YOLO + OCR)                    | `loan_application_document`, Object Storage, `OCR_REQUEST` (TxEventQ)      | OCR pipeline via TxEventQ        |
+| Eligibility evaluation  | `evaluate_eligibility` (MCP)                       | view(applicant, application, product), `system_config`                     | OPA MCP                          |
+| AML screening           | `evaluate_aml` (MCP)                               | `customer`, `sanctions_list`                                               | OPA MCP                          |
+| KYC validation          | `evaluate_kyc` (MCP)                               | `loan_application_document.ocr_payload`, `customer_identity`, quality_tier | OPA MCP                          |
+| DTI / PTI / cashflow    | `query_transaction_summary`, `query_credit_bureau` | `account_transaction`, `existing_facility`, `credit_bureau_snapshot`       | Select AI NL2SQL                 |
+| Policy citations        | `search_policy`                                    | `policy_corpus` (vector)                                                   | Oracle AI Vector Search          |
+| Similar past cases      | `search_similar_cases`                             | `case_history` (vector)                                                    | Oracle AI Vector Search          |
+| Pricing                 | `lookup_pricing`                                   | `rate_card`, `product_catalog`                                             | SQL + OPA                        |
+| Refer-to-human routing  | `evaluate_escalation` + `create_hitl_task`         | `hitl_task` + `HITL_REQUEST` (TxEventQ)                                    | OPA MCP + DB                     |
+| HITL claim              | Backoffice "Claim next" → `DEQONE`                 | `HITL_REQUEST` (TxEventQ) + `hitl_task` (state transition)                 | Backoffice UI ↔ App Service ↔ DB |
+| Notification bell       | poll `/v1/notifications/inbox`                     | `hitl_task` (role-filtered count)                                          | Backoffice UI                    |
+| Mandatory-HITL override | agent reads `system_config.mandatory_hitl`         | `system_config`                                                            | DB                               |
+| Fair-lending pre-flight | `evaluate_fair_lending_flags`                      | `customer_protected_attrs`                                                 | OPA MCP                          |
+| Append-only decision    | `record_decision`                                  | `decision` (blockchain)                                                    | DB-internal                      |
+| Per-tool audit          | DB triggers + tool wrappers                        | `decision_audit`                                                           | DB-internal                      |
+| Customer chat           | Agent conversational tool                          | `decision`, `policy_corpus`                                                | Customer UI ↔ API ↔ Agent        |
+| Backoffice HITL         | Backoffice API → close task → finalize             | `hitl_task`, `decision`                                                    | Backoffice UI                    |
+| Parameter change        | Backoffice API → write `system_config`             | `system_config`, `policy_parameter_history`                                | Backoffice UI                    |
+| Risk dashboard          | aggregation queries                                | `decision`, `loan_application`, `credit_bureau_snapshot`                   | Backoffice UI                    |
+| Fair-lending review     | scheduled job + reviewer flow                      | `fair_lending_review`                                                      | Backoffice UI + DB job           |
+| Audit replay            | replay endpoint                                    | `decision_audit`                                                           | Backoffice UI                    |
 
 ---
 
@@ -776,7 +837,7 @@ The test bench is for **functionality and observability**, not performance. Each
 1. **Setup walk-through** — show synthetic dataset stats, OPA Rego files + `opa test` green, the Backoffice config panel with thresholds and the **Mandatory-HITL switch**.
 2. **Approve path** — customer chats, uploads clean docs → APPROVE with priced offer; show audit trail + policy citations + blockchain row.
 3. **Reject paths** — hard DTI cap; expired ID; sanctions hit. Show reason codes surfaced to the customer; show audit.
-4. **HITL paths** — mid-band score; amount above cap; MARGINAL OCR. Switch to Backoffice, claim the task, review the full picture, decide. Audit closed.
+4. **HITL paths + concurrent reviewers** — mid-band score; amount above cap; MARGINAL OCR. Open the Backoffice in two browser tabs as different roles (e.g. HITL reviewer + admin) and hit **Claim next** at the same time — exactly one reviewer gets the task; the bell counter ticks down on both sides. Review the full picture, decide. Audit closed.
 5. **Mandatory-HITL flag** — flip the switch in the backoffice; rerun the clean profile case; observe REFER_HUMAN, with OPA tool outputs still captured in the audit.
 6. **Parameter hot-edit** — change `dti_hard_cap` in the backoffice; rerun a boundary case → different outcome. Show `policy_parameter_history` and the side-by-side audit comparison.
 7. **Risk Management Dashboard** — apply a +200bps shock; show pressure surface and the suggested threshold-tightening counterfactual.
@@ -784,6 +845,7 @@ The test bench is for **functionality and observability**, not performance. Each
 9. **Audit replay** — pick any decision; click "Replay" → identical outcome from stored audit input.
 10. **Blockchain tamper demo** — attempt `UPDATE decision SET outcome = 'APPROVE' WHERE decision_id = …` → DB rejects.
 11. **Customer chat — right of explanation** — customer asks the agent "why was I declined?" → agent answers from rationale + policy chunks.
+12. **OCR retry demo** — upload a deliberately broken document; OCR worker fails `max_retries` times; the message lands in `OCR_EXCEPTION_Q` and surfaces in the Backoffice "Failed OCR" view. Click **Retry** → message re-enqueued onto `OCR_REQUEST` → success on the next pass.
 
 ---
 

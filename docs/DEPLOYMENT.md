@@ -53,18 +53,19 @@ Single Click-based CLI in `manage.py` at the repository root.
 
 All services run as podman containers on the developer's machine, with two pointers (`OLLAMA_HOST`, `OCR_HOST`) that can resolve either to a local container or to a LAN-reachable GPU host. This means the demo runs on a laptop with a couple of services optionally offloaded — true to the "private on-prem" posture.
 
-```
-host (rootless podman)
-├── oracle-free-26ai   (1521, 5500)
-├── paf                (8080)
-├── ai-services        (8000)  — PAF caller + OPA MCP + OCR MCP (or thin proxies to LAN)
-├── opa                (8181)
-├── ollama [optional]  (11434)  — or pointed at host LAN
-├── ocr [optional]     (8500)   — or pointed at host LAN
-├── backend            (8090)
-├── frontend-mobile    (4200)
-├── frontend-backoffice(4300)
-└── caddy / nginx      (80/443) — reverse proxy
+```mermaid
+flowchart TB
+    host["host (rootless podman)"]
+    host --> oracle["oracle-free-26ai<br/>1521, 5500"]
+    host --> paf["paf<br/>8080"]
+    host --> ai["ai-services 8000<br/>PAF caller + OPA MCP + OCR MCP<br/>(or thin proxies to LAN)"]
+    host --> opa["opa<br/>8181"]
+    host --> ollama["ollama [optional]<br/>11434 — or pointed at host LAN"]
+    host --> ocr["ocr [optional]<br/>8500 — or pointed at host LAN"]
+    host --> backend["backend<br/>8090"]
+    host --> mobile["frontend-mobile<br/>4200"]
+    host --> backoffice["frontend-backoffice<br/>4300"]
+    host --> proxy["caddy / nginx<br/>80/443 — reverse proxy"]
 ```
 
 Reasoning for podman + rootless: matches PAF's documented platform stance (see [PAF §5](PAF.md#5-installation-and-deployment-options) — Podman, rootless, `max_string_size=EXTENDED`, supported OSes Oracle Linux 8 and macOS).
@@ -98,39 +99,21 @@ Reasoning for podman + rootless: matches PAF's documented platform stance (see [
 
 Five workload computes plus ADB and LB, mirroring the answer to question 4 in brainstorming:
 
-```
-                          OCI Load Balancer (public)
-                                  |
-              +-------------------+---------------------+
-              |                                         |
-       /mobile  /backoffice   /api   /agentFactory      |
-              |                                         |
-   +----------v----------+         +--------------------v---+
-   | front compute       |         | app compute            |
-   |  - frontend-mobile  |         |  - Spring Boot backend |
-   |  - frontend-backoff |         |  - AI Services         |
-   +---------------------+         |  - OPA                 |
-                                   +-----+------------------+
-                                         |
-                                         |
-                             +-----------v------------+
-                             | paf compute            |
-                             |  - PAF container       |
-                             +-----+------------------+
-                                   |
-                                   |    (private VCN)
-                                   v
-                            +------+--------+      +-------------+
-                            | model compute |      |  ADB 26ai   |
-                            |  - Ollama     |      |  - APP      |
-                            |  - OCR MCP    |      |  - REPORTING|
-                            |  (GPU shape)  |      |  - AGENT_*  |
-                            +---------------+      +-------------+
+```mermaid
+flowchart TB
+    lb["OCI Load Balancer (public)"]
+    front["front compute<br/>- frontend-mobile<br/>- frontend-backoffice"]
+    app["app compute<br/>- Spring Boot backend<br/>- AI Services<br/>- OPA"]
+    paf["paf compute<br/>- PAF container"]
+    model["model compute<br/>- Ollama<br/>- OCR MCP<br/>(GPU shape)"]
+    adb[("ADB 26ai<br/>- APP<br/>- REPORTING<br/>- AGENT_*")]
+    ops["ops compute<br/>(bastion)"]
 
-                            +---------------+
-                            | ops compute   |
-                            |  (bastion)    |
-                            +---------------+
+    lb -- "/mobile  /backoffice" --> front
+    lb -- "/api  /agentFactory" --> app
+    app --> paf
+    paf -- "private VCN" --> model
+    paf --> adb
 ```
 
 GPU shape for the `model` compute is chosen at `manage.py setup cloud` time (e.g. an A10 shape for demos). Falling back to CPU-only Ollama is supported for short or smoke-test deployments and is also a setup choice.
@@ -193,7 +176,8 @@ database/liquibase/
 │   ├── 005-reporting-views.yaml      # REPORTING.* curated views
 │   ├── 006-agent-tools.yaml          # AGENT_TOOLS PL/SQL packages
 │   ├── 007-vector.yaml               # policy_corpus, case_history, vector indexes
-│   └── 008-seed-synthetic.yaml       # synthetic dataset (toggleable)
+│   ├── 008-queues.yaml               # TxEventQ: HITL_REQUEST, OCR_REQUEST, OCR_EXCEPTION_Q + grants
+│   └── 009-seed-synthetic.yaml       # synthetic dataset (toggleable)
 └── adb/
     ├── liquibase.properties.j2
     ├── db.changelog-master.yaml
@@ -204,8 +188,9 @@ database/liquibase/
     ├── 005-reporting-views.yaml
     ├── 006-agent-tools.yaml
     ├── 007-vector.yaml               # AI Vector Search indexes
-    ├── 008-select-ai-bootstrap.yaml  # Select AI profile + NL2SQL object list + RAG vector index
-    └── 009-seed-synthetic.yaml
+    ├── 008-queues.yaml               # TxEventQ: HITL_REQUEST, OCR_REQUEST, OCR_EXCEPTION_Q + grants
+    ├── 009-select-ai-bootstrap.yaml  # Select AI profile + NL2SQL object list + RAG vector index
+    └── 010-seed-synthetic.yaml
 ```
 
 `liquibase.properties.j2` is rendered by the `database-setup` Ansible role from Ansible vars (which are themselves seeded from `.env` for local, or from Terraform outputs for cloud), with contexts `seed` / `noseed`.
@@ -215,6 +200,7 @@ Notes:
 - Blockchain Table DDL (`CREATE BLOCKCHAIN TABLE ... NO DROP UNTIL 7 YEARS IDLE NO DELETE LOCKED HASHING USING "SHA2_512"`) lives in `003-app-decisioning.yaml` and is supported on both local Oracle Free 26ai and ADB 26ai.
 - Seed data is behind a Liquibase context (`seed`) so the cloud deployment can opt out for an empty schema while local always seeds.
 - Vector index settings (chunk size, overlap, similarity metric, refresh rate) are parameterised by `.env`-rendered tokens so the same changelog can serve different embedding choices without code edits.
+- TxEventQ DDL (`008-queues.yaml`) runs PL/SQL anonymous blocks that call `dbms_aqadm.create_transactional_event_queue` + `dbms_aqadm.start_queue`, each wrapped to catch `ORA-24006` (queue exists) and `ORA-24010` (already started) so re-runs are idempotent. The same changeset also calls `dbms_aqadm.grant_queue_privilege` to grant `ENQUEUE` / `DEQUEUE` separately to the schemas that need each — no `aq_administrator_role` on application users.
 - Schema drift between `oracle/` and `adb/` is kept minimal; where practical, the shared YAML files are symlinked or `includeAll`-ed to avoid duplicate maintenance.
 
 ## 6. Environment configuration
@@ -245,6 +231,7 @@ Policy values (DTI cap, score floor, Mandatory-HITL switch, OCR thresholds, fair
 - **PAF session cookie handling**: per [PAF §15.2](PAF.md#152-cookie-based-call-from-shell) and [§16.4](PAF.md#164-apex-side-pattern), the AI Services PAF caller acquires `ahffi_session` (or the build-specific equivalent) via `loginValidation`, refreshes when it expires, and threads `roomId` for conversation continuity. The mobile and backoffice UIs never see the cookie.
 - **TLS**: cloud uses a load-balancer-managed certificate; local uses self-signed via Caddy/nginx and the PAF caller is configured to bypass verification only when targeting `localhost`/`127.0.0.1`.
 - **Backup**: out of scope for the PoC. Documented in the cloud playbook as a follow-up (ADB has built-in backups; local has none and is treated as ephemeral).
+- **TxEventQ admin**: monitor depth + age via `v$aq` and `v$persistent_queues` (per-queue counters); `manage.py info` surfaces depth/age for `HITL_REQUEST`, `OCR_REQUEST`, `OCR_EXCEPTION_Q`. Retention is set on each queue (`dbms_aqadm.alter_queue(retention_time => N)`); the exception queue keeps messages until an operator triages them from the Backoffice "Failed OCR" view.
 
 ## 8. What is intentionally not specified yet
 

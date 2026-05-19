@@ -37,55 +37,33 @@ The PoC is intentionally a _scaffolding_ — the repository layout, deployment t
 
 The deployment is one logical system with several cooperating components. Their boundaries follow the PAF [MCP security pattern](PAF.md): agents call MCP/REST tools, never application tables directly.
 
-```
-                       +---------------------------+
-   Customer Mobile UI  |                           |
-   (Angular)           |  Application Service      |
-   ----- chat -------> |  (Java / Spring Boot)     | ---+
-                       |  UCP, wallet, drivers     |    |
-   Backoffice UI       |                           |    |
-   (Angular)           +-----+---------------+-----+    |
-   ---- CRUD/HITL -----------+               |          |
-                                             |          |
-                                  +----------v-----+    |
-                                  |  AI Services   |    |
-                                  |  (Python)      |    |
-                                  |  - PAF caller  |    |
-                                  |  - OPA MCP     |    |
-                                  |  - OCR MCP     |    |
-                                  +----+------+----+    |
-                                       |      |         |
-                  +--------------------+      |         |
-                  |                           |         |
-   +--------------v--------+   +-------+------v-----+   |
-   |  Private Agent        |   |  OPA              |   |
-   |  Factory (container)  |   |  (Rego packages)  |   |
-   |  Agent Builder flow:  |   +-------------------+   |
-   |  DECISIONING_AGENT    |                           |
-   +-----+-----------+-----+                           |
-         |           |                                 |
-         |           +-----> Ollama (LLM + embeddings) |
-         |                   (local host or GPU node)  |
-         |                                             |
-         |                                             |
-         v                                             v
-   +-----------------------------------------------------+
-   |  Oracle AI Database 26ai                            |
-   |   - APP schema (banking, applications, documents)   |
-   |   - REPORTING views (curated views for Select AI)   |
-   |   - AGENT_TOOLS schema (PL/SQL exposed via SQLcl/   |
-   |                          Select AI / MCP)           |
-   |   - AGENT_FACTORY user (PAF metadata only)          |
-   |   - decision (Blockchain Table)                     |
-   |   - policy_corpus, case_history (vector)            |
-   |   - system_config, policy_parameter_history         |
-   +-----------------------------------------------------+
+```mermaid
+flowchart TB
+    mobile["Customer Mobile UI<br/>(Angular)"]
+    backoffice["Backoffice UI<br/>(Angular)"]
+    appsvc["Application Service<br/>(Java / Spring Boot)<br/>UCP, wallet, drivers"]
+    ai["AI Services (Python)<br/>- PAF caller<br/>- OPA MCP<br/>- OCR MCP"]
+    paf["Private Agent Factory (container)<br/>Agent Builder flow:<br/>DECISIONING_AGENT"]
+    opa["OPA<br/>(Rego packages)"]
+    ollama["Ollama (LLM + embeddings)<br/>(local host or GPU node)"]
+    db[("Oracle AI Database 26ai<br/>APP / REPORTING / AGENT_TOOLS / AGENT_FACTORY<br/>decision (Blockchain), policy_corpus, case_history (vector)<br/>system_config, policy_parameter_history<br/>TxEventQ: HITL_REQUEST, OCR_REQUEST, OCR_EXCEPTION_Q")]
+
+    mobile -- chat --> appsvc
+    backoffice -- CRUD/HITL --> appsvc
+    appsvc --> ai
+    ai --> paf
+    ai --> opa
+    paf --> ollama
+    paf --> db
+    opa --> db
+    appsvc --> db
 ```
 
 Components communicate as follows:
 
-- **Customer Mobile UI** → Application Service over REST. Authenticated via API Gateway (cloud) or a thin reverse proxy (local).
-- **Backoffice UI** → Application Service over REST. Role-gated by SSO/JWT.
+- **Customer Mobile UI** → Application Service over REST. Auth is out of scope for the PoC; a mock login screen offers a dropdown of demo customers, selecting one fixes the `customer_id` used for every subsequent request. Logout returns to the picker.
+- **Backoffice UI** → Application Service over REST. Auth is out of scope for the PoC; a mock login screen offers a dropdown of roles (HITL reviewer, admin, fair-lending reviewer, risk analyst), selecting one drives which sections are visible. Logout returns to the picker.
+- Production deployments are expected to sit behind the host core-banking system's auth, so no SSO/OAuth/JWT/API Gateway wiring is built into the PoC.
 - **Application Service** persists applications, owns document upload, runs cheap OPA pre-checks, and invokes the agent.
 - **Application Service** invokes the **PAF published Agent Builder endpoint** for `DECISIONING_AGENT`, going through the AI Services tier to handle session-cookie acquisition and chunked response parsing (per PAF [APEX integration pattern](PAF.md#16-apex-integration-pattern) — the same bridge concern applies to any non-PAF caller).
 - **PAF (DECISIONING_AGENT)** runs in the PAF container and calls:
@@ -140,13 +118,13 @@ Both load the same banking + decisioning schema; differences confined to ADB-spe
 
 Schema layers, following PAF's [recommended Oracle Database design pattern](PAF.md#193-recommended-oracle-database-design-pattern):
 
-| Schema / User   | Contents                                                                                                                                                                                      | Used by                                                      |
-| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| `APP`           | Banking tables: `customer`, `account*`, `loan_application*`, `decision` (Blockchain Table), `decision_audit`, `hitl_task`, `system_config`, `policy_parameter_history`, `fair_lending_review` | Application Service writes; agent never writes here directly |
-| `REPORTING`     | Curated views over `APP` for NL2SQL: applicant profile view, transactions summary view, bureau view, case-history view                                                                        | Select AI NL2SQL object lists; read-only                     |
-| `AGENT_TOOLS`   | PL/SQL packages exposed as Select AI tools / MCP tools: `record_decision`, `create_hitl_task`, `lookup_pricing`, `extract_features`                                                           | Agent only; tightly scoped grants                            |
-| `AGENT_FACTORY` | PAF platform metadata only                                                                                                                                                                    | PAF; no production data                                      |
-| Vector          | `policy_corpus`, `case_history` with `VECTOR(<dim>, FLOAT32)`                                                                                                                                 | Select AI RAG profiles                                       |
+| Schema / User   | Contents                                                                                                                                                                                                                                                                             | Used by                                                                                                                                               |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `APP`           | Banking tables: `customer`, `account*`, `loan_application*`, `decision` (Blockchain Table), `decision_audit`, `hitl_task`, `system_config`, `policy_parameter_history`, `fair_lending_review`. Also owns the **TxEventQ** queues (`HITL_REQUEST`, `OCR_REQUEST`, `OCR_EXCEPTION_Q`). | Application Service + agent enqueue/dequeue via scoped `dbms_aqadm.grant_queue_privilege` grants; the agent never writes the banking tables directly. |
+| `REPORTING`     | Curated views over `APP` for NL2SQL: applicant profile view, transactions summary view, bureau view, case-history view                                                                                                                                                               | Select AI NL2SQL object lists; read-only                                                                                                              |
+| `AGENT_TOOLS`   | PL/SQL packages exposed as Select AI tools / MCP tools: `record_decision`, `create_hitl_task`, `lookup_pricing`, `extract_features`                                                                                                                                                  | Agent only; tightly scoped grants                                                                                                                     |
+| `AGENT_FACTORY` | PAF platform metadata only                                                                                                                                                                                                                                                           | PAF; no production data                                                                                                                               |
+| Vector          | `policy_corpus`, `case_history` with `VECTOR(<dim>, FLOAT32)`                                                                                                                                                                                                                        | Select AI RAG profiles                                                                                                                                |
 
 Embedding dimension is set once at deploy time and tied to the chosen Ollama embedding model. Changing embedding model later requires re-ingestion — flagged in deployment notes (see [PAF §6.6](PAF.md#66-embedding-models)).
 
@@ -231,7 +209,7 @@ A future `images/` directory will hold architecture diagrams once the implementa
 ## 8. Data flow — happy path (APPROVE)
 
 1. Customer opens mobile chat, submits application, uploads ID + payslip + statement.
-2. Application Service writes `loan_application`, `loan_application_document` rows; uploads files to Object Storage; queues OCR.
+2. Application Service writes `loan_application`, `loan_application_document` rows; uploads files to Object Storage; enqueues one `OCR_REQUEST` (TxEventQ) per document. OCR worker dequeues, processes, writes back `ocr_payload` + `quality_tier`; failures retry up to `max_retries`, then poison messages land in `OCR_EXCEPTION_Q`.
 3. Application Service runs **cheap OPA pre-checks** over REST (sanctions, age, doc presence). Clean → continue. Hit → short-circuit REJECT.
 4. Application Service POSTs to the **AI Services PAF caller** with the application id.
 5. **PAF caller** acquires a session cookie against `/agentFactory/v1/loginValidation`, then POSTs to the `DECISIONING_AGENT` run URL with `{message, roomId}`.
@@ -244,7 +222,7 @@ A future `images/` directory will hold architecture diagrams once the implementa
    - In-DB Tool `record_decision` writes a row to `decision` (Blockchain Table) with rationale + citations + offer.
 7. PAF returns NDJSON; AI Services parses and hands a sanitised decision view to the Application Service, which surfaces it to the mobile UI.
 
-For REFER_HUMAN paths (any warn, marginal OCR, fair-lending flag, mandatory-HITL on), step 6 ends with `create_hitl_task` instead of `lookup_pricing`, and the audit still captures all OPA outputs. For REJECT paths, the agent short-circuits after the deny is observed but still records the audit. See [DECISIONING-ENGINE-USE-CASE.md §Test Bench](DECISIONING-ENGINE-USE-CASE.md) for the full path matrix.
+For REFER_HUMAN paths (any warn, marginal OCR, fair-lending flag, mandatory-HITL on), step 6 ends with `create_hitl_task` instead of `lookup_pricing`. The in-DB tool writes a row to `hitl_task` **and** enqueues `HITL_REQUEST` (TxEventQ) in the same transaction; a backoffice reviewer claims it later by `DEQONE` (atomic with the OPEN → IN_REVIEW state transition). The audit still captures all OPA outputs. For REJECT paths, the agent short-circuits after the deny is observed but still records the audit. See [DECISIONING-ENGINE-USE-CASE.md §Test Bench](DECISIONING-ENGINE-USE-CASE.md) and [§Async messaging](DECISIONING-ENGINE-USE-CASE.md#async-messaging--txeventq-queues) for the queue inventory and full path matrix.
 
 ## 9. Observability model
 
@@ -257,15 +235,15 @@ Four layers, all inspectable from the Backoffice UI:
 
 ## 10. Security boundary
 
-| Concern                   | Mechanism                                                                                                       |
-| ------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| Identity at the edge      | API Gateway (cloud) / reverse proxy (local); SSO/OAuth for Backoffice                                           |
-| Identity inside the agent | `AGENT_FACTORY` user owns PAF metadata only; tool execution maps to least-privilege schemas                     |
-| NL2SQL guardrail          | Select AI profile object list pinned to `REPORTING.*` views, never base tables                                  |
-| Side-effects              | Always via PL/SQL packages or MCP tools, never raw SQL from the LLM (per PAF [§17.5](PAF.md#175-tool-security)) |
-| Sensitive attributes      | `customer_protected_attrs` kept separate; access logged; not passed to the LLM unless explicitly needed         |
-| Audit                     | Blockchain Table for the decision; standard table for tool-call detail with archive-to-blockchain option        |
-| Wallet / connection       | Oracle Wallet for ADB; UCP pool sizing pinned per service                                                       |
+| Concern                   | Mechanism                                                                                                                                                                                                                                         |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Identity at the edge      | Out of scope for the PoC. UIs ship a mock login picker (customer dropdown on mobile, role dropdown on backoffice) and a logout to swap session; production assumes the host core-banking system provides auth in front of the Application Service |
+| Identity inside the agent | `AGENT_FACTORY` user owns PAF metadata only; tool execution maps to least-privilege schemas                                                                                                                                                       |
+| NL2SQL guardrail          | Select AI profile object list pinned to `REPORTING.*` views, never base tables                                                                                                                                                                    |
+| Side-effects              | Always via PL/SQL packages or MCP tools, never raw SQL from the LLM (per PAF [§17.5](PAF.md#175-tool-security))                                                                                                                                   |
+| Sensitive attributes      | `customer_protected_attrs` kept separate; access logged; not passed to the LLM unless explicitly needed                                                                                                                                           |
+| Audit                     | Blockchain Table for the decision; standard table for tool-call detail with archive-to-blockchain option                                                                                                                                          |
+| Wallet / connection       | Oracle Wallet for ADB; UCP pool sizing pinned per service                                                                                                                                                                                         |
 
 ## 11. Locked decisions
 
@@ -276,9 +254,11 @@ Four layers, all inspectable from the Backoffice UI:
 - **SQL tooling**: queries against `REPORTING.*` views are exposed as **Select AI In-Database Tools** referenced from the PAF flow via the Select AI Bridge node, not as plain SQL Query nodes. (Per [PAF §14.5](PAF.md#145-agent-builder-select-ai-nodes).)
 - **OPA bundle reload on parameter change**: planned for **v1**. Currently OPA loads its bundle once at boot; parameter edits in the Backoffice still write `policy_parameter_history` but require an OPA restart to take effect.
 - **PAF bootstrap automation**: `manage.py paf bootstrap` prints an ordered checklist of manual UI steps (LLM Management entries, data sources, Select AI profile, MCP servers, Agent Builder flow import). API automation is added later when the PAF admin endpoints are stable enough to drive headlessly. Playwright-driven UI automation is explicitly out of scope (too fragile across PAF versions).
+- **Auth — out of scope; mock login on both UIs.** The audience (host core-banking system) is assumed to provide auth in production, so no SSO/OAuth/JWT/API Gateway is wired into the PoC. The mobile UI shows a dropdown of demo customers (selection sets the active `customer_id`); the backoffice shows a dropdown of roles (HITL reviewer, admin, fair-lending reviewer, risk analyst — which gates visible sections). Both UIs offer logout to swap user or role mid-demo.
+- **Async messaging — Oracle Database TxEventQ.** All async/offline work (HITL claim, OCR pipeline, retries, future fan-out) runs through TxEventQ queues owned by `APP`. JSON payloads, single-consumer queues, idempotent DDL (catch `ORA-24006`/`ORA-24010`), per-schema `dbms_aqadm.grant_queue_privilege` rather than `aq_administrator_role`, and a dedicated exception queue for poison messages. Initial inventory: `HITL_REQUEST`, `OCR_REQUEST`, `OCR_EXCEPTION_Q`. Future queues (`NOTIFICATION`, `OPA_BUNDLE_RELOAD`, `FAIR_LENDING_SAMPLING`, `ARCHIVE`) follow the same pattern. See [DECISIONING-ENGINE-USE-CASE.md §Async messaging](DECISIONING-ENGINE-USE-CASE.md#async-messaging--txeventq-queues).
 
 ## 12. Decisions not yet locked
 
 - **OCR engine**: PaddleOCR vs Tesseract. Pick during the first OCR smoke test on the synthetic templates; the MCP boundary keeps the choice swappable.
-- **HITL assignment policy**: round-robin vs queue-claim. Default to queue-claim for simplicity.
+- **HITL assignment policy**: claim-next from `HITL_REQUEST` is the default. Whether to support reviewer-pinned assignment (admin reassigns to a named reviewer) is open; the queue already supports it via `correlation`.
 - **Wallet rotation**: out of scope for the PoC; documented as a follow-up.
