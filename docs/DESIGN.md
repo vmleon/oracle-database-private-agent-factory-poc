@@ -46,7 +46,7 @@ flowchart TB
     paf["Private Agent Factory (container)<br/>Agent Builder flow:<br/>DECISIONING_AGENT"]
     opa["OPA<br/>(Rego packages)"]
     ollama["Ollama (LLM + embeddings)<br/>(local host or GPU node)"]
-    db[("Oracle AI Database 26ai<br/>APP / REPORTING / AGENT_TOOLS / AGENT_FACTORY<br/>decision (Blockchain), policy_corpus, case_history (vector)<br/>system_config, policy_parameter_history<br/>TxEventQ: HITL_REQUEST, OCR_REQUEST, OCR_EXCEPTION_Q")]
+    db[("Oracle AI Database 26ai<br/>schemas + vector + TxEventQ")]
 
     mobile -- chat --> appsvc
     backoffice -- CRUD/HITL --> appsvc

@@ -55,17 +55,33 @@ All services run as podman containers on the developer's machine, with two point
 
 ```mermaid
 flowchart TB
-    host["host (rootless podman)"]
-    host --> oracle["oracle-free-26ai<br/>1521, 5500"]
-    host --> paf["paf<br/>8080"]
-    host --> ai["ai-services 8000<br/>PAF caller + OPA MCP + OCR MCP<br/>(or thin proxies to LAN)"]
-    host --> opa["opa<br/>8181"]
-    host --> ollama["ollama [optional]<br/>11434 — or pointed at host LAN"]
-    host --> ocr["ocr [optional]<br/>8500 — or pointed at host LAN"]
-    host --> backend["backend<br/>8090"]
-    host --> mobile["frontend-mobile<br/>4200"]
-    host --> backoffice["frontend-backoffice<br/>4300"]
-    host --> proxy["caddy / nginx<br/>80/443 — reverse proxy"]
+    subgraph host["host (rootless podman)"]
+        direction TB
+        subgraph edge["edge"]
+            proxy["caddy / nginx<br/>80/443 — reverse proxy"]
+        end
+        subgraph frontends["frontends"]
+            mobile["frontend-mobile<br/>4200"]
+            backoffice["frontend-backoffice<br/>4300"]
+        end
+        subgraph backendgrp["backend"]
+            backend["backend<br/>8090"]
+        end
+        subgraph aiplane["ai plane"]
+            paf["paf<br/>8080"]
+            ai["ai-services 8000<br/>PAF caller + OPA MCP + OCR MCP<br/>(or thin proxies to LAN)"]
+            opa["opa<br/>8181"]
+            ollama["ollama [optional]<br/>11434 — or pointed at host LAN"]
+            ocr["ocr [optional]<br/>8500 — or pointed at host LAN"]
+        end
+        subgraph data["data"]
+            oracle["oracle-free-26ai<br/>1521, 5500"]
+        end
+        edge --> frontends
+        frontends --> backendgrp
+        backendgrp --> aiplane
+        backendgrp --> data
+    end
 ```
 
 Reasoning for podman + rootless: matches PAF's documented platform stance (see [PAF §5](PAF.md#5-installation-and-deployment-options) — Podman, rootless, `max_string_size=EXTENDED`, supported OSes Oracle Linux 8 and macOS).
