@@ -76,24 +76,86 @@ def _run(cmd: list, **kwargs) -> subprocess.CompletedProcess:
     return result
 
 
-def _wait_for_db(container: str = "paf-oracle-free-26ai", timeout: int = 300) -> None:
+def _wait_for_db(container: str = "paf-oracle-free-26ai", timeout: int = 900) -> None:
+    """Wait until DB is healthy AND the startup hook has set max_string_size=EXTENDED.
+
+    The hook runs SHUTDOWN/STARTUP UPGRADE/utl32k/SHUTDOWN/STARTUP after the
+    initial 'DATABASE IS READY TO USE!', which can take 3–5 min. Plain health
+    flips healthy → unhealthy → healthy during the dance; both conditions
+    together are the real readiness signal.
+    """
+    sql = (
+        "SET HEAD OFF FEEDBACK OFF PAGES 0 ECHO OFF\n"
+        "SELECT value || '|' || open_mode FROM v$parameter, v$pdbs\n"
+        " WHERE v$parameter.name='max_string_size' AND v$pdbs.name='FREEPDB1';\n"
+        "EXIT;\n"
+    )
     deadline = time.time() + timeout
+    saw_healthy = False
+    saw_upgrade = False
     while time.time() < deadline:
-        result = subprocess.run(
+        health = subprocess.run(
             ["podman", "exec", container, "/opt/oracle/checkDBStatus.sh"],
-            capture_output=True,
-            text=True,
+            capture_output=True, text=True,
         )
-        if result.returncode == 0:
-            console.print("[green]✓[/green] Oracle DB is healthy.")
+        if health.returncode != 0:
+            if saw_healthy and not saw_upgrade:
+                console.print("[dim]DB restarting for max_string_size upgrade...[/dim]")
+                saw_upgrade = True
+            time.sleep(5)
+            continue
+        if not saw_healthy:
+            console.print("[green]✓[/green] Oracle DB up; verifying max_string_size + FREEPDB1...")
+            saw_healthy = True
+        check = subprocess.run(
+            ["podman", "exec", "-i", container, "sqlplus", "-s", "-L", "/", "as", "sysdba"],
+            input=sql, capture_output=True, text=True,
+        )
+        output = check.stdout.strip().replace(" ", "") if check.returncode == 0 else ""
+        if output == "EXTENDED|READWRITE":
+            console.print("[green]✓[/green] max_string_size=EXTENDED, FREEPDB1=READ WRITE. Ready.")
             return
         time.sleep(5)
-    console.print("[red]Timed out waiting for Oracle DB.[/red] See `manage.py local logs oracle-free-26ai`.")
+    console.print(
+        f"[red]Timed out after {timeout}s waiting for Oracle DB.[/red] "
+        "See `manage.py local logs oracle-free-26ai`."
+    )
     sys.exit(1)
+
+
+def _check_max_string_size(container: str = "paf-oracle-free-26ai") -> None:
+    sql = (
+        "SET HEAD OFF FEEDBACK OFF PAGES 0 ECHO OFF\n"
+        "SELECT value FROM v$parameter WHERE name='max_string_size';\n"
+        "EXIT;\n"
+    )
+    result = subprocess.run(
+        ["podman", "exec", "-i", container, "sqlplus", "-s", "-L", "/", "as", "sysdba"],
+        input=sql,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        console.print(f"[red]Failed to query max_string_size:[/red]\n{result.stderr}")
+        sys.exit(1)
+    value = result.stdout.strip()
+    if value != "EXTENDED":
+        console.print(
+            f"[red]max_string_size is '{value}', expected 'EXTENDED'.[/red] "
+            "PAF requires EXTENDED (per PAF §5.1)."
+        )
+        console.print(
+            "[yellow]The first-boot init hook only runs on a fresh volume. "
+            "Run [cyan]python manage.py local down --purge && python manage.py local up[/cyan] "
+            "to re-init the DB.[/yellow]"
+        )
+        sys.exit(1)
+    console.print("[green]✓[/green] max_string_size is EXTENDED.")
 
 
 def _provision_local() -> None:
     load_dotenv(ENV_FILE)
+    _check_max_string_size()
     vars_content = (
         "---\n"
         f"project_root: \"{PROJECT_ROOT}\"\n"
@@ -155,15 +217,15 @@ def setup_local() -> None:
     ).execute()
     ollama_llm = inquirer.text(
         message="Ollama LLM model:",
-        default=existing.get("OLLAMA_LLM_MODEL", "llama3.3:70b-instruct-q4_K_M"),
+        default="llama3.3:70b-instruct-q4_K_M",
     ).execute()
     ollama_embed = inquirer.text(
         message="Ollama embedding model:",
-        default=existing.get("OLLAMA_EMBED_MODEL", "bge-m3"),
+        default="bge-m3",
     ).execute()
     ollama_embed_dim = inquirer.text(
         message="Embedding dimension:",
-        default=existing.get("OLLAMA_EMBED_DIM", "1024"),
+        default="1024",
     ).execute()
     ocr_host = inquirer.text(
         message="OCR host:",
