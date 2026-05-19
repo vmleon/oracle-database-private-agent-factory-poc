@@ -1,0 +1,208 @@
+databaseChangeLog:
+  # Banking core schema under APP. Tables and FKs follow the sketch in
+  # docs/DECISIONING-ENGINE-USE-CASE.md. JSON columns use Oracle 21c+
+  # native JSON (binary OSON); requires max_string_size=EXTENDED which the
+  # podman init-script enforces at first boot.
+  #
+  # Decisioning-specific tables (decision Blockchain Table, decision_audit,
+  # hitl_task) come in 003-app-decisioning.yaml.
+
+  - changeSet:
+      id: 002-create-customer
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              CREATE TABLE APP.customer (
+                customer_id    NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                full_name      VARCHAR2(200) NOT NULL,
+                date_of_birth  DATE,
+                residency      VARCHAR2(64),
+                email          VARCHAR2(200),
+                phone          VARCHAR2(40),
+                kyc_status     VARCHAR2(20) DEFAULT 'PENDING' NOT NULL
+                  CHECK (kyc_status IN ('PENDING','PASSED','FAILED')),
+                kyc_updated_at TIMESTAMP,
+                created_at     TIMESTAMP DEFAULT SYSTIMESTAMP NOT NULL
+              )
+
+  - changeSet:
+      id: 002-create-customer-protected-attrs
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              CREATE TABLE APP.customer_protected_attrs (
+                customer_id NUMBER PRIMARY KEY
+                  REFERENCES APP.customer(customer_id) ON DELETE CASCADE,
+                attrs       JSON
+              )
+
+  - changeSet:
+      id: 002-create-product-catalog
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              CREATE TABLE APP.product_catalog (
+                product_id      NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                name            VARCHAR2(200) NOT NULL,
+                product_type    VARCHAR2(20) NOT NULL,
+                pricing_model   VARCHAR2(20) NOT NULL,
+                min_amount      NUMBER(14,2) NOT NULL,
+                max_amount      NUMBER(14,2) NOT NULL,
+                min_term_months NUMBER NOT NULL,
+                max_term_months NUMBER NOT NULL,
+                currency        VARCHAR2(3) NOT NULL
+              )
+
+  - changeSet:
+      id: 002-create-account
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              CREATE TABLE APP.account (
+                account_id    NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                customer_id   NUMBER NOT NULL
+                  REFERENCES APP.customer(customer_id),
+                account_type  VARCHAR2(20) NOT NULL
+                  CHECK (account_type IN ('CURRENT','SAVINGS','CREDIT_CARD')),
+                currency      VARCHAR2(3) NOT NULL,
+                opened_at     TIMESTAMP DEFAULT SYSTIMESTAMP NOT NULL,
+                closed_at     TIMESTAMP
+              )
+        - sql:
+            sql: |-
+              CREATE INDEX APP.ix_account_customer ON APP.account(customer_id)
+
+  - changeSet:
+      id: 002-create-loan-application
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              CREATE TABLE APP.loan_application (
+                application_id   NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                customer_id      NUMBER NOT NULL
+                  REFERENCES APP.customer(customer_id),
+                product_id       NUMBER NOT NULL
+                  REFERENCES APP.product_catalog(product_id),
+                amount_requested NUMBER(14,2) NOT NULL,
+                term_months      NUMBER NOT NULL,
+                purpose          VARCHAR2(200),
+                channel          VARCHAR2(20) DEFAULT 'CHAT' NOT NULL,
+                status           VARCHAR2(20) DEFAULT 'DRAFT' NOT NULL
+                  CHECK (status IN ('DRAFT','SUBMITTED','IN_REVIEW',
+                                    'APPROVED','REJECTED','REFER_HUMAN','EXPIRED')),
+                submitted_at     TIMESTAMP,
+                decided_at       TIMESTAMP
+              )
+        - sql:
+            sql: |-
+              CREATE INDEX APP.ix_loan_app_customer ON APP.loan_application(customer_id)
+        - sql:
+            sql: |-
+              CREATE INDEX APP.ix_loan_app_status ON APP.loan_application(status)
+        - sql:
+            sql: |-
+              CREATE INDEX APP.ix_loan_app_submitted ON APP.loan_application(submitted_at)
+
+  - changeSet:
+      id: 002-create-loan-application-document
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              CREATE TABLE APP.loan_application_document (
+                doc_id         NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                application_id NUMBER NOT NULL
+                  REFERENCES APP.loan_application(application_id) ON DELETE CASCADE,
+                doc_type       VARCHAR2(40),
+                requested_type VARCHAR2(40),
+                storage_uri    VARCHAR2(500) NOT NULL,
+                uploaded_at    TIMESTAMP DEFAULT SYSTIMESTAMP NOT NULL,
+                ocr_status     VARCHAR2(20) DEFAULT 'PENDING' NOT NULL
+                  CHECK (ocr_status IN ('PENDING','PROCESSING','DONE','FAILED','RETRY')),
+                ocr_payload    JSON,
+                ocr_confidence NUMBER(5,4),
+                quality_tier   VARCHAR2(20)
+                  CHECK (quality_tier IN ('USABLE','MARGINAL','UNUSABLE'))
+              )
+        - sql:
+            sql: |-
+              CREATE INDEX APP.ix_loan_doc_app ON APP.loan_application_document(application_id)
+        - sql:
+            sql: |-
+              CREATE INDEX APP.ix_loan_doc_ocr_status ON APP.loan_application_document(ocr_status)
+
+  # Tiny smoke-test seed — one product, three customers, two applications,
+  # one uploaded document. Enough to verify the FKs and to query from
+  # Select AI later. Larger synthetic generation lands in 009-seed-synthetic.
+  - changeSet:
+      id: 002-seed-smoke
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              INSERT INTO APP.product_catalog
+                (name, product_type, pricing_model,
+                 min_amount, max_amount, min_term_months, max_term_months, currency)
+              VALUES
+                ('Personal Loan', 'PERSONAL_LOAN', 'INTEREST',
+                 1000, 50000, 6, 60, 'USD')
+        - sql:
+            sql: |-
+              INSERT INTO APP.customer
+                (full_name, date_of_birth, residency, email, phone, kyc_status, kyc_updated_at)
+              VALUES
+                ('Alice Salaried',  DATE '1988-04-12', 'RESIDENT', 'alice@example.com',  '+10000000001', 'PASSED', SYSTIMESTAMP)
+        - sql:
+            sql: |-
+              INSERT INTO APP.customer
+                (full_name, date_of_birth, residency, email, phone, kyc_status, kyc_updated_at)
+              VALUES
+                ('Bob Selfemployed', DATE '1979-09-30', 'RESIDENT', 'bob@example.com',    '+10000000002', 'PASSED', SYSTIMESTAMP)
+        - sql:
+            sql: |-
+              INSERT INTO APP.customer
+                (full_name, date_of_birth, residency, email, phone, kyc_status, kyc_updated_at)
+              VALUES
+                ('Carol Expat',     DATE '1992-01-21', 'EXPAT',    'carol@example.com',  '+10000000003', 'PENDING', NULL)
+        - sql:
+            sql: |-
+              INSERT INTO APP.customer_protected_attrs (customer_id, attrs)
+              SELECT customer_id, JSON('{"age_band":"30-39","gender":"F"}')
+                FROM APP.customer WHERE full_name='Alice Salaried'
+        - sql:
+            sql: |-
+              INSERT INTO APP.customer_protected_attrs (customer_id, attrs)
+              SELECT customer_id, JSON('{"age_band":"40-49","gender":"M"}')
+                FROM APP.customer WHERE full_name='Bob Selfemployed'
+        - sql:
+            sql: |-
+              INSERT INTO APP.customer_protected_attrs (customer_id, attrs)
+              SELECT customer_id, JSON('{"age_band":"30-39","gender":"F"}')
+                FROM APP.customer WHERE full_name='Carol Expat'
+        - sql:
+            sql: |-
+              INSERT INTO APP.loan_application
+                (customer_id, product_id, amount_requested, term_months, purpose, channel, status, submitted_at)
+              SELECT c.customer_id, p.product_id, 10000, 24, 'Home renovation', 'CHAT', 'SUBMITTED', SYSTIMESTAMP
+                FROM APP.customer c, APP.product_catalog p
+               WHERE c.full_name='Alice Salaried' AND p.name='Personal Loan'
+        - sql:
+            sql: |-
+              INSERT INTO APP.loan_application
+                (customer_id, product_id, amount_requested, term_months, purpose, channel, status)
+              SELECT c.customer_id, p.product_id, 25000, 48, 'Working capital', 'CHAT', 'DRAFT'
+                FROM APP.customer c, APP.product_catalog p
+               WHERE c.full_name='Bob Selfemployed' AND p.name='Personal Loan'
+        - sql:
+            sql: |-
+              INSERT INTO APP.loan_application_document
+                (application_id, requested_type, storage_uri, ocr_status)
+              SELECT la.application_id, 'PAYSLIP', 'oci://bucket/seed/alice-payslip.pdf', 'PENDING'
+                FROM APP.loan_application la
+                JOIN APP.customer c ON c.customer_id = la.customer_id
+               WHERE c.full_name='Alice Salaried'
