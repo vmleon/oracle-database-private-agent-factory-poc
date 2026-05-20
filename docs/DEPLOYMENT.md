@@ -190,45 +190,47 @@ database/liquibase/
 ├── oracle/
 │   ├── liquibase.properties.j2
 │   ├── db.changelog-master.yaml
-│   ├── 001-init.yaml                 # users, profiles, max_string_size check
-│   ├── 002-app-banking.yaml          # customer, account, application, document
-│   ├── 003-app-decisioning.yaml      # decision (Blockchain — carries human outcome + agent recommendation),
-│   │                                 # decision_audit, research_audit, hitl_task (carries the recommendation packet)
-│   ├── 004-app-config.yaml           # system_config (incl. recommendation-tier weights),
-│   │                                 # policy_parameter_history, fair_lending_review
-│   ├── 005-reporting-views.yaml      # REPORTING.* curated views — two sets:
-│   │                                 # customer-safe (for CHAT_AGENT) + broader read-only (for RESEARCH_AGENT)
-│   ├── 006-agent-tools.yaml          # AGENT_TOOLS PL/SQL packages: create_hitl_task, lookup_pricing, extract_features
-│   ├── 007-vector.yaml               # policy_corpus, case_history, vector indexes
-│   ├── 008-queues.yaml               # TxEventQ: HITL_REQUEST, OCR_REQUEST, OCR_EXCEPTION_Q + grants
-│   └── 009-seed-synthetic.yaml       # synthetic dataset (toggleable)
+│   ├── 001-users-and-grants.yaml         # APP, REPORTING, AGENT_TOOLS, AGENT_FACTORY users + PAF grants
+│   ├── 002-banking-core.yaml             # customer, account, product_catalog, loan_application, documents
+│   ├── 003-decisioning-audit-hitl.yaml   # decision (Blockchain — human outcome + agent recommendation),
+│   │                                     # decision_audit, research_audit, hitl_task (recommendation packet)
+│   ├── 004-chat-persistence.yaml         # chat_message — customer ↔ CHAT_AGENT conversation, replayable on refresh
+│   ├── 005-system-config.yaml            # system_config (incl. recommendation-tier weights),
+│   │                                     # policy_parameter_history, fair_lending_review
+│   ├── 006-reporting-views.yaml          # REPORTING.* curated views — two sets:
+│   │                                     # customer-safe (for CHAT_AGENT) + broader read-only (for RESEARCH_AGENT)
+│   ├── 007-agent-tools.yaml              # AGENT_TOOLS PL/SQL packages: create_hitl_task, lookup_pricing, extract_features
+│   ├── 008-vector-rag.yaml               # policy_corpus, case_history, vector indexes
+│   ├── 009-tx-event-queues.yaml          # TxEventQ: HITL_REQUEST, OCR_REQUEST, OCR_EXCEPTION_Q + grants
+│   └── 010-seed-synthetic.yaml           # synthetic dataset (toggleable)
 └── adb/
     ├── liquibase.properties.j2
     ├── db.changelog-master.yaml
-    ├── 001-init.yaml                 # DBMS_CLOUD grants, AGENT_FACTORY user
-    ├── 002-app-banking.yaml          # (shared with oracle/ via includeAll if practical)
-    ├── 003-app-decisioning.yaml
-    ├── 004-app-config.yaml
-    ├── 005-reporting-views.yaml
-    ├── 006-agent-tools.yaml
-    ├── 007-vector.yaml               # AI Vector Search indexes
-    ├── 008-queues.yaml               # TxEventQ: HITL_REQUEST, OCR_REQUEST, OCR_EXCEPTION_Q + grants
-    ├── 009-select-ai-bootstrap.yaml  # Two Select AI profiles (chat_profile + research_profile) + their NL2SQL object lists
-    │                                 # + RAG vector index
-    └── 010-seed-synthetic.yaml
+    ├── 001-users-and-grants.yaml         # DBMS_CLOUD grants, AGENT_FACTORY user
+    ├── 002-banking-core.yaml             # (shared with oracle/ via includeAll if practical)
+    ├── 003-decisioning-audit-hitl.yaml
+    ├── 004-chat-persistence.yaml
+    ├── 005-system-config.yaml
+    ├── 006-reporting-views.yaml
+    ├── 007-agent-tools.yaml
+    ├── 008-vector-rag.yaml               # AI Vector Search indexes
+    ├── 009-tx-event-queues.yaml          # TxEventQ: HITL_REQUEST, OCR_REQUEST, OCR_EXCEPTION_Q + grants
+    ├── 010-select-ai-bootstrap.yaml      # Two Select AI profiles (chat_profile + research_profile) + NL2SQL object lists
+    │                                     # + RAG vector index
+    └── 011-seed-synthetic.yaml
 ```
 
 `liquibase.properties.j2` is rendered by the `database-setup` Ansible role from Ansible vars (which are themselves seeded from `.env` for local, or from Terraform outputs for cloud), with contexts `seed` / `noseed`.
 
 Notes:
 
-- Blockchain Table DDL (`CREATE BLOCKCHAIN TABLE ... NO DROP UNTIL 7 YEARS IDLE NO DELETE LOCKED HASHING USING "SHA2_512"`) lives in `003-app-decisioning.yaml` and is supported on both local Oracle Free 26ai and ADB 26ai. The row is written by the Application Service on HITL close; `AGENT_TOOLS` has no `INSERT` on `decision`.
-- `hitl_task` carries the agent recommendation packet (`agent_recommendation`, `agent_reasoning`, `agent_explore_hints`, `agent_evidence`, `agent_run_id`) plus the reviewer's close-out fields (`human_outcome`, `human_note`, `human_user`, `closed_at`). `004-app-config.yaml` seeds reasonable defaults for the recommendation-tier weights.
-- `chat_message` (in `003-app-decisioning.yaml`) persists the customer ↔ `CHAT_AGENT` conversation keyed by `roomId` + `customer_id` + `application_id`; the customer chat UI is stateless and replays from this table on every load.
-- A separate `research_audit` table (`003-app-decisioning.yaml`) captures `RESEARCH_AGENT` tool calls keyed by `hitl_task_id` + reviewer, so research conversations are auditable but kept distinct from the decisioning trail.
+- Blockchain Table DDL (`CREATE BLOCKCHAIN TABLE ... NO DROP UNTIL 7 YEARS IDLE NO DELETE LOCKED HASHING USING "SHA2_512"`) lives in `003-decisioning-audit-hitl.yaml` and is supported on both local Oracle Free 26ai and ADB 26ai. The row is written by the Application Service on HITL close; `AGENT_TOOLS` has no `INSERT` on `decision`.
+- `hitl_task` carries the agent recommendation packet (`agent_recommendation`, `agent_reasoning`, `agent_explore_hints`, `agent_evidence`, `agent_run_id`) plus the reviewer's close-out fields (`human_outcome`, `human_note`, `human_user`, `closed_at`). `005-system-config.yaml` seeds reasonable defaults for the recommendation-tier weights.
+- `chat_message` (in `004-chat-persistence.yaml`) persists the customer ↔ `CHAT_AGENT` conversation keyed by `roomId` + `customer_id` + `application_id`; the customer chat UI is stateless and replays from this table on every load.
+- A separate `research_audit` table (`003-decisioning-audit-hitl.yaml`) captures `RESEARCH_AGENT` tool calls keyed by `hitl_task_id` + reviewer, so research conversations are auditable but kept distinct from the decisioning trail.
 - Seed data is behind a Liquibase context (`seed`) so the cloud deployment can opt out for an empty schema while local always seeds.
 - Vector index settings (chunk size, overlap, similarity metric, refresh rate) are parameterised by `.env`-rendered tokens so the same changelog can serve different embedding choices without code edits.
-- TxEventQ DDL (`008-queues.yaml`) runs PL/SQL anonymous blocks that call `dbms_aqadm.create_transactional_event_queue` + `dbms_aqadm.start_queue`, each wrapped to catch `ORA-24006` (queue exists) and `ORA-24010` (already started) so re-runs are idempotent. The same changeset also calls `dbms_aqadm.grant_queue_privilege` to grant `ENQUEUE` / `DEQUEUE` separately to the schemas that need each — no `aq_administrator_role` on application users.
+- TxEventQ DDL (`009-tx-event-queues.yaml`) runs PL/SQL anonymous blocks that call `dbms_aqadm.create_transactional_event_queue` + `dbms_aqadm.start_queue`, each wrapped to catch `ORA-24006` (queue exists) and `ORA-24010` (already started) so re-runs are idempotent. The same changeset also calls `dbms_aqadm.grant_queue_privilege` to grant `ENQUEUE` / `DEQUEUE` separately to the schemas that need each — no `aq_administrator_role` on application users.
 - Schema drift between `oracle/` and `adb/` is kept minimal; where practical, the shared YAML files are symlinked or `includeAll`-ed to avoid duplicate maintenance.
 
 ## 6. Environment configuration
@@ -281,7 +283,7 @@ End-to-end platform wiring is in place on the local stack:
 
 Next deliverables, in order:
 
-1. Liquibase changesets `002-app-banking.yaml` through `008-queues.yaml` (banking + decisioning tables with the recommendation columns on `hitl_task` and the human-decision columns on Blockchain `decision`, REPORTING views in two scopes, AGENT_TOOLS packages without `record_decision`, vector indexes, TxEventQ).
+1. Liquibase changesets `002-banking-core.yaml` through `009-tx-event-queues.yaml` (banking + decisioning tables with the recommendation columns on `hitl_task` and the human-decision columns on Blockchain `decision`, chat persistence in `004-chat-persistence.yaml`, REPORTING views in two scopes, AGENT_TOOLS packages, vector indexes, TxEventQ).
 2. Select AI bootstrap: two profiles (`chat_profile` customer-safe, `research_profile` broader read-only), NL2SQL object lists per profile, RAG vector index over `policy_corpus`.
 3. OPA MCP and OCR MCP services under `src/ai/`; Company Registry FastAPI service under `src/api/registry/` (synthetic JSON-backed data, OpenAPI 3.1 at `/openapi.json`); `CHAT_AGENT` flow that combines them with the in-DB `create_hitl_task` tool and the Company Registry HTTP datasource.
 4. `RESEARCH_AGENT` flow — broader Select AI profile + RAG, read-only.

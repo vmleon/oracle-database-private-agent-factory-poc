@@ -1,10 +1,13 @@
 databaseChangeLog:
   - include:
-      file: 001-init.yaml
+      file: 001-users-and-grants.yaml
       relativeToChangelogFile: true
   - include:
-      file: 002-app-banking.yaml
+      file: 002-banking-core.yaml
       relativeToChangelogFile: true
   - include:
-      file: 003-app-decisioning.yaml
+      file: 003-decisioning-audit-hitl.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: 004-chat-persistence.yaml
       relativeToChangelogFile: true

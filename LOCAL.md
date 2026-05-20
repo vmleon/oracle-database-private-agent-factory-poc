@@ -52,13 +52,13 @@ python manage.py info                                                 # prints J
 
 ## Day-2
 
-| Command                                        | What it does                                                                          |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------- |
-| `python manage.py local up`                    | Idempotent: starts containers if down, runs Liquibase if any pending changesets.      |
-| `python manage.py local provision`             | Re-runs Liquibase + grants only (no podman restart). Use after editing the changelog. |
-| `python manage.py local logs oracle-free-26ai` | Tails the Oracle DB container logs.                                                   |
-| `python manage.py local down`                  | Stops and removes containers. State persists in the `paf-oradata` volume.             |
-| `python manage.py local down --purge`          | Also removes the volume. Next `local up` starts with a fresh DB.                      |
+| Command                                        | What it does                                                                                                                                                                                   |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `python manage.py local up`                    | Idempotent: starts containers if down, runs Liquibase if any pending changesets.                                                                                                               |
+| `python manage.py local provision`             | Re-runs Liquibase + grants only (no podman restart). Use after editing the changelog.                                                                                                          |
+| `python manage.py local logs oracle-free-26ai` | Tails the Oracle DB container logs.                                                                                                                                                            |
+| `python manage.py local down`                  | Stops and removes containers. State persists in the `paf-oradata` volume and PAF's bind-mounted `paf-kit/applied-ai/{volume,dev-shared}` directories.                                          |
+| `python manage.py local down --purge`          | Also removes the Oracle data volume **and** empties PAF's bind-mount state. Next `local up` starts with a fresh DB and PAF presents the install wizard again. Does **not** re-extract the kit. |
 
 ## Private Agent Factory (PAF)
 
@@ -250,7 +250,7 @@ Stop any existing Oracle client on the host, or edit `deploy/podman/compose.loca
 The installer must use the service name `oracle-free-26ai` as the host, not `localhost` — `localhost` inside the PAF container points at the PAF container itself. Both containers share the project network so Oracle resolves by service name.
 
 **PAF installer says `AGENT_FACTORY` is missing privileges, or "Test connection" returns 400 with `Unable to determine database compatibility level`.**
-Make sure Liquibase ran (`python manage.py local provision`). The Liquibase grants live in `database/liquibase/oracle/001-init.yaml` (PAF kit README); the one extra grant on `SYS.V_$PARAMETER` is applied by `manage.py local provision` as sysdba (SYSTEM cannot grant it, hence Liquibase can't).
+Make sure Liquibase ran (`python manage.py local provision`). The Liquibase grants live in `database/liquibase/oracle/001-users-and-grants.yaml` (PAF kit README); the one extra grant on `SYS.V_$PARAMETER` is applied by `manage.py local provision` as sysdba (SYSTEM cannot grant it, hence Liquibase can't).
 
 **PAF logs loop forever on `Waiting for correct permissions to be set to mounted volume...` then exit.**
 The kit's startup script polls for `/mount/.config_complete.marker` (a host-side handshake the kit's own `deploy.sh` would otherwise create with `podman exec ... touch`). `local up` writes it automatically; if you brought PAF up manually, create it yourself:

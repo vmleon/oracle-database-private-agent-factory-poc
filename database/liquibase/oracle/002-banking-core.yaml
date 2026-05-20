@@ -5,7 +5,8 @@ databaseChangeLog:
   # podman init-script enforces at first boot.
   #
   # Decisioning-specific tables (decision Blockchain Table, decision_audit,
-  # hitl_task) come in 003-app-decisioning.yaml.
+  # research_audit, hitl_task) come in 003-decisioning-audit-hitl.yaml;
+  # chat conversation persistence in 004-chat-persistence.yaml.
 
   - changeSet:
       id: 002-create-customer
@@ -138,7 +139,7 @@ databaseChangeLog:
 
   # Tiny smoke-test seed — one product, three customers, two applications,
   # one uploaded document. Enough to verify the FKs and to query from
-  # Select AI later. Larger synthetic generation lands in 009-seed-synthetic.
+  # Select AI later. Larger synthetic generation lands in 010-seed-synthetic.
   - changeSet:
       id: 002-seed-smoke
       author: paf-poc

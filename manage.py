@@ -234,7 +234,7 @@ def _grant_sysdba_post_liquibase(container: str = "paf-oracle-free-26ai") -> Non
     PAF's `testInstallationDatabaseConnection` reads V$PARAMETER to detect
     the DB compatibility level — without SELECT on SYS.V_$PARAMETER it
     returns HTTP 400 with `ORA-00942 SYS.V_$PARAMETER does not exist`.
-    AGENT_FACTORY is created by `001-init.yaml`, so this grant must run
+    AGENT_FACTORY is created by `001-users-and-grants.yaml`, so this grant must run
     after Liquibase. Re-granting is a no-op.
     """
     sql = (
@@ -244,6 +244,34 @@ def _grant_sysdba_post_liquibase(container: str = "paf-oracle-free-26ai") -> Non
     )
     _run_sysdba_sql(sql, "Post-Liquibase sysdba grant", container)
     console.print("[green]✓[/green] SYS-only grants applied to AGENT_FACTORY.")
+
+
+def _wipe_paf_bind_mount_state() -> None:
+    """Empty PAF's bind-mounted runtime state, preserving the directories so
+    the next `local up` can still attach the bind mounts.
+
+    The Oracle data volume is a named podman volume and gets wiped by
+    `compose down -v`. PAF's installed-state markers (admin user records,
+    `.config_complete.marker`, `/mount/data/...` contents) live in
+    `paf-kit/applied-ai/volume` and `paf-kit/applied-ai/dev-shared` —
+    host bind mounts that compose can't reach. Without this cleanup,
+    `down --purge` followed by `local up` lands the user on PAF's login
+    screen instead of the installer wizard, because PAF reads the
+    marker + persisted config and skips re-installation.
+
+    The kit binaries under `paf-kit/applied-ai/kit/` are NOT touched —
+    no re-extract of the tar is needed.
+    """
+    for sub in ("volume", "dev-shared"):
+        path = PAF_KIT_DIR / "applied-ai" / sub
+        if not path.exists():
+            continue
+        for child in path.iterdir():
+            if child.is_dir():
+                shutil.rmtree(child)
+            else:
+                child.unlink()
+        console.print(f"[green]✓[/green] Emptied {path.relative_to(PROJECT_ROOT)}.")
 
 
 def _paf_post_start(container: str = "paf-agent-factory") -> None:
@@ -485,13 +513,18 @@ def local_up() -> None:
 
 
 @local.command("down")
-@click.option("--purge", is_flag=True, help="Remove volumes as well.")
+@click.option(
+    "--purge", is_flag=True,
+    help="Remove the Oracle data volume and empty PAF's bind-mount state.",
+)
 def local_down(purge: bool) -> None:
     """Stop and remove the local stack."""
     args = ["podman", "compose", "-f", str(PODMAN_COMPOSE), "down"]
     if purge:
         args.append("-v")
     _run(args)
+    if purge:
+        _wipe_paf_bind_mount_state()
 
 
 @local.command("logs")

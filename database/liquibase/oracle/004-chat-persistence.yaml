@@ -1,0 +1,50 @@
+databaseChangeLog:
+  # Customer ↔ CHAT_AGENT conversation persistence. The chat UI is stateless;
+  # on every load (refresh, login, device switch, return after hours away) it
+  # calls GET /v1/applications/{id}/chat and replays the conversation from
+  # this table. Status updates and the final outcome are also appended here
+  # by the Application Service after the reviewer closes the HITL task — so
+  # the customer always finds the latest response in the same conversation.
+  #
+  # Design model (see DESIGN.md §4 / §8 / USE-CASE.md):
+  # - Keyed by (room_id, customer_id, application_id). room_id aligns with
+  #   PAF's roomId so the agent run thread and the persisted thread stay in
+  #   step.
+  # - sender ∈ {CUSTOMER, AGENT, SYSTEM}. SYSTEM is used for status updates
+  #   (e.g. "we're reviewing your application") and the final outcome
+  #   message (priced offer / reason codes) appended at HITL close.
+  # - When sender = AGENT, agent_run_id joins decision_audit so each reply
+  #   is traceable to the tool-call trail that produced it.
+
+  - changeSet:
+      id: 004-create-chat-message
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              CREATE TABLE APP.chat_message (
+                message_id     NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                room_id        VARCHAR2(60) NOT NULL,
+                customer_id    NUMBER NOT NULL
+                  REFERENCES APP.customer(customer_id),
+                application_id NUMBER
+                  REFERENCES APP.loan_application(application_id),
+                sender         VARCHAR2(20) NOT NULL
+                  CHECK (sender IN ('CUSTOMER','AGENT','SYSTEM')),
+                body           CLOB,
+                attachments    JSON,
+                agent_run_id   VARCHAR2(60),
+                created_at     TIMESTAMP DEFAULT SYSTIMESTAMP NOT NULL
+              )
+        - sql:
+            sql: |-
+              CREATE INDEX APP.ix_chat_message_room
+                ON APP.chat_message(room_id, created_at)
+        - sql:
+            sql: |-
+              CREATE INDEX APP.ix_chat_message_application
+                ON APP.chat_message(application_id, created_at)
+        - sql:
+            sql: |-
+              CREATE INDEX APP.ix_chat_message_customer
+                ON APP.chat_message(customer_id, created_at)
