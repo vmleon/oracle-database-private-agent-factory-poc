@@ -113,22 +113,28 @@ python manage.py info
 
 Detailed prerequisites, day-2 commands, and troubleshooting in [`LOCAL.md`](LOCAL.md).
 
-## Current status
+## Current state
 
-The platform plumbing is wired end-to-end on the local stack:
+What works today on the local stack:
 
-- Oracle Database Free 26ai running locally with the four-schema layout (`APP`, `REPORTING`, `AGENT_TOOLS`, `AGENT_FACTORY`), `max_string_size=EXTENDED`, and PAF-specific grants on `AGENT_FACTORY`.
-- Private Agent Factory container built from the vendor kit, talking to the local 26ai database under `AGENT_FACTORY` and reachable at `https://localhost:8080/`.
-- **LLM** (large language model) Configuration registered against an Ollama endpoint (laptop or LAN GPU host, with mDNS hostnames auto-resolved into the container via `extra_hosts`).
-- A trivial `HELLO_AGENT` flow (Chat input → Prompt with `{{message}}` → LLM → Chat output) runs successfully in PAF's Playground.
+- Oracle Database Free 26ai with `max_string_size=EXTENDED`, four schema users (`APP`, `REPORTING`, `AGENT_TOOLS`, `AGENT_FACTORY`), and PAF-specific grants on `AGENT_FACTORY`.
+- Liquibase changelog `001-006`: users + grants, banking core (incl. employment / transactions / bureau / facilities), decisioning + HITL + chat persistence, `system_config` + parameter history, REPORTING view sets.
+- `DBMS_CLOUD` + `DBMS_CLOUD_AI` installed via `manage.py`. Caddy TLS proxy + Oracle SSL wallet make HTTPS-from-DB calls work end-to-end (validated by `UTL_HTTP`).
+- Private Agent Factory container built from the vendor kit, installed under `AGENT_FACTORY` and reachable at `https://localhost:8080/`.
+- **LLM** (large language model) Configuration in PAF registered against an Ollama endpoint (laptop or LAN GPU host; mDNS hostnames auto-resolved into the container via `extra_hosts`).
+- OPA + OPA MCP wrapper: `opa` container loads every `.rego` under `opa/packages/`; `opa-mcp` exposes seven typed tools at `http://opa-mcp:8500/mcp/` (`required_documents`, `evaluate_eligibility`, `evaluate_aml`, `evaluate_kyc`, `evaluate_fair_lending_flags`, `lookup_pricing`, `list_policy_versions`).
+- `HELLO_AGENT` flow runs in PAF Playground.
 
-What is next:
+What's next, in order:
 
-- Liquibase schema: users + grants, banking core (incl. employment / transactions / bureau / facilities), decisioning + HITL + chat persistence, system_config + history, REPORTING view sets — all in place (`001–006`).
-- DBMS_CLOUD installed locally via `manage.py`; Caddy TLS proxy + Oracle SSL wallet make HTTPS-from-DB work end-to-end (validated by `UTL_HTTP`). Select AI profiles are **cloud / ADB only** — Oracle Free 26ai (23.26.x) rejects custom `provider_endpoint` values in `DBMS_CLOUD_AI` pre-flight, so the local `CHAT_AGENT` flow uses a SQL Query node + LLM instead. See [`docs/DEPLOYMENT.md §7`](docs/DEPLOYMENT.md) for the full constraint write-up.
-- Remaining schema: vector RAG corpus (`008-vector-rag`), TxEventQ queues (`009-tx-event-queues`), larger synthetic seed (`010-seed-synthetic`).
-- OPA MCP and OCR MCP services, the Company Registry FastAPI (PAF HTTP datasource for employer verification), then the production `CHAT_AGENT` flow (customer-facing, recommendation → HITL).
-- Spring Boot Application Service + the two Angular UIs.
-- `RESEARCH_AGENT` flow (backoffice-only, broader read scope) wired into the HITL detail screen.
+1. **Schema**: `007-agent-tools` (`AGENT_TOOLS` PL/SQL packages incl. `create_hitl_task`), `008-vector-rag` (`policy_corpus`, `case_history`), `009-tx-event-queues` (`HITL_REQUEST`, `OCR_REQUEST`, exception queue), `010-seed-synthetic` (larger demo dataset).
+2. **OCR MCP** service under `src/ai/` and **Company Registry FastAPI** under `src/api/registry/` (synthetic JSON-backed data, OpenAPI 3.1 spec, registered as a PAF HTTP datasource).
+3. **`CHAT_AGENT` flow** in PAF — customer-facing, combines OPA MCP + OCR MCP + Company Registry datasource + the in-DB `create_hitl_task` tool. Writes the recommendation packet to the HITL queue.
+4. **`RESEARCH_AGENT` flow** — backoffice-only, broader read-only scope (full transactions, `decision_audit`, `policy_parameter_history`, RAG over `policy_corpus`). No side-effect tools.
+5. **Spring Boot Application Service** (incl. Blockchain `decision` write at HITL close) + the two Angular UIs (customer chat, backoffice with Case Research Agent panel).
+6. **Cloud deployment** (OCI Terraform + Ansible, ADB + LB).
 
-Cloud deployment (OCI Terraform + Ansible, ADB + LB) is documented as a design target in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) but is not implemented.
+Two known constraints not in the "next" list because they're decided:
+
+- **Select AI profiles are ADB-only.** Oracle Free 26ai (23.26.x) rejects custom `provider_endpoint` values in `DBMS_CLOUD_AI` pre-flight. The local `CHAT_AGENT` flow uses a SQL Query node + LLM; full Select AI Bridge is the cloud path. See [`docs/DEPLOYMENT.md §7`](docs/DEPLOYMENT.md).
+- **Auth is out of scope.** Both UIs use a mock login (customer dropdown / role dropdown). The audience system is assumed to provide SSO in production.

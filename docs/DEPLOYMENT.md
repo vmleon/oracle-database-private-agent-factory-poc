@@ -271,28 +271,34 @@ Policy values (DTI cap, score floor, OCR thresholds, fair-lending bucketing, rec
   3. `provider: "openai"` + `provider_endpoint: "https://caddy-ollama-tls/v1"` → `ORA-20401` raised pre-flight (request never reaches Caddy — Caddy access logs confirm), with the internal URI rendered `bearer://caddy-ollama-tls/v1/chat/completions`. The on-prem `openai` provider appears to allow-list the OpenAI hostname and reject custom `provider_endpoint` values at credential validation time. Setting the credential `username` to `OPENAI` and using an `sk-…` shaped password doesn't change the outcome.
      Plain `UTL_HTTP` through the same wallet to the same Caddy endpoint works fine, so this is purely a `DBMS_CLOUD_AI` validator. On cloud / ADB the same package accepts the custom endpoint (we believe), so a dedicated Liquibase changeset `010-select-ai-bootstrap.yaml` lives in the `adb/` changelog and runs the same `CREATE_PROFILE` calls. The local `CHAT_AGENT` flow in PAF uses a generic **SQL Query node** with LLM-generated SQL against the same `REPORTING.chat_v_*` views (PAF's LLM Management config calls Ollama directly — no Select AI in the loop). Same demo behaviour to the user, different mechanism under the hood.
 
-## 8. What is intentionally not specified yet
+## 8. Open design questions
 
-- Exact OCI compute shapes per role (chosen at `setup cloud` time; defaults in `manage.py` to be calibrated after first cloud demo).
-- Exact OPA bundle layout vs `.rego` file layout (decided when the OPA MCP server is built).
-- Exact PAF flow JSON for `CHAT_AGENT` and `RESEARCH_AGENT` — decided once the banking + decisioning schema and the in-DB Select AI tools exist.
+- Exact OCI compute shapes per role (chosen at `setup cloud` time).
+- Exact PAF flow JSON for `CHAT_AGENT` and `RESEARCH_AGENT` — locked once the in-DB `AGENT_TOOLS` package and the Select AI tools exist.
 - HITL assignment policy beyond "queue-claim".
 - Backup, log retention, and monitoring beyond the audit-trail observability defined in [DESIGN.md §9](DESIGN.md#9-observability-model).
 
-## 9. Current scope
+## 9. Current state
 
-End-to-end platform wiring is in place on the local stack:
+What works today on the local stack:
 
 - Oracle Database Free 26ai container with `max_string_size=EXTENDED` and four schema users (`APP`, `REPORTING`, `AGENT_TOOLS`, `AGENT_FACTORY`) created by Liquibase. `AGENT_FACTORY` carries the PAF-specific privileges (`CONNECT, RESOURCE, CREATE SYNONYM/DATABASE LINK/ANY INDEX, INSERT ANY TABLE, CREATE USER, DROP USER, CREATE SESSION WITH ADMIN OPTION`, `READ/WRITE ON DIRECTORY DATA_PUMP_DIR`) plus the SYS-only `SELECT ON SYS.V_$PARAMETER` grant applied as sysdba.
-- PAF container built from the kit and installed under `AGENT_FACTORY` (PAF's read-only worker user `AAI_RO_AGENT_FACTORY` is created by the wizard).
-- LLM Configuration registered against an Ollama endpoint (laptop or LAN GPU host, friendly hostname resolved via compose `extra_hosts`).
-- A trivial `HELLO_AGENT` flow (`Chat input → Prompt with {{message}} → LLM → Chat output`) executes successfully via the Playground.
+- Liquibase changelog `001-006` applied: users + grants, banking core (customer / account / loan*application / employment / account_transaction / credit_bureau_snapshot / existing_facility), decisioning + HITL + chat persistence, `system_config` + parameter history, REPORTING view sets (`chat_v*_`customer-safe,`research*v*_` broader).
+- `DBMS_CLOUD` + `DBMS_CLOUD_AI` installed via `catcon.pl`. Caddy TLS terminator in front of Ollama plus an Oracle SSL wallet trusting Caddy's CA (`SSL_WALLET` database property) — HTTPS-from-DB calls work end-to-end via `UTL_HTTP`. Network ACL grants `AGENT_FACTORY → caddy-ollama-tls:443`.
+- PAF container built from the vendor kit and installed under `AGENT_FACTORY` (PAF's read-only worker user `AAI_RO_AGENT_FACTORY` is created by the wizard).
+- LLM Configuration in PAF registered against an Ollama endpoint (laptop or LAN GPU host; friendly hostname resolved via compose `extra_hosts`).
+- OPA + OPA MCP wrapper: `opa` container in server mode loading every `.rego` under `opa/packages/` (config / eligibility / aml / kyc / fair_lending / required_documents / pricing); `opa-mcp` FastMCP wrapper exposing the rules as seven typed MCP tools at `http://opa-mcp:8500/mcp/`. Registered in PAF as an MCP Server node; wired to `CHAT_AGENT` only per the two-agent security model.
+- `HELLO_AGENT` flow executes successfully via the PAF Playground.
 
 Next deliverables, in order:
 
-1. Liquibase schema progress: `001-users-and-grants`, `002-banking-core` (incl. employment, transactions, bureau, facilities), `003-decisioning-audit-hitl`, `004-chat-persistence`, `005-system-config`, `006-reporting-views` are in. Remaining: `007-agent-tools` (PL/SQL packages), `008-vector-rag` (`policy_corpus`, `case_history`), `009-tx-event-queues` (`HITL_REQUEST` / `OCR_REQUEST` / exception queue), `010-seed-synthetic` (larger demo dataset).
-2. Select AI bootstrap: **automated by `manage.py`** on every `local up` — `DBMS_CLOUD` install (one-time, idempotent), EXECUTE grants on `DBMS_CLOUD` / `DBMS_CLOUD_AI` to `AGENT_FACTORY`, network ACL for outbound HTTP to Ollama, and creation of two profiles (`chat_profile` over `REPORTING.chat_v_*`, `research_profile` over `REPORTING.research_v_*`). RAG vector index over `policy_corpus` follows once `008-vector-rag.yaml` lands.
-3. OPA MCP and OCR MCP services under `src/ai/`; Company Registry FastAPI service under `src/api/registry/` (synthetic JSON-backed data, OpenAPI 3.1 at `/openapi.json`); `CHAT_AGENT` flow that combines them with the in-DB `create_hitl_task` tool and the Company Registry HTTP datasource.
-4. `RESEARCH_AGENT` flow — broader Select AI profile + RAG, read-only.
+1. Schema: `007-agent-tools` (PL/SQL packages — `create_hitl_task`, `lookup_pricing`, `extract_features`), `008-vector-rag` (`policy_corpus`, `case_history`), `009-tx-event-queues` (`HITL_REQUEST` / `OCR_REQUEST` / exception queue), `010-seed-synthetic` (larger demo dataset).
+2. OCR MCP service under `src/ai/` (FastMCP wrapper around YOLO + PaddleOCR/Tesseract) and Company Registry FastAPI under `src/api/registry/` (synthetic JSON-backed data, OpenAPI 3.1 spec, registered with PAF as an HTTP datasource).
+3. `CHAT_AGENT` flow in PAF — customer-safe, combines OPA MCP + OCR MCP + Company Registry datasource + in-DB `create_hitl_task` tool. Writes the recommendation packet to the HITL queue.
+4. `RESEARCH_AGENT` flow — broader read-only Select AI profile + RAG. No side-effect tools.
 5. Spring Boot Application Service (including the Blockchain `decision` write at HITL close) and the two Angular UIs (customer chat + backoffice with the Case Research Agent panel on the HITL detail screen).
 6. Cloud deployment (Terraform + Ansible) — designed in §4, not implemented.
+
+Known constraint, decided and not in the "next" list:
+
+- **Select AI profiles are ADB-only.** Oracle Free 26ai (23.26.x) rejects custom `provider_endpoint` values in `DBMS_CLOUD_AI` pre-flight (`ORA-20401`) — see §7. The `chat_profile` / `research_profile` creation is in a separate `adb/` Liquibase folder; local stacks skip it and the `CHAT_AGENT` flow uses a generic SQL Query node + LLM against the same `REPORTING.chat_v_*` views.

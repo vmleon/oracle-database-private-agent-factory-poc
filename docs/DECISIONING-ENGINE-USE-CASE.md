@@ -1029,10 +1029,9 @@ The test bench is for **functionality and observability**, not performance. Each
 
 ## Next Steps
 
-- Lock the data model and `system_config` parameter list including the recommendation-tier weights.
 - Generate the synthetic dataset and mock ID templates for the three quality tiers.
-- Author the OPA policy packages with `opa test` coverage — each rule's signal weighting toward APPROVE / REVIEW / DECLINE encoded in `system_config`, not in Rego.
-- Stand up the OPA MCP server and the OCR MCP server; wire them to `CHAT_AGENT` only.
+- Add `opa test` coverage for the existing policy packages under `opa/packages/` — each rule's signal weighting toward APPROVE / REVIEW / DECLINE encoded in `system_config`, not in Rego.
+- Stand up the OCR MCP server; wire it to `CHAT_AGENT` only.
 - Stand up the Company Registry FastAPI service (`src/api/registry/`) with synthetic data, OpenAPI 3.1 spec at `/openapi.json`, and a `verify_employer` route; register with PAF as an HTTP datasource for `CHAT_AGENT`.
 - Build `CHAT_AGENT` in PAF: customer-safe Select AI profile, OPA + OCR MCPs, Company Registry HTTP datasource, `create_hitl_task` in-DB tool.
 - Build `RESEARCH_AGENT` in PAF: broader read-only Select AI profile, deeper RAG, **no side-effect tools**.

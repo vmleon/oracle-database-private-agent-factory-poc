@@ -21,7 +21,7 @@ When you're done you have:
 
 **Not wired locally**: Select AI profiles (`chat_profile` / `research_profile`). Oracle Database Free 26ai (23.26.x) rejects custom `provider_endpoint` values in `DBMS_CLOUD_AI` pre-flight (`ORA-20401`) — see [`docs/DEPLOYMENT.md §7`](docs/DEPLOYMENT.md). The `CHAT_AGENT` flow uses a SQL Query node + LLM locally; full Select AI Bridge is the ADB demo path.
 
-OCR, the Spring Boot backend, and the Angular UIs are not yet in the compose; they're tracked in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
+OCR, the Spring Boot backend, and the Angular UIs are not in the compose yet. The next-steps list in [`README.md`](README.md#current-state) shows the order they land in.
 
 ## Prereqs
 
