@@ -4,21 +4,19 @@ A banking proof of concept showing **Oracle AI Database 26ai + Private Agent Fac
 
 ## Why this PoC exists — the story
 
-**Lina, a credit risk analyst,** keeps hearing the same complaint from origination: loan officers want a fast, governed pre-screen on incoming personal-loan applications before committing to a full credit decision and a priced offer. Today that work is ad-hoc, undocumented, and impossible to audit.
+**Lina, a credit risk analyst,** keeps hearing the same complaint from origination: loan officers and underwriters want a fast, governed first look at every incoming personal-loan application, with reasoning they can defend in front of an auditor. Today that work is ad-hoc, undocumented, and impossible to replay.
 
-In **Private Agent Factory**, Lina builds a **Personal-Loan Pre-Screen Agent** using approved read-only tools — customer master, credit bureau snapshot, existing facilities, and Select AI RAG over the bank's lending policy corpus. This gets the business **60–70% of the way there**: a useful, policy-aware triage agent built quickly by a domain expert, without a project on IT's backlog.
+In **Private Agent Factory**, Lina builds the **Personal-Loan Chat Agent**. It talks to the customer, asks for the right documents per `(employment_type, residency_status, amount_band)`, waits for OCR, pulls customer / bureau / facilities via Select AI over read-only views, cites lending policy via RAG, runs **OPA** for eligibility / AML / KYC / fair-lending, and writes a **recommendation packet** to the HITL queue — with one of three tiers (**APPROVE**, **REVIEW**, **DECLINE**) plus the reasoning that justifies it. **Every** application creates a HITL task. There is no silent automation, no "Mandatory-HITL switch" to remember to flip — the human is always the decision-maker.
 
-This is the **factory moment**. Lina can create one agent today, then ten, twenty, or a hundred specialized agents for adjacent products — credit cards, secured loans, SMB lending, mortgage pre-screen, KYC refresh triage — all reusing the same approved data tools and the same policy RAG.
+This is the **factory moment**. One chat agent today; tomorrow Lina clones the pattern for credit cards, secured loans, SMB lending, mortgage triage, KYC refresh — same MCP toolkit, same Oracle AI Database, different prompt and product config.
 
-**Sam, a loan officer,** asks: _"Should we proceed with this customer's $25,000 personal-loan request?"_ The agent returns a **moderate-confidence pre-screen** grounded in bureau evidence and cited lending policy: applicant in band, no obvious sanctions or KYC blockers, DTI within soft range — recommend proceeding to full decisioning.
+**The customer** chats, uploads documents, and gets _"we're reviewing your application"_ — no surprise machine-rejection, no opaque approval.
 
-Lina **publishes the Agent Factory endpoint** as the business-approved contract: _this_ is what pre-screen means, _this_ is the data it's allowed to touch, _this_ is how it cites policy.
+**Diego, an enterprise application developer,** productises the platform: the **OCR** pipeline (YOLO + PaddleOCR) as an MCP server, an **OPA** wrapper as an MCP server, in-DB writers in the `AGENT_TOOLS` package, **TxEventQ** queues for async OCR and HITL claim, the customer chat UI, the backoffice queue, and the production APIs. He also ships a **second, backoffice-only agent** — the **Case Research Agent** — that lives behind the HITL detail screen and has access to broader data than the customer-safe chat agent: full transaction history, `decision_audit`, `policy_parameter_history`, deeper similarity over `case_history`. It cannot decide; it can read, analyse, and explain.
 
-**Diego, an enterprise application developer,** consumes that endpoint and productizes it into a full **Credit Decisioning Agent Loop**: a deterministic **OPA** rule engine (eligibility, AML, KYC, fair-lending), governed **vector** retrieval over policy and similar past cases, an **OCR pipeline** (YOLO + PaddleOCR) over uploaded ID and payslip documents, a **pricing engine** with risk-band rate-card lookup, **TxEventQ** for HITL claim and async OCR, a **Blockchain Table** for an append-only decision audit, a **Mandatory-HITL** toggle, a customer chat UI, a backoffice queue, and production APIs.
+**Sam, a HITL reviewer,** opens the queue. He sees a **REVIEW** recommendation: _"$25,000 personal loan, self-employed expat, DTI 0.41, payslip OCR marginal on net-pay field"_. The reasoning enumerates exactly which signals tipped it — `dti_in_soft_band`, `ocr_marginal_on_payslip`, `expat_self_employed_doc_set_complete` — plus a short list of **explore-hints** the agent suggests Sam look at. Sam asks the **Case Research Agent**: _"show me how we decided similar cases in the last 12 months"_. It answers from `case_history` with three anchor cases and citations into `decision_audit`. Sam decides REJECT and types his note. The decision lands in the **Blockchain Table** — one row per bank decision — carrying the human's call, the agent's original recommendation, the override reason, and the full evidence packet, retained seven years and tamper-evident.
 
-Sam asks again: _"$25,000 personal loan for this customer — what's the decision?"_ Now the production Agent Loop returns a **REFER_HUMAN with a priced indicative offer** — grounded in vector policy citations, similar past cases, OPA reason codes (`dti_in_soft_band`, `ocr_marginal_on_payslip`), OCR-verified document completeness, a risk-band-adjusted rate, a HITL task auto-created in the backoffice queue, and an immutable blockchain decision record retained for seven years. The customer sees only the reason codes the bank chose to disclose.
-
-**The point of the PoC:** Private Agent Factory lets business experts rapidly create useful, governed agents. Developers then productize those approved endpoint contracts into enterprise-ready Decisioning Loops — deterministic where banks demand determinism, observable where regulators demand audit — all powered by Oracle's converged AI Database.
+**The point of the PoC:** Private Agent Factory lets a domain expert wire a governed chat agent over Oracle AI Database — one for personal loans today, dozens for adjacent products tomorrow. The single, immutable record of the bank's decision is the **human's call**, not the AI's. Oracle AI Database 26ai carries the data, the rule-engine inputs, the vector retrieval, the queues, and the tamper-proof audit — all in one engine.
 
 ## Deployment
 
@@ -64,7 +62,8 @@ What is next:
 
 - Extend Liquibase with the banking + decisioning schema (`002-app-banking.yaml` onwards) so the agent has real data to work against.
 - Select AI bootstrap (profile + NL2SQL object list over `REPORTING.*`, RAG vector index over `policy_corpus`).
-- OPA MCP and OCR MCP services, then the production `DECISIONING_AGENT` flow.
+- OPA MCP and OCR MCP services, then the production `CHAT_AGENT` flow (customer-facing, recommendation → HITL).
 - Spring Boot Application Service + the two Angular UIs.
+- `RESEARCH_AGENT` flow (backoffice-only, broader read scope) wired into the HITL detail screen.
 
 Cloud deployment (OCI Terraform + Ansible, ADB + LB) is documented as a design target in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) but is not implemented.
