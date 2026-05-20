@@ -8,10 +8,13 @@ See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for the design; this file is the 
 
 After running the commands below, you have:
 
-- Oracle Database Free 26ai on `localhost:1521` (service `FREEPDB1`), with `max_string_size=EXTENDED` and four schema users (`APP`, `REPORTING`, `AGENT_TOOLS`, `AGENT_FACTORY`).
+- Oracle Database Free 26ai on `localhost:1521` (service `FREEPDB1`), with `max_string_size=EXTENDED`, four schema users (`APP`, `REPORTING`, `AGENT_TOOLS`, `AGENT_FACTORY`), the banking + decisioning schema in place, and `DBMS_CLOUD` + `DBMS_CLOUD_AI` installed.
 - Private Agent Factory at `https://localhost:8080/` — UI installer on first boot, sign-in page thereafter — installed against the local 26ai database under `AGENT_FACTORY`.
+- A `caddy-ollama-tls` container terminating TLS in front of Ollama, plus an Oracle SSL wallet trusting Caddy's CA (registered via the `SSL_WALLET` database property). Plain `UTL_HTTP` from any session reaches Ollama over HTTPS — useful for any future HTTPS-from-DB work.
 - LLM Configuration registered against your configured Ollama host (laptop or LAN GPU).
 - A `HELLO_AGENT` flow you can build in Agent Builder and run from Playground in under a minute (see [Smoke-test in PAF](#smoke-test-in-paf)).
+
+**Not wired locally**: Select AI profiles (`chat_profile` / `research_profile`). Oracle Database Free 26ai (23.26.x) rejects custom `provider_endpoint` values in `DBMS_CLOUD_AI` pre-flight (`ORA-20401`) — see [`docs/DEPLOYMENT.md §7`](docs/DEPLOYMENT.md). The `CHAT_AGENT` flow uses a SQL Query node + LLM locally; full Select AI Bridge is the ADB demo path.
 
 OPA, OCR, the Spring Boot backend, and the Angular UIs are not yet in the compose; they're tracked in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 

@@ -45,6 +45,9 @@ ocr/models/
 # PAF kit — extracted from the vendor tarball; ~6 GB on disk, never commit
 paf-kit/
 
+# Locally-generated TLS certs for the Caddy → Ollama HTTPS proxy
+deploy/podman/caddy/tls/
+
 # IDE / OS
 .idea/
 .vscode/

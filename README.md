@@ -125,8 +125,8 @@ The platform plumbing is wired end-to-end on the local stack:
 What is next:
 
 - Liquibase schema: users + grants, banking core (incl. employment / transactions / bureau / facilities), decisioning + HITL + chat persistence, system_config + history, REPORTING view sets — all in place (`001–006`).
-- Remaining schema: vector RAG corpus (`008`), TxEventQ queues (`009`), larger synthetic seed (`010`).
-- Select AI bootstrap: register two Select AI profiles (`chat_profile` customer-safe, `research_profile` broader) against the `REPORTING.*` views, plus RAG vector index over `policy_corpus` once `008` lands.
+- DBMS_CLOUD installed locally via `manage.py`; Caddy TLS proxy + Oracle SSL wallet make HTTPS-from-DB work end-to-end (validated by `UTL_HTTP`). Select AI profiles are **cloud / ADB only** — Oracle Free 26ai (23.26.x) rejects custom `provider_endpoint` values in `DBMS_CLOUD_AI` pre-flight, so the local `CHAT_AGENT` flow uses a SQL Query node + LLM instead. See [`docs/DEPLOYMENT.md §7`](docs/DEPLOYMENT.md) for the full constraint write-up.
+- Remaining schema: vector RAG corpus (`008-vector-rag`), TxEventQ queues (`009-tx-event-queues`), larger synthetic seed (`010-seed-synthetic`).
 - OPA MCP and OCR MCP services, the Company Registry FastAPI (PAF HTTP datasource for employer verification), then the production `CHAT_AGENT` flow (customer-facing, recommendation → HITL).
 - Spring Boot Application Service + the two Angular UIs.
 - `RESEARCH_AGENT` flow (backoffice-only, broader read scope) wired into the HITL detail screen.

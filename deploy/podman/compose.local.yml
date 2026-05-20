@@ -12,6 +12,10 @@ services:
     volumes:
       - oradata:/opt/oracle/oradata
       - ./init-scripts:/opt/oracle/scripts/startup:ro
+    # Oracle DBMS_CLOUD_AI (Select AI) talks to the caddy-ollama-tls
+    # service over compose's internal DNS — no extra_hosts needed here.
+    # The TLS terminator that resolves the real Ollama upstream is the
+    # Caddy service below.
     healthcheck:
       test: ["CMD", "/opt/oracle/checkDBStatus.sh"]
       interval: 30s
@@ -48,6 +52,27 @@ services:
       TAKE_SNAPSHOT: "false"
       USE_WALLET: "false"
       INCLUDE_KA_DATA: "false"
+
+  # TLS terminator in front of Ollama. Exists because Oracle 26ai's
+  # DBMS_CLOUD_AI rejects HTTP endpoints on-prem (ORA-20047). Caddy
+  # serves a pre-generated self-signed cert; the matching CA root is
+  # baked into the Oracle container's OS trust store by `manage.py local up`.
+  #
+  # No host port is published — only the compose network reaches it.
+  # The upstream (real Ollama on a LAN GPU host or laptop) is resolved
+  # via extra_hosts (same mDNS trick PAF uses).
+  caddy-ollama-tls:
+    image: docker.io/caddy:2-alpine
+    container_name: paf-caddy-ollama-tls
+    restart: unless-stopped
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy/tls:/etc/caddy/tls:ro
+    environment:
+      OLLAMA_HOST: "${OLLAMA_HOST}"
+      OLLAMA_PORT: "${OLLAMA_PORT:-11434}"
+    extra_hosts:
+      - "${OLLAMA_HOSTS_ENTRY:-localhost:127.0.0.1}"
 
 volumes:
   oradata:

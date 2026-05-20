@@ -31,6 +31,18 @@ PAF_KIT_DIR = PROJECT_ROOT / "paf-kit"
 PAF_VERSION_FILE = PAF_KIT_DIR / "applied-ai" / "kit" / "agent_factory" / "internal" / "version.json"
 PAF_BUILD_SCRIPT = PAF_KIT_DIR / "build-image.sh"
 PAF_IMAGE_REPO = "localhost/applied-ai-label"
+
+# Caddy → Ollama HTTPS proxy. Cert + key live on the host (mounted into the
+# Caddy container); the CA root is baked into the Oracle container's OS trust
+# store. Hostname must match the compose service name and the SAN below.
+CADDY_TLS_DIR = PROJECT_ROOT / "deploy" / "podman" / "caddy" / "tls"
+CADDY_TLS_HOSTNAME = "caddy-ollama-tls"
+# Oracle SSL wallet path inside the database container. DBMS_CLOUD looks
+# this up via the SSL_WALLET database property (set by `_setup_oracle_ssl_wallet`).
+# The wallet password is only used by orapki at create-time — the wallet is
+# `-auto_login`, so DBMS_CLOUD opens it passwordlessly at runtime.
+ORACLE_WALLET_DIR = "/opt/oracle/dcs/commonstore/wallets/ssl"
+ORACLE_WALLET_PWD = "PafWalletPwd_internal_only"
 # Snapshot of the kit-shipped initial state of `applied-ai/{volume,dev-shared}`,
 # captured at `paf prepare` time. `local down --purge` restores from this so
 # runtime accretions (admin user records, .config_complete.marker, /mount/data)
@@ -240,16 +252,417 @@ def _grant_sysdba_post_liquibase(container: str = "paf-oracle-free-26ai") -> Non
     PAF's `testInstallationDatabaseConnection` reads V$PARAMETER to detect
     the DB compatibility level — without SELECT on SYS.V_$PARAMETER it
     returns HTTP 400 with `ORA-00942 SYS.V_$PARAMETER does not exist`.
-    AGENT_FACTORY is created by `001-users-and-grants.yaml`, so this grant must run
-    after Liquibase. Re-granting is a no-op.
+    AGENT_FACTORY is created by `001-users-and-grants.yaml`, so this grant
+    must run after Liquibase. Re-granting is a no-op.
+
+    Also grants EXECUTE on DBMS_CLOUD / DBMS_CLOUD_AI to AGENT_FACTORY
+    (the packages are installed by `_install_dbms_cloud` earlier), and
+    appends a network ACL letting AGENT_FACTORY make outbound HTTPS to
+    the Caddy TLS proxy that fronts Ollama (used by Select AI profiles).
+    The ACL grants both `http` and `https` privileges — Oracle's HTTPS
+    callout requires both to be present for the underlying TCP setup.
     """
-    sql = (
-        "ALTER SESSION SET CONTAINER=FREEPDB1;\n"
-        "GRANT SELECT ON SYS.V_$PARAMETER TO AGENT_FACTORY;\n"
-        "EXIT;\n"
-    )
+    sql_lines = [
+        "ALTER SESSION SET CONTAINER=FREEPDB1;",
+        "GRANT SELECT ON SYS.V_$PARAMETER TO AGENT_FACTORY;",
+        "GRANT EXECUTE ON DBMS_CLOUD TO AGENT_FACTORY;",
+        "GRANT EXECUTE ON DBMS_CLOUD_AI TO AGENT_FACTORY;",
+        "BEGIN",
+        "  DBMS_NETWORK_ACL_ADMIN.APPEND_HOST_ACE(",
+        f"    host => '{CADDY_TLS_HOSTNAME}',",
+        "    lower_port => 443,",
+        "    upper_port => 443,",
+        "    ace => xs$ace_type(",
+        "      privilege_list => xs$name_list('http', 'http_proxy'),",
+        "      principal_name => 'AGENT_FACTORY',",
+        "      principal_type => xs_acl.ptype_db));",
+        "END;",
+        "/",
+        "EXIT;",
+    ]
+    sql = "\n".join(sql_lines) + "\n"
     _run_sysdba_sql(sql, "Post-Liquibase sysdba grant", container)
     console.print("[green]✓[/green] SYS-only grants applied to AGENT_FACTORY.")
+    console.print(
+        f"[green]✓[/green] Network ACL: AGENT_FACTORY → {CADDY_TLS_HOSTNAME}:443 (https)."
+    )
+
+
+def _ensure_tls_certs() -> None:
+    """Generate (once) the self-signed CA + leaf cert used by the Caddy
+    HTTPS proxy in front of Ollama. Idempotent: skipped if both files
+    already exist.
+
+    Why: Oracle 26ai's DBMS_CLOUD_AI rejects HTTP endpoints (ORA-20047),
+    so we put Caddy in the loop to terminate TLS. Caddy serves
+    `server.crt` (signed by our local CA `ca.crt`); the Oracle container
+    has `ca.crt` baked into its OS trust store by
+    `_install_caddy_ca_in_oracle`, so the TLS handshake succeeds. Oracle
+    26ai trusts the OS cert store directly (no wallet needed for normal
+    CA-rooted chains) — see Martin Carstenbach's "Using the OS cert store
+    in 26ai" post.
+    """
+    ca_crt = CADDY_TLS_DIR / "ca.crt"
+    ca_key = CADDY_TLS_DIR / "ca.key"
+    server_crt = CADDY_TLS_DIR / "server.crt"
+    server_key = CADDY_TLS_DIR / "server.key"
+    if all(p.exists() for p in (ca_crt, ca_key, server_crt, server_key)):
+        console.print(f"[green]✓[/green] Caddy TLS certs already present.")
+        return
+    if not shutil.which("openssl"):
+        console.print(
+            "[red]openssl not found on PATH.[/red] Install via "
+            "`brew install openssl` (macOS) or `dnf install openssl` (OL8)."
+        )
+        sys.exit(1)
+    CADDY_TLS_DIR.mkdir(parents=True, exist_ok=True)
+    console.print(f"[bold]Generating Caddy TLS certs in {CADDY_TLS_DIR.relative_to(PROJECT_ROOT)}...[/bold]")
+
+    # CA — 10-year validity, self-signed root.
+    subprocess.run(
+        ["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+         "-keyout", str(ca_key), "-out", str(ca_crt),
+         "-days", "3650", "-subj", "/CN=PAF-PoC Local CA"],
+        check=True, capture_output=True,
+    )
+
+    # Server cert with SAN covering the compose service name + a couple
+    # of fallbacks for debugging.
+    csr = CADDY_TLS_DIR / "server.csr"
+    ext = CADDY_TLS_DIR / "server.ext"
+    ext.write_text(
+        f"subjectAltName = DNS:{CADDY_TLS_HOSTNAME},DNS:localhost,IP:127.0.0.1\n"
+    )
+    subprocess.run(
+        ["openssl", "req", "-newkey", "rsa:2048", "-nodes",
+         "-keyout", str(server_key), "-out", str(csr),
+         "-subj", f"/CN={CADDY_TLS_HOSTNAME}"],
+        check=True, capture_output=True,
+    )
+    subprocess.run(
+        ["openssl", "x509", "-req", "-in", str(csr),
+         "-CA", str(ca_crt), "-CAkey", str(ca_key), "-CAcreateserial",
+         "-out", str(server_crt), "-days", "365", "-extfile", str(ext)],
+        check=True, capture_output=True,
+    )
+    # Clean up artefacts we don't need at runtime.
+    for p in (csr, ext, CADDY_TLS_DIR / "ca.srl"):
+        if p.exists():
+            p.unlink()
+    console.print(f"[green]✓[/green] CA + server certs generated (SAN: {CADDY_TLS_HOSTNAME}).")
+
+
+def _setup_oracle_ssl_wallet(container: str = "paf-oracle-free-26ai") -> None:
+    """Build an Oracle SSL wallet, register it via the SSL_WALLET database
+    property, and add the Caddy CA cert to it.
+
+    Oracle 26ai trusts the OS cert store for plain `UTL_HTTP`, but
+    `DBMS_CLOUD` is special — it looks up an Oracle wallet whose path
+    is registered as a database property. Without this, the first HTTPS
+    callout from a DBMS_CLOUD profile raises
+    `ORA-20000: Database property SSL_WALLET not found`.
+
+    Steps (all idempotent):
+      1. Copy the Caddy CA cert into the container.
+      2. `orapki wallet create -auto_login` at `ORACLE_WALLET_DIR`
+         if not already present.
+      3. `orapki wallet add -trusted_cert` — re-adding the same cert
+         returns a non-fatal error which we discard.
+      4. Append `WALLET_LOCATION=...` to `sqlnet.ora` (only if missing).
+      5. `ALTER DATABASE PROPERTY SET SSL_WALLET = ...` in CDB$ROOT
+         (no-op when already set to the same value).
+    """
+    ca_crt = CADDY_TLS_DIR / "ca.crt"
+    if not ca_crt.exists():
+        console.print(f"[red]{ca_crt.relative_to(PROJECT_ROOT)} missing.[/red] "
+                      "Run `_ensure_tls_certs()` first.")
+        sys.exit(1)
+
+    # 1. Copy CA into the container (overwriting any prior copy is fine).
+    cp = subprocess.run(
+        ["podman", "cp", str(ca_crt),
+         f"{container}:/tmp/paf-caddy-ca.crt"],
+        capture_output=True, text=True,
+    )
+    if cp.returncode != 0:
+        console.print(f"[red]podman cp failed:[/red]\n{cp.stderr}")
+        sys.exit(1)
+
+    # 2-4. Wallet create + add trusted cert + sqlnet.ora append.
+    # Runs as the default oracle user so file ownership matches the DB.
+    bash_cmd = (
+        "set -e\n"
+        f"mkdir -p {ORACLE_WALLET_DIR}\n"
+        f"cd {ORACLE_WALLET_DIR}\n"
+        # Create only if missing — cwallet.sso is the auto-login file.
+        f'if [ ! -f cwallet.sso ]; then\n'
+        f'  $ORACLE_HOME/bin/orapki wallet create -wallet . '
+        f'-pwd {ORACLE_WALLET_PWD} -auto_login\n'
+        'fi\n'
+        # Re-adding the same trusted cert returns a non-zero exit but is harmless.
+        f'$ORACLE_HOME/bin/orapki wallet add -wallet . -trusted_cert '
+        f'-cert /tmp/paf-caddy-ca.crt -pwd {ORACLE_WALLET_PWD} >/dev/null 2>&1 || true\n'
+        # sqlnet.ora WALLET_LOCATION — idempotent.
+        'SQLNET=$ORACLE_HOME/network/admin/sqlnet.ora\n'
+        'if ! grep -q "WALLET_LOCATION" "$SQLNET" 2>/dev/null; then\n'
+        f'  printf "\\nWALLET_LOCATION=(SOURCE=(METHOD=FILE)(METHOD_DATA=(DIRECTORY={ORACLE_WALLET_DIR})))\\n" >> "$SQLNET"\n'
+        'fi\n'
+    )
+    wallet_setup = subprocess.run(
+        ["podman", "exec", container, "bash", "-c", bash_cmd],
+        capture_output=True, text=True,
+    )
+    if wallet_setup.returncode != 0:
+        console.print(
+            f"[red]Oracle wallet setup failed:[/red]\n"
+            f"{wallet_setup.stdout}\n{wallet_setup.stderr}"
+        )
+        sys.exit(1)
+
+    # 5. Register the wallet path with the database. Must run in CDB$ROOT
+    # (no ALTER SESSION SET CONTAINER), and Oracle propagates to PDBs.
+    sql = (
+        f"ALTER DATABASE PROPERTY SET SSL_WALLET = '{ORACLE_WALLET_DIR}';\n"
+        "EXIT;\n"
+    )
+    _run_sysdba_sql(sql, "SSL_WALLET database property", container)
+    console.print(
+        f"[green]✓[/green] Oracle SSL wallet at {ORACLE_WALLET_DIR} "
+        "+ Caddy CA trusted + SSL_WALLET property set."
+    )
+
+
+def _is_dbms_cloud_installed(container: str = "paf-oracle-free-26ai") -> bool:
+    """Detect whether DBMS_CLOUD has been installed in the PDB."""
+    sql = (
+        "SET HEAD OFF FEEDBACK OFF PAGES 0 ECHO OFF\n"
+        "ALTER SESSION SET CONTAINER=FREEPDB1;\n"
+        "SELECT COUNT(*) FROM dba_objects "
+        "  WHERE owner='C##CLOUD$SERVICE' AND object_name='DBMS_CLOUD';\n"
+        "EXIT;\n"
+    )
+    result = subprocess.run(
+        ["podman", "exec", "-i", container, "sqlplus", "-s", "-L", "/", "as", "sysdba"],
+        input=sql, capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        return False
+    for line in result.stdout.splitlines():
+        line = line.strip()
+        if line.isdigit():
+            return int(line) > 0
+    return False
+
+
+def _install_dbms_cloud(container: str = "paf-oracle-free-26ai") -> None:
+    """Install DBMS_CLOUD family of packages (incl. DBMS_CLOUD_AI / Select AI).
+
+    Oracle Database Free 26ai ships the install scripts in
+    `$ORACLE_HOME/rdbms/admin/` but does not pre-install the packages. We
+    run `catclouduser.sql` (creates the `C##CLOUD$SERVICE` common user)
+    then `dbms_cloud_install.sql` (installs the packages + public
+    synonyms) via `catcon.pl` across CDB$ROOT and every PDB.
+
+    First run takes ~5 minutes. Idempotent: skipped if DBMS_CLOUD is
+    already present in `C##CLOUD$SERVICE`. Uses `$ORACLE_PWD` from inside
+    the container so the SYS password never crosses the podman boundary.
+    """
+    if _is_dbms_cloud_installed(container):
+        console.print("[green]✓[/green] DBMS_CLOUD already installed.")
+        return
+    console.print("[bold]Installing DBMS_CLOUD packages (one-time, ~5 min)...[/bold]")
+    for script in ("catclouduser.sql", "dbms_cloud_install.sql"):
+        console.print(f"[dim]Running {script}...[/dim]")
+        bash_cmd = (
+            "$ORACLE_HOME/perl/bin/perl $ORACLE_HOME/rdbms/admin/catcon.pl "
+            "-u SYS/$ORACLE_PWD "
+            "--force_pdb_mode 'READ WRITE' "
+            f"-b dbms_cloud_install_{script.replace('.sql', '')} "
+            "-d $ORACLE_HOME/rdbms/admin/ "
+            "-l /tmp "
+            f"{script}"
+        )
+        result = subprocess.run(
+            ["podman", "exec", container, "bash", "-c", bash_cmd]
+        )
+        if result.returncode != 0:
+            console.print(f"[red]{script} failed (exit {result.returncode}).[/red]")
+            console.print(
+                "[yellow]Check the install log at /tmp inside the container:[/yellow]\n"
+                "  podman exec paf-oracle-free-26ai ls -lt /tmp | head"
+            )
+            sys.exit(1)
+    console.print("[green]✓[/green] DBMS_CLOUD packages installed.")
+
+
+def _drop_select_ai_artefacts(container: str = "paf-oracle-free-26ai") -> None:
+    """Drop any leftover Select AI credential + profiles under AGENT_FACTORY.
+
+    Called when local skips profile creation (DBMS_CLOUD_AI constraint —
+    see `_bootstrap_select_ai_profiles`). Keeps the DB tidy: no half-wired
+    artefacts to confuse demo viewers. Errors are ignored — the artefacts
+    may not exist on a fresh install.
+    """
+    db_password = os.getenv("DB_PASSWORD")
+    if not db_password:
+        return
+    sql = (
+        "BEGIN BEGIN DBMS_CLOUD_AI.DROP_PROFILE('chat_profile'); "
+        "EXCEPTION WHEN OTHERS THEN NULL; END; END;\n/\n"
+        "BEGIN BEGIN DBMS_CLOUD_AI.DROP_PROFILE('research_profile'); "
+        "EXCEPTION WHEN OTHERS THEN NULL; END; END;\n/\n"
+        "BEGIN BEGIN DBMS_CLOUD.DROP_CREDENTIAL('OLLAMA_CRED'); "
+        "EXCEPTION WHEN OTHERS THEN NULL; END; END;\n/\n"
+        "EXIT;\n"
+    )
+    subprocess.run(
+        ["podman", "exec", "-i", container, "sqlplus", "-s", "-L",
+         f"AGENT_FACTORY/{db_password}@localhost:1521/FREEPDB1"],
+        input=sql, capture_output=True, text=True,
+    )
+
+
+def _bootstrap_select_ai_profiles(container: str = "paf-oracle-free-26ai") -> None:
+    """Create / replace `chat_profile` and `research_profile` under AGENT_FACTORY.
+
+    Both profiles share the same Ollama backend (model from .env). Each
+    pins its own NL2SQL object list to a `REPORTING.*` view set:
+      - chat_profile    → REPORTING.chat_v_*    (customer-safe)
+      - research_profile → REPORTING.research_v_* (broader read-only)
+
+    Uses the `openai` provider with a `provider_endpoint` pointed at the
+    Caddy HTTPS proxy (`https://caddy-ollama-tls/v1`) rather than at
+    Ollama directly. Caddy bridges Oracle's TLS requirement.
+
+    A `credential_name` is mandatory on every DBMS_CLOUD_AI profile;
+    Ollama doesn't enforce auth, so we create a dummy `OLLAMA_CRED`
+    with placeholder username/password.
+
+    Idempotent: credential and profiles are dropped (ignore-if-missing)
+    and recreated, so .env changes propagate cleanly.
+
+    LOCAL CONSTRAINT (`DEPLOYMENT_TARGET=local`): Oracle Database Free
+    26ai (23.26.x) rejects `provider: ollama` / `provider: openai-compatible`
+    (ORA-20046) and rejects HTTP `provider_endpoint` values (ORA-20047).
+    Forcing it through Caddy HTTPS clears those, but `provider: openai`
+    then fails pre-flight with ORA-20401 — the on-prem build appears
+    to allow-list the OpenAI hostname and reject custom endpoints at
+    validation time, before the request leaves the DB. See the
+    operational note in `docs/DEPLOYMENT.md`. The function therefore
+    drops any leftover credential / profiles on local and skips
+    creation. On ADB / cloud the same code will create profiles
+    successfully — `DEPLOYMENT_TARGET=cloud` runs the full body.
+    """
+    deployment_target = (os.getenv("DEPLOYMENT_TARGET") or "").strip().lower()
+    if deployment_target == "local":
+        _drop_select_ai_artefacts(container)
+        console.print(
+            "[yellow]Select AI profile bootstrap skipped on local.[/yellow] "
+            "Oracle Free 26ai's DBMS_CLOUD_AI rejects custom provider_endpoint "
+            "values pre-flight (ORA-20401). The CHAT_AGENT flow uses a generic "
+            "SQL Query node + LLM locally; full Select AI is the ADB path. "
+            "See docs/DEPLOYMENT.md §7."
+        )
+        return
+
+    db_password = os.getenv("DB_PASSWORD")
+    ollama_host = os.getenv("OLLAMA_HOST")
+    ollama_model = os.getenv("OLLAMA_LLM_MODEL")
+    if not all([db_password, ollama_host, ollama_model]):
+        console.print(
+            "[yellow]Skipping Select AI profile bootstrap — "
+            "DB_PASSWORD / OLLAMA_HOST / OLLAMA_LLM_MODEL missing in .env.[/yellow]"
+        )
+        return
+
+    provider_endpoint = f"https://{CADDY_TLS_HOSTNAME}/v1"
+    credential_name = "OLLAMA_CRED"
+
+    chat_views = [
+        "chat_v_applicant_profile",
+        "chat_v_transactions_summary",
+        "chat_v_credit_bureau",
+        "chat_v_existing_facilities",
+        "chat_v_loan_application",
+        "chat_v_application_document",
+    ]
+    research_views = [
+        "research_v_full_transactions",
+        "research_v_decision_history",
+        "research_v_decision_audit",
+        "research_v_research_audit",
+        "research_v_policy_parameter_history",
+        "research_v_hitl_task",
+    ]
+
+    def _object_list_json(views: list[str]) -> str:
+        return ", ".join(
+            f'{{"owner": "REPORTING", "name": "{v}"}}' for v in views
+        )
+
+    def _profile_block(profile: str, views: list[str]) -> str:
+        attrs = (
+            "{"
+            '"provider": "openai", '
+            f'"credential_name": "{credential_name}", '
+            f'"provider_endpoint": "{provider_endpoint}", '
+            f'"model": "{ollama_model}", '
+            '"temperature": "0", '
+            '"conversation": "true", '
+            f'"object_list": [{_object_list_json(views)}]'
+            "}"
+        )
+        return (
+            "BEGIN\n"
+            "  BEGIN\n"
+            f"    DBMS_CLOUD_AI.DROP_PROFILE(profile_name => '{profile}');\n"
+            "  EXCEPTION WHEN OTHERS THEN NULL;\n"
+            "  END;\n"
+            "  DBMS_CLOUD_AI.CREATE_PROFILE(\n"
+            f"    profile_name => '{profile}',\n"
+            f"    attributes   => q'!{attrs}!'\n"
+            "  );\n"
+            "END;\n"
+            "/\n"
+        )
+
+    sql = (
+        "WHENEVER SQLERROR EXIT SQL.SQLCODE\n"
+        # (Re)create the placeholder credential — Ollama doesn't enforce auth,
+        # but DBMS_CLOUD_AI requires `credential_name` to be set on the profile.
+        "BEGIN\n"
+        "  BEGIN\n"
+        f"    DBMS_CLOUD.DROP_CREDENTIAL(credential_name => '{credential_name}');\n"
+        "  EXCEPTION WHEN OTHERS THEN NULL;\n"
+        "  END;\n"
+        "  DBMS_CLOUD.CREATE_CREDENTIAL(\n"
+        f"    credential_name => '{credential_name}',\n"
+        "    username        => 'ollama',\n"
+        "    password        => 'none'\n"
+        "  );\n"
+        "END;\n"
+        "/\n"
+        + _profile_block("chat_profile", chat_views)
+        + _profile_block("research_profile", research_views)
+        + "EXIT;\n"
+    )
+
+    result = subprocess.run(
+        ["podman", "exec", "-i", container, "sqlplus", "-s", "-L",
+         f"AGENT_FACTORY/{db_password}@localhost:1521/FREEPDB1"],
+        input=sql, capture_output=True, text=True,
+    )
+    if result.returncode != 0 or "ORA-" in result.stdout:
+        console.print(
+            f"[red]Select AI profile bootstrap failed:[/red]\n"
+            f"{result.stdout}\n{result.stderr}"
+        )
+        sys.exit(1)
+    console.print(
+        f"[green]✓[/green] Select AI credential [cyan]{credential_name}[/cyan] + profiles "
+        "[cyan]chat_profile[/cyan], [cyan]research_profile[/cyan] created "
+        f"({provider_endpoint})."
+    )
 
 
 def _snapshot_paf_bind_mounts() -> None:
@@ -505,7 +918,8 @@ def local_up() -> None:
     if paf_ready and not _paf_image_present(paf_tag):
         console.print(f"[bold]PAF image {paf_tag} missing — building from kit...[/bold]")
         _run(["bash", str(PAF_BUILD_SCRIPT), "aai"], cwd=str(PAF_KIT_DIR))
-    services = ["oracle-free-26ai"]
+    _ensure_tls_certs()
+    services = ["oracle-free-26ai", "caddy-ollama-tls"]
     # Always export so compose substitution succeeds even when paf isn't started.
     os.environ["PAF_APP_VERSION"] = _paf_app_version() or "unset"
     os.environ.setdefault("HOST_OS", platform.system())
@@ -522,12 +936,18 @@ def local_up() -> None:
     ])
     console.print("[bold]Waiting for Oracle DB to be healthy (up to 5 min)...[/bold]")
     _wait_for_db()
+    console.print("[bold]Setting up Oracle SSL wallet with Caddy CA...[/bold]")
+    _setup_oracle_ssl_wallet()
     console.print("[bold]Applying pre-Liquibase sysdba grants...[/bold]")
     _grant_sysdba_pre_liquibase()
+    console.print("[bold]Ensuring DBMS_CLOUD is installed...[/bold]")
+    _install_dbms_cloud()
     console.print("[bold]Provisioning database (Ansible → Liquibase)...[/bold]")
     _provision_local()
     console.print("[bold]Applying post-Liquibase sysdba grants...[/bold]")
     _grant_sysdba_post_liquibase()
+    console.print("[bold]Bootstrapping Select AI profiles...[/bold]")
+    _bootstrap_select_ai_profiles()
     if paf_ready:
         console.print("[bold]Configuring PAF container (post-start handshake)...[/bold]")
         _paf_post_start()
@@ -578,11 +998,15 @@ def local_logs(service: str | None) -> None:
 
 @local.command("provision")
 def local_provision() -> None:
-    """Apply Liquibase + grants against the local DB (idempotent)."""
+    """Apply Liquibase + grants + Select AI bootstrap against the local DB (idempotent)."""
     _ensure_env()
+    _ensure_tls_certs()
+    _setup_oracle_ssl_wallet()
     _grant_sysdba_pre_liquibase()
+    _install_dbms_cloud()
     _provision_local()
     _grant_sysdba_post_liquibase()
+    _bootstrap_select_ai_profiles()
 
 
 # ---------------------------------------------------------------- info
