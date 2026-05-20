@@ -8,12 +8,13 @@
 
 ## Core Message
 
-A small, opinionated PoC showing that Oracle AI Database 26ai + Private Agent Factory can run end-to-end credit decisioning with:
+A small, opinionated **PoC** (proof of concept) showing that Oracle AI Database 26ai + **Private Agent Factory (PAF)** can run end-to-end credit decisioning with:
 
-- **Observability over determinism** — every recommendation and every final decision is reproducible, auditable, replayable. OPA + business logic are kept as deterministic as possible, but the headline is "we can always explain why" not "we are always right".
-- **Human-in-the-loop on every application** — the AI never decides. Every application produces a HITL task; the human reviewer is always the decision-maker. No "Mandatory-HITL toggle" because there is no other mode.
-- **Three-tier recommendation with reasoning** — the agent's output is `APPROVE` / `REVIEW` / `DECLINE`, each carrying an LLM-composed `reasoning` grounded in OPA outputs + cited policy chunks. `REVIEW`-tier recommendations also carry `explore_hints` listing areas the reviewer should examine or follow-up data to request from the customer.
-- **Two agents, one factory** — a customer-facing `CHAT_AGENT` (narrow read scope, OCR + OPA + recommendation write) and a backoffice-only `RESEARCH_AGENT` (broader read scope, **no side-effect tools**) demonstrate PAF's ability to host multiple agents with distinct tool scopes and security envelopes against the same Oracle AI Database.
+- **Observability over determinism** — every recommendation and every final decision is reproducible, auditable, replayable. **OPA** (Open Policy Agent) + business logic are kept as deterministic as possible, but the headline is "we can always explain why" not "we are always right".
+- **Human-in-the-loop (HITL) on every application** — the AI never decides. Every application produces a HITL task; the human reviewer is always the decision-maker. Mandatory human review is the compliance posture by design, so the business stays in control of every credit decision the bank stands behind.
+- **Three-tier recommendation with reasoning** — the agent's output is `APPROVE` / `REVIEW` / `DECLINE`, each carrying an **LLM** (large language model)-composed `reasoning` grounded in OPA outputs + cited policy chunks retrieved via **RAG** (retrieval-augmented generation). `REVIEW`-tier recommendations also carry `explore_hints` listing areas the reviewer should examine or follow-up data to request from the customer.
+- **Two agents, one factory** — a customer-facing `CHAT_AGENT` (narrow read scope, OCR + OPA + recommendation write) and a backoffice-only `RESEARCH_AGENT` (broader read scope, read-only) demonstrate PAF's ability to host multiple agents with distinct tool scopes and security envelopes against the same Oracle AI Database.
+- **Conversational continuity** — the customer chat is persisted server-side; every turn (customer message and agent reply) is stored, threaded by `roomId`, so the UI is stateless and the customer can refresh, switch devices, or come back hours later and pick up exactly where they left off. Status updates and the final outcome are delivered back through the same chat thread.
 - **Configurability over hard-coding** — every threshold, weight, scale, and policy parameter is editable in the backoffice. The same code base supports any country/region by tuning configuration.
 - **Tiny tweak → real product** — the PoC is built to demonstrate the path, not the production system. A bank can adopt the pattern and replace components incrementally.
 
@@ -24,15 +25,15 @@ A small, opinionated PoC showing that Oracle AI Database 26ai + Private Agent Fa
 | #   | Decision                                                                                                                                                  | Why                                                                                                                                                                      |
 | --- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | 1   | Bank-agnostic — no country / region / bureau / regulator hard-coded                                                                                       | Demo must be reusable across institutions in different jurisdictions                                                                                                     |
-| 2   | Credit score, DTI/PTI caps, weights, currencies are runtime **configuration**, not literals in code                                                       | Same demo, different parameters per audience                                                                                                                             |
+| 2   | Credit score, **DTI** (debt-to-income) / **PTI** (payment-to-income) caps, weights, currencies are runtime **configuration**, not literals in code        | Same demo, different parameters per audience                                                                                                                             |
 | 3   | Generic data-protection framework (rights + restrictions common to most regimes)                                                                          | Avoids country-specific compliance claims; signals "we know there are obligations"                                                                                       |
-| 4   | OPA chosen — used in banking, open-source, gives full control of policy code                                                                              | No comparison to commercial BRMS; scope is intentionally limited                                                                                                         |
+| 4   | OPA chosen — used in banking, open-source, gives full control of policy code                                                                              | No comparison to commercial **BRMS** (Business Rule Management System); scope is intentionally limited                                                                   |
 | 5   | **No auto-decision.** Every application produces a HITL task; the human is always the decision-maker.                                                     | Removes the failure mode where an AI quietly approves or declines without review.                                                                                        |
 | 6   | **Three-tier recommendation** — `APPROVE` / `REVIEW` / `DECLINE`, with mandatory reasoning + (for `REVIEW`) explore-hints                                 | Gives the reviewer a starting position and an explanation, not a black-box verdict; routes attention to the cases that need it.                                          |
 | 7   | Observability over determinism                                                                                                                            | Deterministic systems can still be wrong; the recoverable failure mode is a complete trail                                                                               |
 | 8   | Append-only **bank decision** history on **Oracle Database Blockchain Table** — one row per decision, written by the App Service at HITL close            | Immutable, queryable, retention-friendly, no extra infra. The canonical record is the human's call, not the AI's recommendation.                                         |
 | 9   | Region-agnostic deployment — any OCI region, also portable to ExaCC / on-prem 26ai                                                                        | No tenant / region constraint baked in                                                                                                                                   |
-| 10  | Open-source OCR (PaddleOCR / Tesseract) + YOLO for ID-card field detection                                                                                | Lightweight, no external SaaS, demonstrable on a laptop                                                                                                                  |
+| 10  | Open-source **OCR** (optical character recognition: PaddleOCR / Tesseract) + **YOLO** (You-Only-Look-Once detector) for ID-card field detection           | Lightweight, no external SaaS, demonstrable on a laptop                                                                                                                  |
 | 11  | OCR tiers feed the recommendation: USABLE → `APPROVE`-eligible signal; MARGINAL after re-upload → `REVIEW` signal; persistent UNUSABLE → `DECLINE` signal | Don't reject under the radar; don't saturate humans with garbage; OCR quality is one signal among many, never a unilateral verdict.                                      |
 | 12  | Fair Lending Review = generalized non-discrimination backoffice process                                                                                   | Periodic disparate-impact sampling across configured protected attributes                                                                                                |
 | 13  | Simplest possible pricing engine — rate card + risk-band adjustment, surfaced as **indicative pricing** inside the recommendation packet                  | A reviewer who is about to approve needs to see what rate will apply; an indicative band is enough at the PoC level.                                                     |
@@ -42,7 +43,7 @@ A small, opinionated PoC showing that Oracle AI Database 26ai + Private Agent Fa
 | 17  | Standalone stack — does not depend on, or align with, any concurrent engagement                                                                           | Clean architectural story; one stack, one demo                                                                                                                           |
 | 18  | Customer UI = chat + document upload. Backoffice UI = traditional CRUD + queue + reports + **Case Research Agent** conversational panel                   | Two distinct surfaces, two distinct audiences; the backoffice gets an AI assistant that has broader read scope than the customer-facing agent                            |
 | 19  | Test bench is for **functionality + observability**, not performance                                                                                      | Cover all recommendation tiers, all reviewer paths, and prove every step is observable                                                                                   |
-| 20  | **Oracle Database TxEventQ** for HITL claim and async/offline operations (OCR, retries, future fan-out)                                                   | Stays in-DB (same engine as Blockchain Tables + Vector); transactional dequeue prevents double-claim; built-in retries + exception queues; no Kafka/RabbitMQ to operate  |
+| 20  | **Oracle Database TxEventQ** (Transactional Event Queue) for HITL claim and async/offline operations (OCR, retries, future fan-out)                       | Stays in-DB (same engine as Blockchain Tables + Vector); transactional dequeue prevents double-claim; built-in retries + exception queues; no Kafka/RabbitMQ to operate  |
 | 21  | **Two agents in PAF** — `CHAT_AGENT` (customer, narrow scope) and `RESEARCH_AGENT` (backoffice-only, broader read scope, no side-effect tools)            | Demonstrates PAF's per-agent tool scoping and security envelope. The research agent reads more (audit trail, parameter history, deeper cases) but cannot write anything. |
 
 ---
@@ -72,7 +73,7 @@ The agent's recommendation always carries `reasoning` grounded in OPA outputs + 
 
 ### Flow
 
-The customer chat is driven by `CHAT_AGENT`: it asks for what _this_ applicant needs (different for salaried vs. self-employed, resident vs. expat, small vs. large loan) and only emits its recommendation once everything is in place. There is no auto-decision branch — every flow ends with a HITL task.
+The customer chat is driven by `CHAT_AGENT`: it asks for what _this_ applicant needs (different for salaried vs. self-employed, resident vs. expat, small vs. large loan) and only emits its recommendation once everything is in place. Every flow ends with a HITL task; the human is always the decision-maker.
 
 1. Customer opens chat UI, says what they want (product, amount, purpose, term). `CHAT_AGENT` asks structured follow-ups (employment type, residency status, salary band, existing facilities) to build a partial applicant profile.
 2. **Agent calls OPA `required_documents(applicant_so_far, product)`** → returns the required doc set keyed by `(product_type, employment_type, residency_status, amount_band)`. The matrix lives in `system_config.document_requirements_matrix`; Select AI RAG can retrieve policy snippets to explain _why_ each document is needed.
@@ -81,15 +82,15 @@ The customer chat is driven by `CHAT_AGENT`: it asks for what _this_ applicant n
 5. Agent verifies completeness via `check_document_completeness`: every required `doc_type` has at least one USABLE document with required fields extracted. Missing / MARGINAL / UNUSABLE / mismatched (statement uploaded when ID requested → classifier catches it) → agent re-asks. Persistent UNUSABLE feeds into the recommendation as a `DECLINE` signal; persistent MARGINAL feeds in as a `REVIEW` signal. The agent never silently terminates the application.
 6. Agent completes its turn by orchestrating the remaining tools:
    - SQL (Select AI over `chat_profile`) → customer profile, transactions summary, credit bureau, existing facilities.
-   - OPA MCP tools → eligibility, AML, KYC, escalation, fair-lending pre-flight. Each `allow` / `deny` / `warn` becomes evidence, **not** a gate.
+   - OPA **MCP** (Model Context Protocol) tools → eligibility, **AML** (anti-money laundering), **KYC** (Know Your Customer), fair-lending pre-flight. Each `allow` / `deny` / `warn` becomes evidence, not a gate.
    - Vector Search → policy citations, similar cases.
    - Pricing tool → rate card lookup + risk-band adjustment, surfaced as **indicative pricing** in the recommendation packet (used only if the reviewer ultimately approves).
 7. Composite **recommendation tiering** computed from configurable weights (OCR quality + data completeness + OPA outputs + policy proximity) → `APPROVE` / `REVIEW` / `DECLINE`.
 8. Agent composes the **recommendation packet**: `tier`, `reasoning` (LLM-composed, grounded in OPA outputs and cited policy chunks), `explore_hints` (populated for `REVIEW` only), and `evidence` (RAG citations, OPA outputs, OCR summary, computed DTI/PTI/score, indicative pricing).
-9. In-DB tool `create_hitl_task` writes a `hitl_task` row carrying the recommendation packet and enqueues `HITL_REQUEST` (TxEventQ) in the same transaction. `decision_audit` captures every tool call from the agent's run. **The agent does not write to `decision`.**
-10. Customer status surfaces back through the chat UI as _"we're reviewing your application"_. The customer never sees the recommendation tier.
-11. Backoffice reviewer `deqone`s to atomically claim a task (queue dequeue + `hitl_task` state transition OPEN → IN_REVIEW commit together); the bell on the backoffice UI shows the role-filtered pending count. Reviewer reads the recommendation + reasoning + evidence, may invoke `RESEARCH_AGENT` from the task detail panel (broader read scope, no side-effect tools) to dig deeper.
-12. Reviewer submits the final decision (`APPROVE` / `REJECT`) and a note. Application Service writes one row to `decision` (Blockchain Table) carrying both the human's outcome and the original agent recommendation packet, closes the `hitl_task`, and (if approved) finalises the priced offer for the customer channel.
+9. In-DB tool `create_hitl_task` writes a `hitl_task` row carrying the recommendation packet and enqueues `HITL_REQUEST` (TxEventQ) in the same transaction. `decision_audit` captures every tool call from the agent's run.
+10. The Application Service appends a status message _"we're reviewing your application"_ to the customer's `chat_message` thread (the same `roomId`). The customer never sees the recommendation tier. Every customer turn and agent reply throughout the conversation is persisted as a `chat_message` row keyed by `roomId` + `customer_id` + `application_id`, so the chat UI can refresh, the customer can switch devices, and the conversation is replayed exactly as left.
+11. Backoffice reviewer `deqone`s to atomically claim a task (queue dequeue + `hitl_task` state transition OPEN → IN_REVIEW commit together); the bell on the backoffice UI shows the role-filtered pending count. Reviewer reads the recommendation + reasoning + evidence, may invoke `RESEARCH_AGENT` from the task detail panel (broader read scope, read-only) to dig deeper.
+12. Reviewer submits the final decision (`APPROVE` / `REJECT`) and a note. Application Service writes one row to `decision` (Blockchain Table) carrying both the human's outcome and the original agent recommendation packet, closes the `hitl_task`, and appends the customer-facing outcome (priced offer if approved, reason codes if rejected) to the customer's `chat_message` thread. The next time the customer opens the chat, the outcome is the latest message in the same conversation.
 
 ### Component Map
 
@@ -118,31 +119,32 @@ The synthetic dataset is generated to **trigger every decision path** rather tha
 
 ### Entities
 
-| Table                       | Purpose                                                                                                                                                                              |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `customer`                  | Customer master                                                                                                                                                                      |
-| `customer_address`          | Current + historical addresses                                                                                                                                                       |
-| `customer_identity`         | ID / passport docs with expiry                                                                                                                                                       |
-| `customer_protected_attrs`  | Protected attributes for fair-lending review (configurable per region)                                                                                                               |
-| `employment`                | Employers, salary, tenure                                                                                                                                                            |
-| `account`                   | Customer accounts (current, savings)                                                                                                                                                 |
-| `account_transaction`       | Transaction history (12 months) — cashflow source                                                                                                                                    |
-| `credit_bureau_snapshot`    | Periodic external score + bureau facilities; **scale parameterized**                                                                                                                 |
-| `existing_facility`         | Loans/cards held elsewhere                                                                                                                                                           |
-| `product_catalog`           | Loan/card/mortgage products + amount/term ranges                                                                                                                                     |
-| `rate_card`                 | Pricing per product + risk band                                                                                                                                                      |
-| `loan_application`          | The application being decisioned                                                                                                                                                     |
-| `loan_application_document` | Uploaded docs + classifier `doc_type` + OCR-extracted JSON + quality tier                                                                                                            |
-| `decision` _(blockchain)_   | Append-only **bank-decision** history: one row per decision, written by the App Service on HITL close. Carries the human's outcome **and** the original agent recommendation packet. |
-| `decision_audit`            | Step-by-step `CHAT_AGENT` tool-call trail (inputs, outputs, durations)                                                                                                               |
-| `research_audit`            | Step-by-step `RESEARCH_AGENT` tool-call trail (separate so research conversations don't pollute decisioning trail)                                                                   |
-| `hitl_task`                 | HITL queue entry, state, assignment, **and** the agent recommendation packet (tier, reasoning, explore hints, evidence)                                                              |
-| `policy_corpus`             | Policy chunks + embeddings (for RAG)                                                                                                                                                 |
-| `case_history`              | Past anonymized decisions for similarity retrieval                                                                                                                                   |
-| `sanctions_list`            | Synthetic sanctions / PEP list                                                                                                                                                       |
-| `system_config`             | Tunable parameters (caps, thresholds, **recommendation-tier weights**, **`document_requirements_matrix`**, etc.) — no Mandatory-HITL toggle, every application produces a HITL task  |
-| `policy_parameter_history`  | Versioned changes to `system_config` (who changed what, when, why)                                                                                                                   |
-| `fair_lending_review`       | Periodic disparate-impact sampling + bank reviewer notes                                                                                                                             |
+| Table                       | Purpose                                                                                                                                                                                                                                                                                                                              |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `customer`                  | Customer master                                                                                                                                                                                                                                                                                                                      |
+| `customer_address`          | Current + historical addresses                                                                                                                                                                                                                                                                                                       |
+| `customer_identity`         | ID / passport docs with expiry                                                                                                                                                                                                                                                                                                       |
+| `customer_protected_attrs`  | Protected attributes for fair-lending review (configurable per region)                                                                                                                                                                                                                                                               |
+| `employment`                | Employers, salary, tenure                                                                                                                                                                                                                                                                                                            |
+| `account`                   | Customer accounts (current, savings)                                                                                                                                                                                                                                                                                                 |
+| `account_transaction`       | Transaction history (12 months) — cashflow source                                                                                                                                                                                                                                                                                    |
+| `credit_bureau_snapshot`    | Periodic external score + bureau facilities; **scale parameterized**                                                                                                                                                                                                                                                                 |
+| `existing_facility`         | Loans/cards held elsewhere                                                                                                                                                                                                                                                                                                           |
+| `product_catalog`           | Loan/card/mortgage products + amount/term ranges                                                                                                                                                                                                                                                                                     |
+| `rate_card`                 | Pricing per product + risk band                                                                                                                                                                                                                                                                                                      |
+| `loan_application`          | The application being decisioned                                                                                                                                                                                                                                                                                                     |
+| `loan_application_document` | Uploaded docs + classifier `doc_type` + OCR-extracted JSON + quality tier                                                                                                                                                                                                                                                            |
+| `decision` _(blockchain)_   | Append-only **bank-decision** history: one row per decision, written by the App Service on HITL close. Carries the human's outcome **and** the original agent recommendation packet.                                                                                                                                                 |
+| `decision_audit`            | Step-by-step `CHAT_AGENT` tool-call trail (inputs, outputs, durations)                                                                                                                                                                                                                                                               |
+| `research_audit`            | Step-by-step `RESEARCH_AGENT` tool-call trail (separate so research conversations don't pollute decisioning trail)                                                                                                                                                                                                                   |
+| `hitl_task`                 | HITL queue entry, state, assignment, **and** the agent recommendation packet (tier, reasoning, explore hints, evidence)                                                                                                                                                                                                              |
+| `chat_message`              | Persisted customer ↔ `CHAT_AGENT` conversation, keyed by `roomId` + `customer_id` + `application_id`; carries each turn (sender, body, timestamp) so the chat UI can refresh or switch devices and replay the conversation. Also receives status updates and the final outcome appended by the Application Service after HITL close. |
+| `policy_corpus`             | Policy chunks + embeddings (for RAG)                                                                                                                                                                                                                                                                                                 |
+| `case_history`              | Past anonymized decisions for similarity retrieval                                                                                                                                                                                                                                                                                   |
+| `sanctions_list`            | Synthetic sanctions / **PEP** (Politically Exposed Person) list                                                                                                                                                                                                                                                                      |
+| `system_config`             | Tunable parameters (caps, thresholds, **recommendation-tier weights**, **`document_requirements_matrix`**, etc.)                                                                                                                                                                                                                     |
+| `policy_parameter_history`  | Versioned changes to `system_config` (who changed what, when, why)                                                                                                                                                                                                                                                                   |
+| `fair_lending_review`       | Periodic disparate-impact sampling + bank reviewer notes                                                                                                                                                                                                                                                                             |
 
 ### Schema sketch (key tables)
 
@@ -222,6 +224,22 @@ CREATE TABLE loan_application_document (
   ocr_payload     JSON,
   ocr_confidence  NUMBER(5,4),
   quality_tier    VARCHAR2(20)        -- USABLE / MARGINAL / UNUSABLE
+);
+
+-- Persisted customer ↔ CHAT_AGENT conversation. The chat UI is stateless: on refresh,
+-- login, or device switch, it loads the message history from the Application Service
+-- and replays the conversation as the customer left it. Status updates and the final
+-- outcome are appended here by the Application Service after HITL close.
+CREATE TABLE chat_message (
+  message_id      NUMBER PRIMARY KEY,
+  room_id         VARCHAR2(60),       -- threads a conversation across turns; aligns with PAF's roomId
+  customer_id     NUMBER REFERENCES customer,
+  application_id  NUMBER REFERENCES loan_application,
+  sender          VARCHAR2(20),       -- CUSTOMER / AGENT / SYSTEM (status updates, final outcome)
+  body            CLOB,
+  attachments     JSON,               -- optional: { doc_ids: [...], doc_types: [...] }
+  agent_run_id    VARCHAR2(60),       -- when sender = AGENT, links to decision_audit
+  created_at      TIMESTAMP
 );
 
 -- Append-only bank-decision history (Oracle Blockchain Table).
@@ -365,6 +383,8 @@ erDiagram
     product_catalog ||--o{ loan_application : "applied for"
     product_catalog ||--o{ rate_card : priced_by
     loan_application ||--o{ loan_application_document : has
+    loan_application ||--o{ chat_message : "captures conversation"
+    customer ||--o{ chat_message : "talks with CHAT_AGENT via"
     loan_application ||--|| hitl_task : "always produces (carries agent recommendation)"
     hitl_task ||--|| decision : "closes into (blockchain row written by App Service)"
     hitl_task ||--o{ research_audit : "may be examined via"
@@ -407,7 +427,7 @@ packages/
 └── pricing.rego             # risk-band mapping for rate-card lookup
 ```
 
-OPA outputs are **inputs to the recommendation tier**, not auto-decision gates. A `deny[]` from `eligibility.rego` is a strong signal toward `DECLINE` on the recommendation packet — but the agent still writes a HITL task and the reviewer is still the decision-maker. There is no `escalation.rego` because there is no "escalate" decision to make: every application escalates.
+OPA outputs are **inputs to the recommendation tier**. A `deny[]` from `eligibility.rego` is a strong signal toward `DECLINE` on the recommendation packet; the agent writes a HITL task and the reviewer makes the final call.
 
 ### Example — `eligibility.rego` (parameterized)
 
@@ -555,7 +575,7 @@ Thresholds (`USABLE_min_confidence`, `MARGINAL_floor`) are in `system_config` an
 | `search_policy`             | Vector Search            | `policy_corpus`                                  | Same RAG as `CHAT_AGENT`                                                        |
 | `search_similar_cases_deep` | Vector Search            | `case_history` + `decision`                      | Deeper similarity at higher `k`, with filters (date range, outcome, reviewer)   |
 
-`RESEARCH_AGENT` has **zero side-effect tools** — no `create_hitl_task`, no `record_decision`, no enqueue, no row writes. Enforced by `AGENT_TOOLS` grants and by which MCP servers are wired to which flow.
+`RESEARCH_AGENT` is read-only by design: it has no write or enqueue tools at all. Enforced by `AGENT_TOOLS` grants and by which MCP servers are wired to which flow.
 
 ### `CHAT_AGENT` instructions (sketch)
 
@@ -796,14 +816,15 @@ A baseline most banks will recognize regardless of region:
 
 ### Customer-facing API (Application Service)
 
-| Method | Path                              | Purpose                                                                                     |
-| ------ | --------------------------------- | ------------------------------------------------------------------------------------------- |
-| POST   | `/v1/applications`                | Create draft application                                                                    |
-| POST   | `/v1/applications/{id}/documents` | Upload doc (multipart → Object Storage → queue OCR)                                         |
-| POST   | `/v1/applications/{id}/chat`      | Conversational interface (proxies to `CHAT_AGENT`) — drives doc collection + recommendation |
-| GET    | `/v1/applications/{id}`           | Status (`UNDER_REVIEW` until the human closes the HITL task, then final outcome)            |
+| Method | Path                                    | Purpose                                                                                                                                  |
+| ------ | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| POST   | `/v1/applications`                      | Create draft application                                                                                                                 |
+| POST   | `/v1/applications/{id}/documents`       | Upload doc (multipart → Object Storage → queue OCR)                                                                                      |
+| POST   | `/v1/applications/{id}/chat`            | Send a customer turn (proxies to `CHAT_AGENT`) — persists the inbound message and the agent's reply into `chat_message` before returning |
+| GET    | `/v1/applications/{id}/chat?since={id}` | Replay the conversation (or just the messages newer than `since`); the chat UI calls this on load, refresh, or device switch             |
+| GET    | `/v1/applications/{id}`                 | Status (`UNDER_REVIEW` until the human closes the HITL task, then final outcome)                                                         |
 
-The customer never sees the recommendation tier and never directly triggers a "submit" — the agent decides when it has enough to emit the recommendation packet.
+The customer never sees the recommendation tier and never directly triggers a "submit" — the agent decides when it has enough to emit the recommendation packet. Chat history is server-side; the UI is stateless and replays from `GET /chat` on every load.
 
 ### Backoffice API
 
@@ -834,11 +855,12 @@ The customer never sees the recommendation tier and never directly triggers a "s
 ### Customer UI — chat with document upload
 
 - **Mock login** — dropdown of demo customer names; selecting one fixes the `customer_id` used for the session. Logout returns to the picker. No real auth (assumed to be provided by the host bank in production).
+- **Stateless chat UI** — on every load (initial open, browser refresh, device switch, return after hours away) the UI calls `GET /v1/applications/{id}/chat` and re-renders the conversation from `chat_message`. The customer always returns to the latest message in the same thread; nothing relies on client-side state to survive a refresh.
 - Chat-style interface ("Hi, what loan are you looking for?"); `CHAT_AGENT` asks structured follow-ups (product, amount, purpose, employment type, residency).
 - **Agent-driven document collection** — the customer is not asked to upload a fixed bundle. After enough profile info is gathered, the agent calls `required_documents` and asks for _exactly_ the documents this applicant needs (e.g., salaried → ID + payslip + statement; self-employed → ID + tax return + statement; expat → adds address proof). The agent can paste a short policy snippet from RAG to explain _why_ each document is required.
 - Document upload widget appears inline next to the requested doc-type; per-document status (queued → classifying → extracting → ok / marginal / unusable / mismatched).
 - If marginal/unusable/mismatched, agent re-asks in chat with the specific reason ("the image was too dark — please retake"; "we asked for an ID, this looks like a bank statement"). The customer is never silently rejected.
-- Once the recommendation packet is emitted, the customer sees: _"we're reviewing your application; we'll get back within X"_ + a status tracker. **The recommendation tier is never shown to the customer.** The final outcome — APPROVE with priced offer, or REJECT with plain-language reasons — arrives only after the reviewer closes the HITL task.
+- Once the recommendation packet is emitted, the Application Service appends a status message _"we're reviewing your application; we'll get back within X"_ to the same chat thread. The recommendation tier is internal to the backoffice; the customer never sees it. The final outcome — APPROVE with priced offer, or REJECT with plain-language reasons — arrives as the next message in the same conversation once the reviewer closes the HITL task, so the customer's next visit to the chat shows the result waiting at the top of the thread.
 
 ### Backoffice UI — CRUD + HITL queue + dashboards + Case Research Agent
 
@@ -857,7 +879,7 @@ Sections:
   - A **Close** form: choose `APPROVE` / `REJECT`, type a note, submit → Application Service writes the Blockchain row and finalises the customer-facing outcome.
 - **Decisions** — search/browse all bank decisions; click into the per-tool audit + research conversations + replay.
 - **Rule Management** — list OPA policies, view current Rego, version metadata. (Editing in-place is out of scope for the PoC; surface read-only.)
-- **Parameter Management** — edit `system_config` entries (thresholds, recommendation-tier weights, OCR tier thresholds, fair-lending bucketing). Every change writes `policy_parameter_history`. **There is no Mandatory-HITL switch — every application is HITL by design.**
+- **Parameter Management** — edit `system_config` entries (thresholds, recommendation-tier weights, OCR tier thresholds, fair-lending bucketing). Every change writes `policy_parameter_history`.
 - **Risk Management Dashboard** — see Risk Management section above.
 - **Fair-Lending Review** — periodic reviews, flagged samples, reviewer notes.
 - **Reports** — final-decision approval rate, reject rate (by reviewer, by product, by recommendation tier), **agent-vs-human agreement rate**, decision drift alerts.
@@ -885,7 +907,7 @@ The test bench is for **functionality and observability**, not performance. Each
 | 2   | DTI above hard cap                                                    | `DECLINE`                      | REJECT                  | OPA `deny[]` feeds into a strong `DECLINE` recommendation; reasoning cites the eligibility chunk; human confirms                                                       |
 | 3   | Score below configured floor                                          | `DECLINE`                      | REJECT                  | OPA `deny[]` on parameterised floor                                                                                                                                    |
 | 4   | Expired ID document                                                   | `DECLINE`                      | REJECT                  | KYC `deny[]`; reasoning calls out the expired field; human confirms                                                                                                    |
-| 5   | Sanctions hit on AML                                                  | `DECLINE`                      | REJECT                  | AML `deny[]` is a strong `DECLINE` signal; agent still produces a recommendation packet — there is no silent short-circuit                                             |
+| 5   | Sanctions hit on AML                                                  | `DECLINE`                      | REJECT                  | AML `deny[]` is a strong `DECLINE` signal; the recommendation packet carries the sanctioned-match evidence into the HITL queue                                         |
 | 6   | Mid-band score                                                        | `REVIEW`                       | mixed                   | OPA `warn[]` triggers `REVIEW`; explore-hints suggest the reviewer look at cashflow stability; reviewer may APPROVE or REJECT                                          |
 | 7   | Large amount with otherwise clean profile                             | `REVIEW`                       | mixed                   | Amount-relative-to-income signal weights toward `REVIEW`; explore-hints call out the reason                                                                            |
 | 8   | One document MARGINAL after one re-upload                             | `REVIEW`                       | mixed                   | OCR tier feeds into `REVIEW`; HITL packet carries the original doc + extraction map                                                                                    |
@@ -912,44 +934,44 @@ The test bench is for **functionality and observability**, not performance. Each
 
 ## Feature → Function → Data → Integration Map
 
-| Feature                       | Agent function / tool                                                | Data                                                                       | Integration                            |
-| ----------------------------- | -------------------------------------------------------------------- | -------------------------------------------------------------------------- | -------------------------------------- |
-| Submit application            | App Service writes `loan_application`; `CHAT_AGENT` drives the rest  | `loan_application`                                                         | API → App Service → `CHAT_AGENT`       |
-| Required documents            | `required_documents` (MCP, `CHAT_AGENT`)                             | `system_config.document_requirements_matrix`                               | OPA MCP                                |
-| Document completeness         | `check_document_completeness` (`CHAT_AGENT`)                         | `loan_application_document` + required set                                 | `CHAT_AGENT` ↔ App Service ↔ DB        |
-| Upload document               | `extract_document` (YOLO + classifier + OCR)                         | `loan_application_document`, Object Storage, `OCR_REQUEST` (TxEventQ)      | OCR pipeline via TxEventQ              |
-| Eligibility evidence          | `evaluate_eligibility` (MCP, `CHAT_AGENT`)                           | customer-safe view(applicant, application, product), `system_config`       | OPA MCP                                |
-| AML evidence                  | `evaluate_aml` (MCP, `CHAT_AGENT`)                                   | `customer`, `sanctions_list`                                               | OPA MCP                                |
-| KYC evidence                  | `evaluate_kyc` (MCP, `CHAT_AGENT`)                                   | `loan_application_document.ocr_payload`, `customer_identity`, quality_tier | OPA MCP                                |
-| DTI / PTI / cashflow          | `query_transaction_summary`, `query_credit_bureau` (`CHAT_AGENT`)    | `account_transaction`, `existing_facility`, `credit_bureau_snapshot`       | Select AI NL2SQL                       |
-| Policy citations              | `search_policy` (both agents)                                        | `policy_corpus` (vector)                                                   | Oracle AI Vector Search                |
-| Similar past cases (shallow)  | `search_similar_cases` (`CHAT_AGENT`)                                | `case_history` (vector)                                                    | Oracle AI Vector Search                |
-| Similar past cases (deep)     | `search_similar_cases_deep` (`RESEARCH_AGENT`)                       | `case_history`, `decision` (vector + filters)                              | Oracle AI Vector Search                |
-| Decision history queries      | `query_decision_history` (`RESEARCH_AGENT`)                          | `decision` view (Blockchain, read-only)                                    | Select AI NL2SQL                       |
-| Parameter history queries     | `query_parameter_history` (`RESEARCH_AGENT`)                         | `policy_parameter_history`                                                 | Select AI NL2SQL                       |
-| Indicative pricing            | `lookup_pricing` (`CHAT_AGENT`)                                      | `rate_card`, `product_catalog`                                             | SQL + OPA                              |
-| Recommendation packet         | `create_hitl_task` (`CHAT_AGENT`)                                    | `hitl_task` + `HITL_REQUEST` (TxEventQ)                                    | In-DB tool + DB                        |
-| HITL claim                    | Backoffice "Claim next" → `DEQONE`                                   | `HITL_REQUEST` (TxEventQ) + `hitl_task` (state transition)                 | Backoffice UI ↔ App Service ↔ DB       |
-| Notification bell             | poll `/v1/notifications/inbox`                                       | `hitl_task` (role-filtered count, optionally tier-filtered)                | Backoffice UI                          |
-| Fair-lending pre-flight       | `evaluate_fair_lending_flags` (`CHAT_AGENT`)                         | `customer_protected_attrs`                                                 | OPA MCP                                |
-| Append-only bank decision     | App Service writes `decision` row on HITL close — **never an agent** | `decision` (Blockchain)                                                    | App Service                            |
-| Per-tool audit (chat)         | tool wrappers inside `CHAT_AGENT` flow                               | `decision_audit`                                                           | DB-internal                            |
-| Per-tool audit (research)     | tool wrappers inside `RESEARCH_AGENT` flow                           | `research_audit`                                                           | DB-internal                            |
-| Customer chat                 | `CHAT_AGENT` (Application Service bridges)                           | `loan_application_document`, customer-safe views, `policy_corpus`          | Customer UI ↔ API ↔ `CHAT_AGENT`       |
-| Case Research Agent panel     | `RESEARCH_AGENT` (invoked from HITL task detail screen)              | broader REPORTING views, `decision_audit`, `case_history`, `policy_corpus` | Backoffice UI ↔ API ↔ `RESEARCH_AGENT` |
-| Backoffice HITL close         | Backoffice API → write Blockchain `decision` → close task            | `hitl_task`, `decision`                                                    | Backoffice UI                          |
-| Parameter change              | Backoffice API → write `system_config`                               | `system_config`, `policy_parameter_history`                                | Backoffice UI                          |
-| Risk dashboard                | aggregation queries                                                  | `decision`, `loan_application`, `credit_bureau_snapshot`                   | Backoffice UI                          |
-| Agent-vs-human agreement rate | aggregation queries                                                  | `decision.agent_recommendation` vs `decision.human_outcome`                | Backoffice UI                          |
-| Fair-lending review           | scheduled job + reviewer flow                                        | `fair_lending_review`                                                      | Backoffice UI + DB job                 |
-| Audit replay (chat)           | replay endpoint                                                      | `decision_audit`                                                           | Backoffice UI                          |
-| Audit replay (research)       | replay endpoint                                                      | `research_audit`                                                           | Backoffice UI                          |
+| Feature                       | Agent function / tool                                               | Data                                                                       | Integration                            |
+| ----------------------------- | ------------------------------------------------------------------- | -------------------------------------------------------------------------- | -------------------------------------- |
+| Submit application            | App Service writes `loan_application`; `CHAT_AGENT` drives the rest | `loan_application`                                                         | API → App Service → `CHAT_AGENT`       |
+| Required documents            | `required_documents` (MCP, `CHAT_AGENT`)                            | `system_config.document_requirements_matrix`                               | OPA MCP                                |
+| Document completeness         | `check_document_completeness` (`CHAT_AGENT`)                        | `loan_application_document` + required set                                 | `CHAT_AGENT` ↔ App Service ↔ DB        |
+| Upload document               | `extract_document` (YOLO + classifier + OCR)                        | `loan_application_document`, Object Storage, `OCR_REQUEST` (TxEventQ)      | OCR pipeline via TxEventQ              |
+| Eligibility evidence          | `evaluate_eligibility` (MCP, `CHAT_AGENT`)                          | customer-safe view(applicant, application, product), `system_config`       | OPA MCP                                |
+| AML evidence                  | `evaluate_aml` (MCP, `CHAT_AGENT`)                                  | `customer`, `sanctions_list`                                               | OPA MCP                                |
+| KYC evidence                  | `evaluate_kyc` (MCP, `CHAT_AGENT`)                                  | `loan_application_document.ocr_payload`, `customer_identity`, quality_tier | OPA MCP                                |
+| DTI / PTI / cashflow          | `query_transaction_summary`, `query_credit_bureau` (`CHAT_AGENT`)   | `account_transaction`, `existing_facility`, `credit_bureau_snapshot`       | Select AI NL2SQL                       |
+| Policy citations              | `search_policy` (both agents)                                       | `policy_corpus` (vector)                                                   | Oracle AI Vector Search                |
+| Similar past cases (shallow)  | `search_similar_cases` (`CHAT_AGENT`)                               | `case_history` (vector)                                                    | Oracle AI Vector Search                |
+| Similar past cases (deep)     | `search_similar_cases_deep` (`RESEARCH_AGENT`)                      | `case_history`, `decision` (vector + filters)                              | Oracle AI Vector Search                |
+| Decision history queries      | `query_decision_history` (`RESEARCH_AGENT`)                         | `decision` view (Blockchain, read-only)                                    | Select AI NL2SQL                       |
+| Parameter history queries     | `query_parameter_history` (`RESEARCH_AGENT`)                        | `policy_parameter_history`                                                 | Select AI NL2SQL                       |
+| Indicative pricing            | `lookup_pricing` (`CHAT_AGENT`)                                     | `rate_card`, `product_catalog`                                             | SQL + OPA                              |
+| Recommendation packet         | `create_hitl_task` (`CHAT_AGENT`)                                   | `hitl_task` + `HITL_REQUEST` (TxEventQ)                                    | In-DB tool + DB                        |
+| HITL claim                    | Backoffice "Claim next" → `DEQONE`                                  | `HITL_REQUEST` (TxEventQ) + `hitl_task` (state transition)                 | Backoffice UI ↔ App Service ↔ DB       |
+| Notification bell             | poll `/v1/notifications/inbox`                                      | `hitl_task` (role-filtered count, optionally tier-filtered)                | Backoffice UI                          |
+| Fair-lending pre-flight       | `evaluate_fair_lending_flags` (`CHAT_AGENT`)                        | `customer_protected_attrs`                                                 | OPA MCP                                |
+| Append-only bank decision     | App Service writes `decision` row on HITL close                     | `decision` (Blockchain)                                                    | App Service                            |
+| Per-tool audit (chat)         | tool wrappers inside `CHAT_AGENT` flow                              | `decision_audit`                                                           | DB-internal                            |
+| Per-tool audit (research)     | tool wrappers inside `RESEARCH_AGENT` flow                          | `research_audit`                                                           | DB-internal                            |
+| Customer chat                 | `CHAT_AGENT` (Application Service bridges)                          | `loan_application_document`, customer-safe views, `policy_corpus`          | Customer UI ↔ API ↔ `CHAT_AGENT`       |
+| Case Research Agent panel     | `RESEARCH_AGENT` (invoked from HITL task detail screen)             | broader REPORTING views, `decision_audit`, `case_history`, `policy_corpus` | Backoffice UI ↔ API ↔ `RESEARCH_AGENT` |
+| Backoffice HITL close         | Backoffice API → write Blockchain `decision` → close task           | `hitl_task`, `decision`                                                    | Backoffice UI                          |
+| Parameter change              | Backoffice API → write `system_config`                              | `system_config`, `policy_parameter_history`                                | Backoffice UI                          |
+| Risk dashboard                | aggregation queries                                                 | `decision`, `loan_application`, `credit_bureau_snapshot`                   | Backoffice UI                          |
+| Agent-vs-human agreement rate | aggregation queries                                                 | `decision.agent_recommendation` vs `decision.human_outcome`                | Backoffice UI                          |
+| Fair-lending review           | scheduled job + reviewer flow                                       | `fair_lending_review`                                                      | Backoffice UI + DB job                 |
+| Audit replay (chat)           | replay endpoint                                                     | `decision_audit`                                                           | Backoffice UI                          |
+| Audit replay (research)       | replay endpoint                                                     | `research_audit`                                                           | Backoffice UI                          |
 
 ---
 
 ## Demo Script
 
-1. **Setup walk-through** — show synthetic dataset stats, OPA Rego files + `opa test` green, the Backoffice config panel with thresholds and recommendation-tier weights. Highlight that there is no Mandatory-HITL switch — every application is HITL by design.
+1. **Setup walk-through** — show synthetic dataset stats, OPA Rego files + `opa test` green, the Backoffice config panel with thresholds and recommendation-tier weights. Highlight that every application produces a HITL task by design: the human is always the decision-maker.
 2. **Lina builds `CHAT_AGENT` in PAF UI** (live or pre-built walk-through) — show the LLM Management config, the customer-safe Select AI profile, the registered OPA/OCR MCP servers, the system prompt that enforces the 3-tier recommendation + reasoning + (REVIEW) explore-hints contract, and the wired-in `create_hitl_task` tool. This is the factory moment.
 3. **APPROVE-recommendation path (salaried)** — customer chats; agent asks employment type → "salaried" → agent requests ID + payslip + statement. Customer uploads clean docs. Customer sees _"we're reviewing your application"_. Switch to the Backoffice: an `APPROVE` task appears in the queue. Reviewer claims, reads reasoning + evidence + indicative pricing, confirms APPROVE in one click. Show the Blockchain row carrying both `agent_recommendation = APPROVE` and `human_outcome = APPROVE`.
 4. **Same product, different doc set (self-employed)** — repeat step 3 with employment type "self-employed". The agent asks for ID + tax return + statement instead, citing the policy snippet for why. Same code path, different conversation — proves the bank-driven collection.
@@ -997,7 +1019,7 @@ The test bench is for **functionality and observability**, not performance. Each
 
 ## Next Steps
 
-- Lock the data model and `system_config` parameter list (no `mandatory_hitl`; add recommendation-tier weights).
+- Lock the data model and `system_config` parameter list including the recommendation-tier weights.
 - Generate the synthetic dataset and mock ID templates for the three quality tiers.
 - Author the OPA policy packages with `opa test` coverage — each rule's signal weighting toward APPROVE / REVIEW / DECLINE encoded in `system_config`, not in Rego.
 - Stand up the OPA MCP server and the OCR MCP server; wire them to `CHAT_AGENT` only.

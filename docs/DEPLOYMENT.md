@@ -1,6 +1,6 @@
 # Deployment Plan
 
-This document is the **deployment plan** for the Decisioning Engine PoC. It explains the two supported deployment options (local podman, cloud OCI), the `manage.py` command surface that drives both, and the Liquibase strategy.
+This document is the **deployment plan** for the Decisioning Engine **PoC** (proof of concept). It explains the two supported deployment options (local podman, cloud **OCI** (Oracle Cloud Infrastructure)), the `manage.py` command surface that drives both, and the Liquibase strategy.
 
 It is intentionally a _plan_, not a runbook. The user-facing playbooks live at the repository root:
 
@@ -116,7 +116,7 @@ Reasoning for podman + rootless: matches PAF's documented platform stance (see [
 
 ### 4.1 Topology
 
-Five workload computes plus ADB and LB, mirroring the answer to question 4 in brainstorming:
+Five workload computes plus ADB (Autonomous Database) and LB (load balancer), mirroring the answer to question 4 in brainstorming:
 
 ```mermaid
 flowchart TB
@@ -141,16 +141,16 @@ GPU shape for the `model` compute is chosen at `manage.py setup cloud` time (e.g
 
 `deploy/tf/app/` is the root module. Per-role modules in `deploy/tf/modules/`:
 
-| Module              | Provisions                                                                                                      |
-| ------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `adbs`              | Autonomous Database 26ai, wallet generation, app DB user                                                        |
-| `paf`               | VCN subnet, compute (PAF), cloud-init that fetches the PAF artefact via PAR and runs Ansible locally            |
-| `model`             | GPU shape compute (or CPU fallback), Object Storage bucket reference for Ollama models, cloud-init runs Ansible |
-| `app`               | Compute for Spring Boot + AI Services + OPA, cloud-init runs Ansible                                            |
-| `front`             | Compute for both Angular dists, cloud-init runs Ansible                                                         |
-| `ops`               | Small bastion compute with admin tooling                                                                        |
-| `network` (in root) | VCN, subnets, security lists, NAT, public LB, listeners, backend sets                                           |
-| `storage` (in root) | Object Storage bucket + 7-day PARs for every artefact zip                                                       |
+| Module              | Provisions                                                                                                                                                         |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `adbs`              | Autonomous Database 26ai, wallet generation, app DB user                                                                                                           |
+| `paf`               | **VCN** (Virtual Cloud Network) subnet, compute (PAF), cloud-init that fetches the PAF artefact via a **PAR** (Pre-Authenticated Request) and runs Ansible locally |
+| `model`             | GPU shape compute (or CPU fallback), Object Storage bucket reference for Ollama models, cloud-init runs Ansible                                                    |
+| `app`               | Compute for Spring Boot + AI Services + OPA, cloud-init runs Ansible                                                                                               |
+| `front`             | Compute for both Angular dists, cloud-init runs Ansible                                                                                                            |
+| `ops`               | Small bastion compute with admin tooling                                                                                                                           |
+| `network` (in root) | VCN, subnets, security lists, NAT, public LB, listeners, backend sets                                                                                              |
+| `storage` (in root) | Object Storage bucket + 7-day PARs for every artefact zip                                                                                                          |
 
 Cloud-init on each instance pulls its artefact via PAR and runs Ansible **locally** — no SSH between instances.
 
@@ -192,12 +192,11 @@ database/liquibase/
 │   ├── 002-app-banking.yaml          # customer, account, application, document
 │   ├── 003-app-decisioning.yaml      # decision (Blockchain — carries human outcome + agent recommendation),
 │   │                                 # decision_audit, research_audit, hitl_task (carries the recommendation packet)
-│   ├── 004-app-config.yaml           # system_config (no mandatory_hitl), policy_parameter_history, fair_lending_review;
-│   │                                 # includes the recommendation-tier weight rows
+│   ├── 004-app-config.yaml           # system_config (incl. recommendation-tier weights),
+│   │                                 # policy_parameter_history, fair_lending_review
 │   ├── 005-reporting-views.yaml      # REPORTING.* curated views — two sets:
 │   │                                 # customer-safe (for CHAT_AGENT) + broader read-only (for RESEARCH_AGENT)
 │   ├── 006-agent-tools.yaml          # AGENT_TOOLS PL/SQL packages: create_hitl_task, lookup_pricing, extract_features
-│   │                                 # (no record_decision — App Service writes the Blockchain row)
 │   ├── 007-vector.yaml               # policy_corpus, case_history, vector indexes
 │   ├── 008-queues.yaml               # TxEventQ: HITL_REQUEST, OCR_REQUEST, OCR_EXCEPTION_Q + grants
 │   └── 009-seed-synthetic.yaml       # synthetic dataset (toggleable)
@@ -221,8 +220,9 @@ database/liquibase/
 
 Notes:
 
-- Blockchain Table DDL (`CREATE BLOCKCHAIN TABLE ... NO DROP UNTIL 7 YEARS IDLE NO DELETE LOCKED HASHING USING "SHA2_512"`) lives in `003-app-decisioning.yaml` and is supported on both local Oracle Free 26ai and ADB 26ai. The row is written by the Application Service on HITL close — `AGENT_TOOLS` has no `INSERT` on `decision`.
-- `hitl_task` carries the agent recommendation packet (`agent_recommendation`, `agent_reasoning`, `agent_explore_hints`, `agent_evidence`, `agent_run_id`) plus the reviewer's close-out fields (`human_outcome`, `human_note`, `human_user`, `closed_at`). `004-app-config.yaml` seeds reasonable defaults for the recommendation-tier weights — **no `mandatory_hitl` row is ever seeded** since the toggle does not exist.
+- Blockchain Table DDL (`CREATE BLOCKCHAIN TABLE ... NO DROP UNTIL 7 YEARS IDLE NO DELETE LOCKED HASHING USING "SHA2_512"`) lives in `003-app-decisioning.yaml` and is supported on both local Oracle Free 26ai and ADB 26ai. The row is written by the Application Service on HITL close; `AGENT_TOOLS` has no `INSERT` on `decision`.
+- `hitl_task` carries the agent recommendation packet (`agent_recommendation`, `agent_reasoning`, `agent_explore_hints`, `agent_evidence`, `agent_run_id`) plus the reviewer's close-out fields (`human_outcome`, `human_note`, `human_user`, `closed_at`). `004-app-config.yaml` seeds reasonable defaults for the recommendation-tier weights.
+- `chat_message` (in `003-app-decisioning.yaml`) persists the customer ↔ `CHAT_AGENT` conversation keyed by `roomId` + `customer_id` + `application_id`; the customer chat UI is stateless and replays from this table on every load.
 - A separate `research_audit` table (`003-app-decisioning.yaml`) captures `RESEARCH_AGENT` tool calls keyed by `hitl_task_id` + reviewer, so research conversations are auditable but kept distinct from the decisioning trail.
 - Seed data is behind a Liquibase context (`seed`) so the cloud deployment can opt out for an empty schema while local always seeds.
 - Vector index settings (chunk size, overlap, similarity metric, refresh rate) are parameterised by `.env`-rendered tokens so the same changelog can serve different embedding choices without code edits.
@@ -249,7 +249,7 @@ Notes:
 | `OPA_HOST`, `OPA_PORT`, `OPA_BUNDLE_DIR`                                                    | OPA service                                                 |
 | `BACKEND_URL`, `MOBILE_URL`, `BACKOFFICE_URL`                                               | UI surfacing                                                |
 
-Policy values (DTI cap, score floor, OCR thresholds, fair-lending bucketing, recommendation-tier weights) do **not** live in `.env`. They live in `APP.system_config` and are edited from the Backoffice UI; every change is appended to `policy_parameter_history`. There is **no Mandatory-HITL switch** — every application produces a HITL task by design.
+Policy values (DTI cap, score floor, OCR thresholds, fair-lending bucketing, recommendation-tier weights) do **not** live in `.env`. They live in `APP.system_config` and are edited from the Backoffice UI; every change is appended to `policy_parameter_history`. Every application produces a HITL task by design — mandatory human review is the compliance posture.
 
 ## 7. Operational notes
 
