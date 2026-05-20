@@ -44,6 +44,7 @@ flowchart TB
     backoffice["Backoffice UI<br/>(Angular)"]
     appsvc["Application Service<br/>(Java / Spring Boot)<br/>UCP, wallet, drivers"]
     ai["AI Services (Python)<br/>- PAF caller<br/>- OPA MCP<br/>- OCR MCP"]
+    registry["Company Registry API<br/>(FastAPI, OpenAPI 3.1)<br/>employer verification"]
     paf["Private Agent Factory (container)<br/>CHAT_AGENT (customer)<br/>RESEARCH_AGENT (backoffice)"]
     opa["OPA<br/>(Rego packages)"]
     ollama["Ollama (LLM + embeddings)<br/>(local host or GPU node)"]
@@ -57,6 +58,7 @@ flowchart TB
     ai --> opa
     paf --> ollama
     paf --> db
+    paf -- "HTTP datasource<br/>(OpenAPI)" --> registry
     opa --> db
     appsvc --> db
 ```
@@ -72,6 +74,7 @@ Components communicate as follows:
   - **Select AI in-DB tools** over the customer-safe `REPORTING.*` view set (own profile, transactions, bureau snapshot, existing facilities).
   - **OPA MCP** for eligibility, AML, KYC, escalation, fair-lending, pricing band — inputs to the recommendation, not the decision.
   - **OCR MCP** for document field extraction and quality tiering.
+  - **Company Registry HTTP datasource** — typed OpenAPI 3.1 endpoint exposed by a FastAPI service. The agent calls it once per application to verify the customer's declared employer (or their own company, for self-employed). Light usage; this is the demo surface for PAF's HTTP datasource capability.
   - **Ollama** as the configured **LLM** (large language model) and embedding endpoint (LLM Management).
   - In-DB tool `create_hitl_task` to write a recommendation packet to the HITL queue.
 - **PAF (`RESEARCH_AGENT`, backoffice-only)** runs in the same PAF container with a **broader, read-only tool scope** — full transaction history, `decision_audit`, `policy_parameter_history`, deeper similarity over `case_history`, RAG over `policy_corpus`. The agent is read-only by design: it reads, analyses, and explains; it cannot mutate state. Invocation is gated by the backoffice (the customer chat path cannot reach it).
@@ -99,6 +102,7 @@ Mapping the use case to PAF's component types:
 | Policy citations, similar cases                             | Select AI RAG tool over Oracle AI Vector Search                | Both                | In-DB                        |
 | OPA eligibility/AML/KYC/escalation/fair-lending/pricing     | MCP Server node → OPA MCP (Python FastMCP)                     | `CHAT_AGENT`        | Near-DB                      |
 | Document extraction + quality tiering                       | MCP Server node → OCR MCP (Python)                             | `CHAT_AGENT`        | GPU node                     |
+| Employer / company registry lookup                          | HTTP datasource (OpenAPI 3.1 over FastAPI)                     | `CHAT_AGENT`        | Near-DB (`app` compute)      |
 | HITL task creation (recommendation packet)                  | In-DB SQL tool in `AGENT_TOOLS` package                        | `CHAT_AGENT`        | In-DB                        |
 | Final decision write (Blockchain)                           | Application Service on HITL close                              | Application Service | In-DB (Blockchain Table)     |
 | Customer chat surface                                       | Published Agent Builder run URL via Application Service bridge | `CHAT_AGENT`        | Near-DB + external           |
@@ -112,6 +116,7 @@ Mapping the use case to PAF's component types:
 | -------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `src/backend/`             | Java 21 / Spring Boot | Application Service. Application CRUD, document upload to Object Storage, OPA pre-check fast-path, agent invocation, sanitised decision read-back. Uses **UCP** (Universal Connection Pool) for pooling and Oracle Wallet for **ADB** (Autonomous Database).              |
 | `src/ai/`                  | Python                | Three sub-services: (a) PAF caller (acquires session cookie, calls Agent Builder run URL, handles `roomId` continuity); (b) OPA MCP server (FastMCP, wraps OPA REST); (c) OCR MCP server (FastMCP, wraps YOLO + PaddleOCR/Tesseract). All exposed under `/mcp` or `/api`. |
+| `src/api/registry/`        | Python / FastAPI      | Synthetic Company Registry API. One service, one endpoint group; auto-generated OpenAPI 3.1 spec served at `/openapi.json`. Data is a JSON file shipped with the service — no real bureau integration. Registered with PAF as an HTTP datasource for `CHAT_AGENT`.        |
 | `src/frontend-backoffice/` | Angular               | HITL queue, decision browser, parameter management (`system_config` editor with reason capture), rule view (read-only Rego browser), risk dashboard, fair-lending review, customer search.                                                                                |
 | `src/frontend-mobile/`     | Angular               | Simulated mobile chat for the loan applicant: conversation, document upload widget with quality-tier status, decision delivery, "why was I declined" follow-up.                                                                                                           |
 
@@ -141,14 +146,17 @@ Embedding dimension is set once at deploy time and tied to the chosen Ollama emb
 Stored under `paf/` and bootstrapped by `manage.py` after PAF is up:
 
 - **LLM Management** configurations: `ollama-llm`, `ollama-embed` pointing at the configured Ollama host.
-- **Data sources**: two Database data sources over `REPORTING` (one customer-safe, one backoffice-broader), plus a File data source for the seed `policy_corpus` PDFs/text.
+- **Data sources**:
+  - Two **Database** data sources over `REPORTING` (one customer-safe, one backoffice-broader).
+  - One **File** data source for the seed `policy_corpus` PDFs/text.
+  - One **HTTP** data source — the Company Registry API. Registered to PAF by pointing at its OpenAPI 3.1 spec (`/openapi.json`); PAF infers the endpoint shape, request schema, and response schema from the spec. This demonstrates PAF's third data-source type alongside Database and File.
 - **Select AI profiles**:
   - `chat_profile` — NL2SQL object list scoped to the customer-safe `REPORTING.*` views, RAG vector index over `policy_corpus`.
   - `research_profile` — NL2SQL object list scoped to the broader backoffice `REPORTING.*` views (full transactions, `decision_audit`, `policy_parameter_history`, `case_history`), RAG over both `policy_corpus` and `case_history`.
 - **MCP Server nodes**: `opa-mcp` and `ocr-mcp` — registered, but wired only to `CHAT_AGENT`.
 - **Agent Builder flows** (two):
-  - `CHAT_AGENT`: Chat Input → Prompt (system rules + tier thresholds) → Agent (tools = Select AI Bridge over `chat_profile`, OPA MCP, OCR MCP, In-DB Tool `create_hitl_task`) → Processing nodes (Parser, Condition for OCR re-ask / completeness loop) → Chat Output. The only side-effect tool is `create_hitl_task`.
-  - `RESEARCH_AGENT`: Chat Input → Prompt (read-only research system rules) → Agent (tools = Select AI Bridge over `research_profile`, RAG, no MCP tools, no In-DB write tools) → Chat Output. The flow is intentionally simple — its value is the broader read scope and the conversational interface, not orchestration.
+  - `CHAT_AGENT`: Chat Input → Prompt (system rules + tier thresholds) → Agent (tools = Select AI Bridge over `chat_profile`, OPA MCP, OCR MCP, Company Registry HTTP datasource, In-DB Tool `create_hitl_task`) → Processing nodes (Parser, Condition for OCR re-ask / completeness loop) → Chat Output. The only side-effect tool is `create_hitl_task`.
+  - `RESEARCH_AGENT`: Chat Input → Prompt (read-only research system rules) → Agent (tools = Select AI Bridge over `research_profile`, RAG, no MCP tools, no HTTP datasources, no In-DB write tools) → Chat Output. The flow is intentionally simple — its value is the broader read scope and the conversational interface, not orchestration.
 - **Published agent URLs** captured in `.env` (`PAF_CHAT_RUN_URL`, `PAF_RESEARCH_RUN_URL`) and surfaced by `manage.py info`.
 
 Both flows follow PAF's [authoring-to-execution pipeline](PAF.md#105-authoring-to-execution-pipeline): explicit inputs, explicit tool boundaries, explicit Condition/Parser gating before any side-effect node.
@@ -180,6 +188,8 @@ oracle-database-private-agent-factory-poc/
 ├── src/
 │   ├── backend/              # Spring Boot Application Service
 │   ├── ai/                   # Python services: PAF caller, OPA MCP, OCR MCP
+│   ├── api/
+│   │   └── registry/         # FastAPI Company Registry — PAF HTTP datasource
 │   ├── frontend-backoffice/  # Angular
 │   └── frontend-mobile/      # Angular
 ├── database/
@@ -230,12 +240,13 @@ Each turn — customer message and agent reply — is persisted as a `chat_messa
 4. OCR worker dequeues, **classifies** the document (`doc_type` ∈ `ID` / `PAYSLIP` / `STATEMENT` / `TAX_RETURN` / `ADDRESS_PROOF` / `OTHER`) and extracts per-field values; writes back `doc_type`, `ocr_payload`, `ocr_confidence`, `quality_tier`. Failures retry up to `max_retries`; poison messages land in `OCR_EXCEPTION_Q`.
 5. Agent verifies completeness via `check_document_completeness`: every required `doc_type` has at least one USABLE document with required fields extracted. Missing / MARGINAL / UNUSABLE / mismatched (e.g., a statement uploaded when an ID was requested — the classifier catches it) → agent re-asks (back to step 3). Persistent UNUSABLE after a re-upload feeds into the recommendation as a `DECLINE` signal; persistent MARGINAL feeds in as a `REVIEW` signal; the agent does not silently terminate the application.
 6. Agent reads `system_config` thresholds and tier weights via In-DB Tool, then runs Select AI tools over `chat_profile` to pull profile, transactions, bureau snapshot.
-7. OPA MCP evaluates eligibility, AML, KYC, fair-lending pre-flight, escalation. Each tool output (allow / deny / warn) is captured as evidence for the recommendation; **deny does not short-circuit to REJECT** — it becomes a strong signal toward the `DECLINE` tier on the recommendation packet.
-8. Select AI RAG retrieves policy citations relevant to the signals observed; for `APPROVE` candidates, OPA `lookup_pricing` returns an indicative rate band as part of the evidence packet.
-9. Agent composes the **recommendation packet**: `tier ∈ {APPROVE, REVIEW, DECLINE}` (derived from OPA outputs + OCR tiers + signal weights in `system_config`), `reasoning` (LLM-composed, grounded in OPA outputs and cited policy chunks), `explore_hints` (populated for `REVIEW` only — short list of areas a reviewer should examine or follow-up data to request from the customer), and `evidence` (RAG citations, OPA outputs, OCR summary, computed DTI/PTI/score, indicative pricing).
-10. In-DB Tool `create_hitl_task` writes one row to `hitl_task` carrying the recommendation packet **and** enqueues `HITL_REQUEST` (TxEventQ) in the same transaction. `decision_audit` captures every tool call. The agent does **not** write to `decision`.
-11. PAF returns NDJSON; AI Services parses and the Application Service appends a customer-facing status message ("we're reviewing your application") to the same `chat_message` thread. The customer never sees the recommendation tier.
-12. A backoffice reviewer claims the task with `DEQONE` (atomic with `hitl_task` OPEN → IN_REVIEW), reads the recommendation + reasoning + evidence, may invoke `RESEARCH_AGENT` from the task detail screen to dig deeper, then submits a final decision. The Application Service writes the **`decision` Blockchain Table row** at task close — one row per bank decision, carrying both the human's final outcome and the original recommendation packet — and appends the customer-facing outcome (APPROVE with priced offer, or REJECT with reason codes) to the customer's `chat_message` thread. The next time the customer opens the chat, the outcome is waiting at the top of the conversation.
+7. Agent calls the **Company Registry HTTP datasource** (`verify_employer`) once with the customer's declared employer name (or, for self-employed applicants, their company name). The response — `{registered, trading_status, sector, registered_address, last_filed_year}` — joins the evidence packet. `not_registered` or `dormant` is a `REVIEW` signal with an explicit explore-hint for Sam; a confirmed `active` employer is a small positive contribution to the tiering score.
+8. OPA MCP evaluates eligibility, AML, KYC, fair-lending pre-flight, escalation. Each tool output (allow / deny / warn) is captured as evidence for the recommendation; **deny does not short-circuit to REJECT** — it becomes a strong signal toward the `DECLINE` tier on the recommendation packet.
+9. Select AI RAG retrieves policy citations relevant to the signals observed; for `APPROVE` candidates, OPA `lookup_pricing` returns an indicative rate band as part of the evidence packet.
+10. Agent composes the **recommendation packet**: `tier ∈ {APPROVE, REVIEW, DECLINE}` (derived from OPA outputs + OCR tiers + employer-verification result + signal weights in `system_config`), `reasoning` (LLM-composed, grounded in OPA outputs and cited policy chunks), `explore_hints` (populated for `REVIEW` only — short list of areas a reviewer should examine or follow-up data to request from the customer), and `evidence` (RAG citations, OPA outputs, OCR summary, employer-verification response, computed DTI/PTI/score, indicative pricing).
+11. In-DB Tool `create_hitl_task` writes one row to `hitl_task` carrying the recommendation packet **and** enqueues `HITL_REQUEST` (TxEventQ) in the same transaction. `decision_audit` captures every tool call. The agent does **not** write to `decision`.
+12. PAF returns NDJSON; AI Services parses and the Application Service appends a customer-facing status message ("we're reviewing your application") to the same `chat_message` thread. The customer never sees the recommendation tier.
+13. A backoffice reviewer claims the task with `DEQONE` (atomic with `hitl_task` OPEN → IN_REVIEW), reads the recommendation + reasoning + evidence, may invoke `RESEARCH_AGENT` from the task detail screen to dig deeper, then submits a final decision. The Application Service writes the **`decision` Blockchain Table row** at task close — one row per bank decision, carrying both the human's final outcome and the original recommendation packet — and appends the customer-facing outcome (APPROVE with priced offer, or REJECT with reason codes) to the customer's `chat_message` thread. The next time the customer opens the chat, the outcome is waiting at the top of the conversation.
 
 See [DECISIONING-ENGINE-USE-CASE.md §Test Bench](DECISIONING-ENGINE-USE-CASE.md) and [§Async messaging](DECISIONING-ENGINE-USE-CASE.md#async-messaging--txeventq-queues) for the queue inventory and the per-tier scenario matrix.
 
@@ -257,6 +268,7 @@ Four layers, all inspectable from the Backoffice UI:
 | NL2SQL guardrail (`CHAT_AGENT`)     | `chat_profile` object list pinned to the customer-safe `REPORTING.*` view set; no access to `decision_audit`, `policy_parameter_history`, or `customer_protected_attrs`.                                                                           |
 | NL2SQL guardrail (`RESEARCH_AGENT`) | `research_profile` object list scoped to the broader backoffice `REPORTING.*` view set (full transactions, `decision_audit`, `policy_parameter_history`, deeper `case_history`). Still read-only; no base tables.                                  |
 | Side-effects                        | `CHAT_AGENT`'s only side-effect tool is `create_hitl_task`, plus OPA/OCR MCP calls. `RESEARCH_AGENT` is read-only — no write tools, no enqueue. Enforced by `AGENT_TOOLS` grants and by which MCP servers are wired to which flow.                 |
+| HTTP datasource (Company Registry)  | Read-only by contract — the FastAPI service exposes only `GET` lookups in its OpenAPI spec. Wired to `CHAT_AGENT` only. The service is internal to the VCN; the customer chat UI cannot reach it directly.                                         |
 | Decision write                      | Only the Application Service writes the `decision` Blockchain row, on HITL close. Neither agent has `INSERT` on `decision`.                                                                                                                        |
 | Agent reachability                  | `CHAT_AGENT` published URL is consumed by the mobile UI only; `RESEARCH_AGENT` published URL is consumed by the backoffice UI only. The Application Service enforces routing — the customer chat path cannot invoke the research agent.            |
 | Sensitive attributes                | `customer_protected_attrs` kept separate; access logged; not passed to either LLM unless explicitly needed (and never to `CHAT_AGENT`).                                                                                                            |
@@ -269,7 +281,8 @@ Four layers, all inspectable from the Backoffice UI:
 - **Generative model**: **`llama3.3:70b-instruct-q4_K_M`** served by Ollama. In Ollama's official library; native tool-call support (the agent flow depends on reliable JSON/tool-call adherence); usable from Oracle Select AI profiles via `provider => 'ollama'` without code changes. Inference footprint ~55–60 GB (weights + KV cache + `bge-m3` resident), so it fits on a single A10/A100/H100 in the cloud topology and on a 128 GB DGX Spark for desk-side demos. On DGX Spark expect ~6–8 tok/s (bandwidth-limited at ~273 GB/s LPDDR5x); cloud A100/H100 gets ~30–50 tok/s with no code change.
 - **Embedding model**: **`bge-m3`** at **1024 dimensions** served by Ollama. In Ollama's official library; multilingual (fits the bank-agnostic story); strong retrieval scores on MTEB; usable as the embedding model in Select AI RAG profiles and Oracle AI Vector Search. Locked at deploy time; any change requires re-ingestion of `policy_corpus` and `case_history`. (Per [PAF §6.6](PAF.md#66-embedding-models).)
 - **Local database image**: full **Oracle Database Free 26ai** container (not the _-lite_ variant), to keep parity with ADB capabilities (Blockchain Tables, Vector, Select AI).
-- **Two agents in PAF, distinct tool scopes.** The platform configures `CHAT_AGENT` (customer-facing, OPA + OCR + Select AI over the customer-safe view set + `create_hitl_task`) and `RESEARCH_AGENT` (backoffice-only, Select AI over a broader read-only view set + RAG, read-only). Same factory, two security envelopes.
+- **Two agents in PAF, distinct tool scopes.** The platform configures `CHAT_AGENT` (customer-facing, OPA + OCR + Select AI over the customer-safe view set + Company Registry HTTP datasource + `create_hitl_task`) and `RESEARCH_AGENT` (backoffice-only, Select AI over a broader read-only view set + RAG, read-only). Same factory, two security envelopes.
+- **Company Registry as PAF HTTP datasource (employer verification).** A small FastAPI service in `src/api/registry/` exposes a synthetic company registry; PAF wires it in as an HTTP data source via its OpenAPI 3.1 spec (`/openapi.json`). One lookup per application during chat (`verify_employer(name)` → `{registered, trading_status, sector, registered_address, last_filed_year}`). Chosen specifically to demonstrate PAF's third data-source type (alongside Database and File); kept deliberately light so it doesn't compete with OPA-via-MCP for "extensively used by the LLM" mindshare. Synthetic JSON-backed data; no real bureau dependency.
 - **HITL on every application.** Every successful `CHAT_AGENT` turn ends with `create_hitl_task` carrying the recommendation packet; the human is always the decision-maker. Mandatory human review is the compliance posture by design — it keeps the business in control of every credit decision the bank stands behind. OPA outputs are inputs to the recommendation, not gates on the application.
 - **Three-tier recommendation.** The agent's output is one of `APPROVE` (high confidence, no inconsistencies), `REVIEW` (minor flags, needs human attention), or `DECLINE` (inconsistencies, missing data, compliance hits), accompanied by mandatory `reasoning` (LLM-composed, grounded in OPA outputs and cited policy chunks) and — for `REVIEW` only — `explore_hints` listing areas the reviewer should examine or follow-up data to request from the customer.
 - **Final decision on Blockchain, written by the Application Service at HITL close.** When the reviewer submits their decision, the Application Service writes one row to `decision` (Blockchain Table) carrying both the human's outcome and the original agent recommendation packet. One row = one bank decision.

@@ -126,7 +126,7 @@ What is next:
 
 - Extend Liquibase with the banking + decisioning schema (`002-app-banking.yaml` onwards) so the agent has real data to work against.
 - Select AI bootstrap (profile + **NL2SQL** (natural-language-to-SQL) object list over `REPORTING.*`, RAG vector index over `policy_corpus`).
-- OPA MCP and OCR MCP services, then the production `CHAT_AGENT` flow (customer-facing, recommendation → HITL).
+- OPA MCP and OCR MCP services, the Company Registry FastAPI (PAF HTTP datasource for employer verification), then the production `CHAT_AGENT` flow (customer-facing, recommendation → HITL).
 - Spring Boot Application Service + the two Angular UIs.
 - `RESEARCH_AGENT` flow (backoffice-only, broader read scope) wired into the HITL detail screen.
 
