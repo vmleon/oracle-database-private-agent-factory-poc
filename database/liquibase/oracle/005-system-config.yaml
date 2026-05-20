@@ -1,0 +1,197 @@
+databaseChangeLog:
+  # Tunable policy / behaviour parameters edited from the Backoffice UI.
+  # `system_config` is a key/value store with a value_type hint; the
+  # Application Service parses based on that. Every change to
+  # `system_config` is mirrored into `policy_parameter_history` by an
+  # AFTER trigger so an old decision is interpretable against the
+  # parameter values that were in force when it was made.
+  #
+  # `fair_lending_review` holds periodic disparate-impact samples; a
+  # scheduled job (out of scope for this PR) populates it.
+  #
+  # Design model (see DESIGN.md §6.4 / USE-CASE.md §Fair-Lending Review):
+  # - There is no `mandatory_hitl` row — every application produces a
+  #   HITL task by design.
+  # - Recommendation tiering weights live here (w1..w6) so the backoffice
+  #   can tune them without code edits.
+
+  - changeSet:
+      id: 005-create-system-config
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              CREATE TABLE APP.system_config (
+                config_key   VARCHAR2(80) PRIMARY KEY,
+                config_value VARCHAR2(4000),
+                value_type   VARCHAR2(20) NOT NULL
+                  CHECK (value_type IN ('NUMBER','STRING','BOOLEAN','JSON')),
+                description  VARCHAR2(400),
+                updated_at   TIMESTAMP DEFAULT SYSTIMESTAMP NOT NULL,
+                updated_by   VARCHAR2(120) DEFAULT 'init' NOT NULL
+              )
+
+  - changeSet:
+      id: 005-create-policy-parameter-history
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              CREATE TABLE APP.policy_parameter_history (
+                hist_id       NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                config_key    VARCHAR2(80) NOT NULL,
+                old_value     VARCHAR2(4000),
+                new_value     VARCHAR2(4000),
+                changed_at    TIMESTAMP DEFAULT SYSTIMESTAMP NOT NULL,
+                changed_by    VARCHAR2(120) NOT NULL,
+                change_reason VARCHAR2(400)
+              )
+        - sql:
+            sql: |-
+              CREATE INDEX APP.ix_param_history_key
+                ON APP.policy_parameter_history(config_key, changed_at)
+
+  - changeSet:
+      id: 005-create-fair-lending-review
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              CREATE TABLE APP.fair_lending_review (
+                review_id         NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                period_from       DATE NOT NULL,
+                period_to         DATE NOT NULL,
+                bucketing         JSON,
+                disparate_impact  JSON,
+                flagged_decisions JSON,
+                reviewer          VARCHAR2(120),
+                conclusion        CLOB,
+                reviewed_at       TIMESTAMP
+              )
+        - sql:
+            sql: |-
+              CREATE INDEX APP.ix_fair_lending_period
+                ON APP.fair_lending_review(period_from, period_to)
+
+  # Trigger: any INSERT / UPDATE / DELETE on system_config writes a row
+  # to policy_parameter_history capturing the before/after. Initial seed
+  # inserts (below) also fire the trigger, so policy_parameter_history
+  # records the "first set at" timestamp for each parameter.
+  - changeSet:
+      id: 005-create-system-config-trigger
+      author: paf-poc
+      changes:
+        - sql:
+            endDelimiter: /
+            splitStatements: false
+            sql: |-
+              CREATE OR REPLACE TRIGGER APP.trg_system_config_history
+              AFTER INSERT OR UPDATE OR DELETE ON APP.system_config
+              FOR EACH ROW
+              BEGIN
+                INSERT INTO APP.policy_parameter_history
+                  (config_key, old_value, new_value, changed_by, change_reason)
+                VALUES
+                  (COALESCE(:NEW.config_key, :OLD.config_key),
+                   :OLD.config_value,
+                   :NEW.config_value,
+                   COALESCE(:NEW.updated_by, USER),
+                   NULL);
+              END;
+              /
+
+  # Seed defaults. JSON values are stored as text in config_value;
+  # the application parses based on value_type.
+  - changeSet:
+      id: 005-seed-system-config
+      author: paf-poc
+      changes:
+        # Eligibility thresholds
+        - sql:
+            sql: |-
+              INSERT INTO APP.system_config (config_key, config_value, value_type, description)
+              VALUES ('min_age', '18', 'NUMBER', 'Minimum applicant age')
+        - sql:
+            sql: |-
+              INSERT INTO APP.system_config (config_key, config_value, value_type, description)
+              VALUES ('dti_hard_cap', '0.45', 'NUMBER', 'Maximum debt-to-income ratio (deny signal above)')
+        - sql:
+            sql: |-
+              INSERT INTO APP.system_config (config_key, config_value, value_type, description)
+              VALUES ('pti_hard_cap', '0.25', 'NUMBER', 'Maximum payment-to-income for the new loan in isolation')
+        - sql:
+            sql: |-
+              INSERT INTO APP.system_config (config_key, config_value, value_type, description)
+              VALUES ('score_floor', '600', 'NUMBER', 'Minimum credit score (deny signal below)')
+        - sql:
+            sql: |-
+              INSERT INTO APP.system_config (config_key, config_value, value_type, description)
+              VALUES ('score_caution_band_upper', '670', 'NUMBER', 'Top of caution band — drives REVIEW recommendation')
+        # OCR thresholds
+        - sql:
+            sql: |-
+              INSERT INTO APP.system_config (config_key, config_value, value_type, description)
+              VALUES ('ocr_usable_min_confidence', '0.85', 'NUMBER', 'OCR per-field confidence required to classify as USABLE')
+        - sql:
+            sql: |-
+              INSERT INTO APP.system_config (config_key, config_value, value_type, description)
+              VALUES ('ocr_marginal_floor', '0.60', 'NUMBER', 'Below this composite OCR score, document is UNUSABLE')
+        # Recommendation tier weights (sum to 1.0)
+        - sql:
+            sql: |-
+              INSERT INTO APP.system_config (config_key, config_value, value_type, description)
+              VALUES ('tier_w_doc_quality', '0.15', 'NUMBER', 'Recommendation weight: min per-doc quality score')
+        - sql:
+            sql: |-
+              INSERT INTO APP.system_config (config_key, config_value, value_type, description)
+              VALUES ('tier_w_data_completeness', '0.10', 'NUMBER', 'Recommendation weight: data completeness ratio')
+        - sql:
+            sql: |-
+              INSERT INTO APP.system_config (config_key, config_value, value_type, description)
+              VALUES ('tier_w_policy_proximity', '0.10', 'NUMBER', 'Recommendation weight: RAG policy proximity score')
+        - sql:
+            sql: |-
+              INSERT INTO APP.system_config (config_key, config_value, value_type, description)
+              VALUES ('tier_w_opa_signal', '0.40', 'NUMBER', 'Recommendation weight: OPA allow/deny/warn signal')
+        - sql:
+            sql: |-
+              INSERT INTO APP.system_config (config_key, config_value, value_type, description)
+              VALUES ('tier_w_ocr_tier', '0.15', 'NUMBER', 'Recommendation weight: OCR quality tier (USABLE/MARGINAL/UNUSABLE)')
+        - sql:
+            sql: |-
+              INSERT INTO APP.system_config (config_key, config_value, value_type, description)
+              VALUES ('tier_w_employer_signal', '0.10', 'NUMBER', 'Recommendation weight: Company Registry verification (active/dormant/not_registered)')
+        # Tier cutoffs
+        - sql:
+            sql: |-
+              INSERT INTO APP.system_config (config_key, config_value, value_type, description)
+              VALUES ('tier_approve_floor', '0.75', 'NUMBER', 'Composite score >= this → APPROVE recommendation tier')
+        - sql:
+            sql: |-
+              INSERT INTO APP.system_config (config_key, config_value, value_type, description)
+              VALUES ('tier_decline_ceiling', '0.30', 'NUMBER', 'Composite score <= this → DECLINE recommendation tier')
+        # Fair lending
+        - sql:
+            sql: |-
+              INSERT INTO APP.system_config (config_key, config_value, value_type, description)
+              VALUES ('fair_lending_dpi_ratio', '0.80', 'NUMBER', 'Disparate-impact 4/5 rule threshold')
+        - sql:
+            sql: |-
+              INSERT INTO APP.system_config (config_key, config_value, value_type, description)
+              VALUES ('fair_lending_bucketing',
+                '{"age_band":["18-25","26-35","36-45","46-55","56-65","66+"],"gender":["M","F","OTHER"],"nationality":["resident","expat"]}',
+                'JSON',
+                'Protected-attribute bucketing for disparate-impact sampling')
+        # Document requirements matrix
+        - sql:
+            sql: |-
+              INSERT INTO APP.system_config (config_key, config_value, value_type, description)
+              VALUES ('document_requirements_matrix',
+                '{"PERSONAL_LOAN":{"salaried":{"resident":{"small":["ID","PAYSLIP","STATEMENT"],"large":["ID","PAYSLIP","STATEMENT","ADDRESS_PROOF"]},"expat":{"small":["ID","PAYSLIP","STATEMENT","ADDRESS_PROOF"],"large":["ID","PAYSLIP","STATEMENT","ADDRESS_PROOF"]}},"self_employed":{"resident":{"small":["ID","TAX_RETURN","STATEMENT"],"large":["ID","TAX_RETURN","STATEMENT","ADDRESS_PROOF"]},"expat":{"small":["ID","TAX_RETURN","STATEMENT","ADDRESS_PROOF"],"large":["ID","TAX_RETURN","STATEMENT","ADDRESS_PROOF"]}}}}',
+                'JSON',
+                'Required document set by (product_type, employment_type, residency_status, amount_band)')
+        # Amount band threshold (used by document_requirements_matrix lookup)
+        - sql:
+            sql: |-
+              INSERT INTO APP.system_config (config_key, config_value, value_type, description)
+              VALUES ('amount_band_small_max', '15000', 'NUMBER', 'Loans at or below this amount fall in the "small" band')

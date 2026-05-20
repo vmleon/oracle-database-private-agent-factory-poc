@@ -283,8 +283,8 @@ End-to-end platform wiring is in place on the local stack:
 
 Next deliverables, in order:
 
-1. Liquibase changesets `002-banking-core.yaml` through `009-tx-event-queues.yaml` (banking + decisioning tables with the recommendation columns on `hitl_task` and the human-decision columns on Blockchain `decision`, chat persistence in `004-chat-persistence.yaml`, REPORTING views in two scopes, AGENT_TOOLS packages, vector indexes, TxEventQ).
-2. Select AI bootstrap: two profiles (`chat_profile` customer-safe, `research_profile` broader read-only), NL2SQL object lists per profile, RAG vector index over `policy_corpus`.
+1. Liquibase schema progress: `001-users-and-grants`, `002-banking-core` (incl. employment, transactions, bureau, facilities), `003-decisioning-audit-hitl`, `004-chat-persistence`, `005-system-config`, `006-reporting-views` are in. Remaining: `007-agent-tools` (PL/SQL packages), `008-vector-rag` (`policy_corpus`, `case_history`), `009-tx-event-queues` (`HITL_REQUEST` / `OCR_REQUEST` / exception queue), `010-seed-synthetic` (larger demo dataset).
+2. Select AI bootstrap: register two profiles (`chat_profile` customer-safe over `REPORTING.chat_v_*`, `research_profile` broader over `REPORTING.research_v_*`). RAG vector index over `policy_corpus` once `008` lands.
 3. OPA MCP and OCR MCP services under `src/ai/`; Company Registry FastAPI service under `src/api/registry/` (synthetic JSON-backed data, OpenAPI 3.1 at `/openapi.json`); `CHAT_AGENT` flow that combines them with the in-DB `create_hitl_task` tool and the Company Registry HTTP datasource.
 4. `RESEARCH_AGENT` flow — broader Select AI profile + RAG, read-only.
 5. Spring Boot Application Service (including the Blockchain `decision` write at HITL close) and the two Angular UIs (customer chat + backoffice with the Case Research Agent panel on the HITL detail screen).

@@ -207,3 +207,212 @@ databaseChangeLog:
                 FROM APP.loan_application la
                 JOIN APP.customer c ON c.customer_id = la.customer_id
                WHERE c.full_name='Alice Salaried'
+
+  # Additional banking-core tables needed by the REPORTING views in
+  # 006-reporting-views.yaml: employment (income), account_transaction
+  # (cashflow), credit_bureau_snapshot (score + total debt elsewhere),
+  # existing_facility (monthly outflows that feed DTI). Sanctions list,
+  # customer_identity and customer_address are deferred — not required
+  # for the headline NL2SQL demo.
+
+  - changeSet:
+      id: 002-create-employment
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              CREATE TABLE APP.employment (
+                employment_id   NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                customer_id     NUMBER NOT NULL
+                  REFERENCES APP.customer(customer_id),
+                employer_name   VARCHAR2(200),
+                employment_type VARCHAR2(20) NOT NULL
+                  CHECK (employment_type IN ('SALARIED','SELF_EMPLOYED','RETIRED','UNEMPLOYED','OTHER')),
+                monthly_salary  NUMBER(14,2),
+                tenure_months   NUMBER,
+                is_current      CHAR(1) DEFAULT 'Y' NOT NULL
+                  CHECK (is_current IN ('Y','N')),
+                recorded_at     TIMESTAMP DEFAULT SYSTIMESTAMP NOT NULL
+              )
+        - sql:
+            sql: |-
+              CREATE INDEX APP.ix_employment_customer ON APP.employment(customer_id)
+        - sql:
+            sql: |-
+              CREATE INDEX APP.ix_employment_current
+                ON APP.employment(customer_id, is_current)
+
+  - changeSet:
+      id: 002-create-account-transaction
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              CREATE TABLE APP.account_transaction (
+                txn_id        NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                account_id    NUMBER NOT NULL
+                  REFERENCES APP.account(account_id),
+                txn_date      DATE NOT NULL,
+                amount        NUMBER(14,2) NOT NULL,
+                currency      VARCHAR2(3) NOT NULL,
+                txn_type      VARCHAR2(20) NOT NULL
+                  CHECK (txn_type IN ('SALARY','RENT','BILL','TRANSFER_IN','TRANSFER_OUT',
+                                      'CARD_PURCHASE','ATM_WITHDRAWAL','FEE','INTEREST','OTHER')),
+                description   VARCHAR2(200),
+                balance_after NUMBER(14,2)
+              )
+        - sql:
+            sql: |-
+              CREATE INDEX APP.ix_txn_account ON APP.account_transaction(account_id, txn_date)
+        - sql:
+            sql: |-
+              CREATE INDEX APP.ix_txn_type ON APP.account_transaction(txn_type)
+
+  - changeSet:
+      id: 002-create-credit-bureau-snapshot
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              CREATE TABLE APP.credit_bureau_snapshot (
+                snapshot_id           NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                customer_id           NUMBER NOT NULL
+                  REFERENCES APP.customer(customer_id),
+                snapshot_date         DATE NOT NULL,
+                score                 NUMBER,
+                score_scale_min       NUMBER,
+                score_scale_max       NUMBER,
+                bureau_name           VARCHAR2(80),
+                total_debt            NUMBER(14,2),
+                num_open_facilities   NUMBER,
+                num_late_payments_12m NUMBER
+              )
+        - sql:
+            sql: |-
+              CREATE INDEX APP.ix_bureau_customer_date
+                ON APP.credit_bureau_snapshot(customer_id, snapshot_date)
+
+  - changeSet:
+      id: 002-create-existing-facility
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              CREATE TABLE APP.existing_facility (
+                facility_id     NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                customer_id     NUMBER NOT NULL
+                  REFERENCES APP.customer(customer_id),
+                lender_name     VARCHAR2(200),
+                facility_type   VARCHAR2(20) NOT NULL
+                  CHECK (facility_type IN ('PERSONAL_LOAN','CREDIT_CARD','MORTGAGE','AUTO_LOAN','OTHER')),
+                balance         NUMBER(14,2),
+                monthly_payment NUMBER(14,2),
+                opened_at       DATE,
+                closed_at       DATE
+              )
+        - sql:
+            sql: |-
+              CREATE INDEX APP.ix_existing_facility_customer
+                ON APP.existing_facility(customer_id)
+
+  # Small seed for the three demo customers so views are queryable
+  # immediately. Alice: clean salaried profile. Bob: mid-risk self-employed.
+  # Carol: high-risk expat (still PENDING KYC). Larger generation in
+  # 010-seed-synthetic.
+  - changeSet:
+      id: 002-seed-smoke-extras
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              INSERT INTO APP.employment
+                (customer_id, employer_name, employment_type, monthly_salary, tenure_months)
+              SELECT customer_id, 'Acme Tech Ltd', 'SALARIED', 5500, 36
+                FROM APP.customer WHERE full_name='Alice Salaried'
+        - sql:
+            sql: |-
+              INSERT INTO APP.employment
+                (customer_id, employer_name, employment_type, monthly_salary, tenure_months)
+              SELECT customer_id, 'Bob Consulting LLC', 'SELF_EMPLOYED', 7200, 18
+                FROM APP.customer WHERE full_name='Bob Selfemployed'
+        - sql:
+            sql: |-
+              INSERT INTO APP.employment
+                (customer_id, employer_name, employment_type, monthly_salary, tenure_months)
+              SELECT customer_id, 'Globex Inc', 'SALARIED', 4200, 12
+                FROM APP.customer WHERE full_name='Carol Expat'
+        - sql:
+            sql: |-
+              INSERT INTO APP.credit_bureau_snapshot
+                (customer_id, snapshot_date, score, score_scale_min, score_scale_max,
+                 bureau_name, total_debt, num_open_facilities, num_late_payments_12m)
+              SELECT customer_id, TRUNC(SYSDATE)-15, 742, 300, 850,
+                     'Demo Bureau', 1500, 1, 0
+                FROM APP.customer WHERE full_name='Alice Salaried'
+        - sql:
+            sql: |-
+              INSERT INTO APP.credit_bureau_snapshot
+                (customer_id, snapshot_date, score, score_scale_min, score_scale_max,
+                 bureau_name, total_debt, num_open_facilities, num_late_payments_12m)
+              SELECT customer_id, TRUNC(SYSDATE)-10, 641, 300, 850,
+                     'Demo Bureau', 16500, 2, 2
+                FROM APP.customer WHERE full_name='Bob Selfemployed'
+        - sql:
+            sql: |-
+              INSERT INTO APP.credit_bureau_snapshot
+                (customer_id, snapshot_date, score, score_scale_min, score_scale_max,
+                 bureau_name, total_debt, num_open_facilities, num_late_payments_12m)
+              SELECT customer_id, TRUNC(SYSDATE)-20, 580, 300, 850,
+                     'Demo Bureau', 22000, 5, 4
+                FROM APP.customer WHERE full_name='Carol Expat'
+        - sql:
+            sql: |-
+              INSERT INTO APP.existing_facility
+                (customer_id, lender_name, facility_type, balance, monthly_payment, opened_at)
+              SELECT customer_id, 'First Bank', 'CREDIT_CARD', 1500, 150, ADD_MONTHS(SYSDATE,-12)
+                FROM APP.customer WHERE full_name='Alice Salaried'
+        - sql:
+            sql: |-
+              INSERT INTO APP.existing_facility
+                (customer_id, lender_name, facility_type, balance, monthly_payment, opened_at)
+              SELECT customer_id, 'First Bank', 'CREDIT_CARD', 8500, 350, ADD_MONTHS(SYSDATE,-24)
+                FROM APP.customer WHERE full_name='Bob Selfemployed'
+        - sql:
+            sql: |-
+              INSERT INTO APP.existing_facility
+                (customer_id, lender_name, facility_type, balance, monthly_payment, opened_at)
+              SELECT customer_id, 'Other Bank', 'AUTO_LOAN', 8000, 250, ADD_MONTHS(SYSDATE,-18)
+                FROM APP.customer WHERE full_name='Bob Selfemployed'
+        - sql:
+            sql: |-
+              INSERT INTO APP.existing_facility
+                (customer_id, lender_name, facility_type, balance, monthly_payment, opened_at)
+              SELECT customer_id, 'Yet Another Bank', 'MORTGAGE', 195000, 1100, ADD_MONTHS(SYSDATE,-60)
+                FROM APP.customer WHERE full_name='Carol Expat'
+        - sql:
+            sql: |-
+              INSERT INTO APP.account (customer_id, account_type, currency, opened_at)
+              SELECT customer_id, 'CURRENT', 'USD', ADD_MONTHS(SYSDATE,-36)
+                FROM APP.customer WHERE full_name='Alice Salaried'
+                  AND NOT EXISTS (SELECT 1 FROM APP.account a WHERE a.customer_id = APP.customer.customer_id)
+        - sql:
+            sql: |-
+              INSERT INTO APP.account_transaction
+                (account_id, txn_date, amount, currency, txn_type, description, balance_after)
+              SELECT a.account_id, TRUNC(SYSDATE)-30, 5500, 'USD', 'SALARY', 'Acme payroll', 8200
+                FROM APP.account a JOIN APP.customer c ON c.customer_id = a.customer_id
+               WHERE c.full_name='Alice Salaried' AND a.account_type='CURRENT'
+        - sql:
+            sql: |-
+              INSERT INTO APP.account_transaction
+                (account_id, txn_date, amount, currency, txn_type, description, balance_after)
+              SELECT a.account_id, TRUNC(SYSDATE)-25, -1200, 'USD', 'RENT', 'Monthly rent', 7000
+                FROM APP.account a JOIN APP.customer c ON c.customer_id = a.customer_id
+               WHERE c.full_name='Alice Salaried' AND a.account_type='CURRENT'
+        - sql:
+            sql: |-
+              INSERT INTO APP.account_transaction
+                (account_id, txn_date, amount, currency, txn_type, description, balance_after)
+              SELECT a.account_id, TRUNC(SYSDATE)-15, -150, 'USD', 'CARD_PURCHASE', 'Card payment', 6850
+                FROM APP.account a JOIN APP.customer c ON c.customer_id = a.customer_id
+               WHERE c.full_name='Alice Salaried' AND a.account_type='CURRENT'

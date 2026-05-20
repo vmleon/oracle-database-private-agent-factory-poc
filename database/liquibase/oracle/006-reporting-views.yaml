@@ -1,0 +1,414 @@
+databaseChangeLog:
+  # REPORTING.* — the NL2SQL surface for the two PAF agents.
+  #
+  # Design model (see DESIGN.md §6.2 / §10 / USE-CASE.md):
+  # - chat_v_* (customer-safe): exposed to CHAT_AGENT via the
+  #   `chat_profile` Select AI profile. Aggregated transactions, latest
+  #   bureau snapshot, own facilities. NO access to other customers, NO
+  #   protected attributes, NO decision_audit, NO parameter history.
+  # - research_v_* (broader, read-only): exposed to RESEARCH_AGENT via
+  #   the `research_profile` Select AI profile. Row-level transactions,
+  #   decision history, decision_audit, research_audit, parameter
+  #   history, hitl_task. Read-only by view definition (no INSTEAD OF
+  #   triggers) and by RESEARCH_AGENT having no write tools.
+  #
+  # Both view sets live in the REPORTING schema so the agent's
+  # NL2SQL object list pins to REPORTING.* and can never touch a base
+  # table directly.
+  #
+  # The customer scope is enforced by the Application Service threading
+  # a customer_id parameter into every CHAT_AGENT invocation — views
+  # themselves are not row-filtered. Production would add VPD / RLS;
+  # out of scope for this PoC.
+
+  # REPORTING owns the views; it needs SELECT on the underlying APP
+  # tables. Without these grants, the views compile but querying them
+  # as AGENT_FACTORY fails with ORA-01031 (Oracle resolves the view to
+  # base tables and checks the owner's — REPORTING's — privileges).
+  - changeSet:
+      id: 006-grant-app-to-reporting
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              GRANT SELECT ON APP.customer TO REPORTING
+        - sql:
+            sql: |-
+              GRANT SELECT ON APP.employment TO REPORTING
+        - sql:
+            sql: |-
+              GRANT SELECT ON APP.account TO REPORTING
+        - sql:
+            sql: |-
+              GRANT SELECT ON APP.account_transaction TO REPORTING
+        - sql:
+            sql: |-
+              GRANT SELECT ON APP.credit_bureau_snapshot TO REPORTING
+        - sql:
+            sql: |-
+              GRANT SELECT ON APP.existing_facility TO REPORTING
+        - sql:
+            sql: |-
+              GRANT SELECT ON APP.loan_application TO REPORTING
+        - sql:
+            sql: |-
+              GRANT SELECT ON APP.product_catalog TO REPORTING
+        - sql:
+            sql: |-
+              GRANT SELECT ON APP.loan_application_document TO REPORTING
+        - sql:
+            sql: |-
+              GRANT SELECT ON APP.decision TO REPORTING
+        - sql:
+            sql: |-
+              GRANT SELECT ON APP.decision_audit TO REPORTING
+        - sql:
+            sql: |-
+              GRANT SELECT ON APP.research_audit TO REPORTING
+        - sql:
+            sql: |-
+              GRANT SELECT ON APP.policy_parameter_history TO REPORTING
+        - sql:
+            sql: |-
+              GRANT SELECT ON APP.hitl_task TO REPORTING
+
+  # Customer-safe views (CHAT_AGENT)
+
+  - changeSet:
+      id: 006-create-chat-applicant-profile
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              CREATE OR REPLACE VIEW REPORTING.chat_v_applicant_profile AS
+              SELECT
+                c.customer_id,
+                c.full_name,
+                c.date_of_birth,
+                TRUNC(MONTHS_BETWEEN(SYSDATE, c.date_of_birth) / 12) AS age_years,
+                c.residency,
+                c.kyc_status,
+                e.employer_name,
+                e.employment_type,
+                e.monthly_salary,
+                e.tenure_months
+              FROM APP.customer c
+              LEFT JOIN APP.employment e
+                ON e.customer_id = c.customer_id
+                AND e.is_current = 'Y'
+
+  - changeSet:
+      id: 006-create-chat-transactions-summary
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              CREATE OR REPLACE VIEW REPORTING.chat_v_transactions_summary AS
+              SELECT
+                a.customer_id,
+                TRUNC(t.txn_date, 'MM') AS month,
+                t.txn_type,
+                COUNT(*) AS txn_count,
+                SUM(t.amount) AS net_amount,
+                SUM(CASE WHEN t.amount > 0 THEN t.amount ELSE 0 END) AS credits,
+                SUM(CASE WHEN t.amount < 0 THEN -t.amount ELSE 0 END) AS debits
+              FROM APP.account_transaction t
+              JOIN APP.account a ON a.account_id = t.account_id
+              GROUP BY a.customer_id, TRUNC(t.txn_date, 'MM'), t.txn_type
+
+  - changeSet:
+      id: 006-create-chat-credit-bureau
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              CREATE OR REPLACE VIEW REPORTING.chat_v_credit_bureau AS
+              SELECT
+                s.customer_id,
+                s.snapshot_date,
+                s.score,
+                s.score_scale_min,
+                s.score_scale_max,
+                s.bureau_name,
+                s.total_debt,
+                s.num_open_facilities,
+                s.num_late_payments_12m
+              FROM APP.credit_bureau_snapshot s
+              WHERE s.snapshot_date = (
+                SELECT MAX(s2.snapshot_date)
+                  FROM APP.credit_bureau_snapshot s2
+                 WHERE s2.customer_id = s.customer_id
+              )
+
+  - changeSet:
+      id: 006-create-chat-existing-facilities
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              CREATE OR REPLACE VIEW REPORTING.chat_v_existing_facilities AS
+              SELECT
+                f.customer_id,
+                f.lender_name,
+                f.facility_type,
+                f.balance,
+                f.monthly_payment,
+                f.opened_at
+              FROM APP.existing_facility f
+              WHERE f.closed_at IS NULL
+
+  - changeSet:
+      id: 006-create-chat-loan-application
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              CREATE OR REPLACE VIEW REPORTING.chat_v_loan_application AS
+              SELECT
+                la.application_id,
+                la.customer_id,
+                p.name AS product_name,
+                p.product_type,
+                p.currency,
+                la.amount_requested,
+                la.term_months,
+                la.purpose,
+                la.status,
+                la.submitted_at
+              FROM APP.loan_application la
+              JOIN APP.product_catalog p ON p.product_id = la.product_id
+
+  - changeSet:
+      id: 006-create-chat-application-document
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              CREATE OR REPLACE VIEW REPORTING.chat_v_application_document AS
+              SELECT
+                d.application_id,
+                d.doc_id,
+                d.requested_type,
+                d.doc_type,
+                d.ocr_status,
+                d.ocr_confidence,
+                d.quality_tier,
+                d.uploaded_at
+              FROM APP.loan_application_document d
+
+  # Broader views (RESEARCH_AGENT — read-only, broader scope)
+
+  - changeSet:
+      id: 006-create-research-full-transactions
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              CREATE OR REPLACE VIEW REPORTING.research_v_full_transactions AS
+              SELECT
+                a.customer_id,
+                t.account_id,
+                t.txn_id,
+                t.txn_date,
+                t.amount,
+                t.currency,
+                t.txn_type,
+                t.description,
+                t.balance_after
+              FROM APP.account_transaction t
+              JOIN APP.account a ON a.account_id = t.account_id
+
+  - changeSet:
+      id: 006-create-research-decision-history
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              CREATE OR REPLACE VIEW REPORTING.research_v_decision_history AS
+              SELECT
+                d.decision_id,
+                d.application_id,
+                d.human_outcome,
+                d.human_user,
+                d.decided_at,
+                d.agent_recommendation,
+                d.agent_run_id,
+                d.computed_dti,
+                d.computed_pti
+              FROM APP.decision d
+
+  - changeSet:
+      id: 006-create-research-decision-audit
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              CREATE OR REPLACE VIEW REPORTING.research_v_decision_audit AS
+              SELECT
+                a.audit_id,
+                a.agent_run_id,
+                a.step_no,
+                a.tool_name,
+                a.status,
+                a.started_at,
+                a.ended_at,
+                a.duration_ms
+              FROM APP.decision_audit a
+
+  - changeSet:
+      id: 006-create-research-research-audit
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              CREATE OR REPLACE VIEW REPORTING.research_v_research_audit AS
+              SELECT
+                a.audit_id,
+                a.research_run_id,
+                a.hitl_task_id,
+                a.reviewer,
+                a.step_no,
+                a.tool_name,
+                a.status,
+                a.started_at,
+                a.ended_at,
+                a.duration_ms
+              FROM APP.research_audit a
+
+  - changeSet:
+      id: 006-create-research-policy-parameter-history
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              CREATE OR REPLACE VIEW REPORTING.research_v_policy_parameter_history AS
+              SELECT
+                h.hist_id,
+                h.config_key,
+                h.old_value,
+                h.new_value,
+                h.changed_at,
+                h.changed_by,
+                h.change_reason
+              FROM APP.policy_parameter_history h
+
+  - changeSet:
+      id: 006-create-research-hitl-task
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              CREATE OR REPLACE VIEW REPORTING.research_v_hitl_task AS
+              SELECT
+                t.task_id,
+                t.application_id,
+                t.assigned_to,
+                t.state,
+                t.agent_recommendation,
+                t.agent_run_id,
+                t.human_outcome,
+                t.human_user,
+                t.created_at,
+                t.closed_at
+              FROM APP.hitl_task t
+
+  # ORA-01720 fix: Oracle requires the view owner (REPORTING) to hold
+  # WITH GRANT OPTION on the underlying base tables before a third
+  # party (AGENT_FACTORY) can be granted SELECT on the view. The
+  # earlier `006-grant-app-to-reporting` granted plain SELECT — kept
+  # for migration history. This changeset re-grants WITH GRANT OPTION;
+  # the second grant is additive in Oracle (it upgrades the existing
+  # privilege rather than duplicating it).
+  - changeSet:
+      id: 006-grant-app-to-reporting-with-grant-option
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              GRANT SELECT ON APP.customer TO REPORTING WITH GRANT OPTION
+        - sql:
+            sql: |-
+              GRANT SELECT ON APP.employment TO REPORTING WITH GRANT OPTION
+        - sql:
+            sql: |-
+              GRANT SELECT ON APP.account TO REPORTING WITH GRANT OPTION
+        - sql:
+            sql: |-
+              GRANT SELECT ON APP.account_transaction TO REPORTING WITH GRANT OPTION
+        - sql:
+            sql: |-
+              GRANT SELECT ON APP.credit_bureau_snapshot TO REPORTING WITH GRANT OPTION
+        - sql:
+            sql: |-
+              GRANT SELECT ON APP.existing_facility TO REPORTING WITH GRANT OPTION
+        - sql:
+            sql: |-
+              GRANT SELECT ON APP.loan_application TO REPORTING WITH GRANT OPTION
+        - sql:
+            sql: |-
+              GRANT SELECT ON APP.product_catalog TO REPORTING WITH GRANT OPTION
+        - sql:
+            sql: |-
+              GRANT SELECT ON APP.loan_application_document TO REPORTING WITH GRANT OPTION
+        - sql:
+            sql: |-
+              GRANT SELECT ON APP.decision TO REPORTING WITH GRANT OPTION
+        - sql:
+            sql: |-
+              GRANT SELECT ON APP.decision_audit TO REPORTING WITH GRANT OPTION
+        - sql:
+            sql: |-
+              GRANT SELECT ON APP.research_audit TO REPORTING WITH GRANT OPTION
+        - sql:
+            sql: |-
+              GRANT SELECT ON APP.policy_parameter_history TO REPORTING WITH GRANT OPTION
+        - sql:
+            sql: |-
+              GRANT SELECT ON APP.hitl_task TO REPORTING WITH GRANT OPTION
+
+  # Grant SELECT on the views to AGENT_FACTORY (PAF's owning user).
+  # If AAI_RO_AGENT_FACTORY (PAF's read-only worker, created by the
+  # installer wizard) is configured as the Select AI data source's
+  # connection user, add equivalent grants from `manage.py paf bootstrap`
+  # after PAF install finishes — those grants can't be in Liquibase
+  # because the user doesn't exist yet at provision time.
+  - changeSet:
+      id: 006-grant-reporting-to-agent-factory
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              GRANT SELECT ON REPORTING.chat_v_applicant_profile TO AGENT_FACTORY
+        - sql:
+            sql: |-
+              GRANT SELECT ON REPORTING.chat_v_transactions_summary TO AGENT_FACTORY
+        - sql:
+            sql: |-
+              GRANT SELECT ON REPORTING.chat_v_credit_bureau TO AGENT_FACTORY
+        - sql:
+            sql: |-
+              GRANT SELECT ON REPORTING.chat_v_existing_facilities TO AGENT_FACTORY
+        - sql:
+            sql: |-
+              GRANT SELECT ON REPORTING.chat_v_loan_application TO AGENT_FACTORY
+        - sql:
+            sql: |-
+              GRANT SELECT ON REPORTING.chat_v_application_document TO AGENT_FACTORY
+        - sql:
+            sql: |-
+              GRANT SELECT ON REPORTING.research_v_full_transactions TO AGENT_FACTORY
+        - sql:
+            sql: |-
+              GRANT SELECT ON REPORTING.research_v_decision_history TO AGENT_FACTORY
+        - sql:
+            sql: |-
+              GRANT SELECT ON REPORTING.research_v_decision_audit TO AGENT_FACTORY
+        - sql:
+            sql: |-
+              GRANT SELECT ON REPORTING.research_v_research_audit TO AGENT_FACTORY
+        - sql:
+            sql: |-
+              GRANT SELECT ON REPORTING.research_v_policy_parameter_history TO AGENT_FACTORY
+        - sql:
+            sql: |-
+              GRANT SELECT ON REPORTING.research_v_hitl_task TO AGENT_FACTORY

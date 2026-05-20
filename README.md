@@ -124,8 +124,9 @@ The platform plumbing is wired end-to-end on the local stack:
 
 What is next:
 
-- Extend Liquibase with the banking + decisioning schema (`002-banking-core.yaml` onwards) so the agent has real data to work against.
-- Select AI bootstrap (profile + **NL2SQL** (natural-language-to-SQL) object list over `REPORTING.*`, RAG vector index over `policy_corpus`).
+- Liquibase schema: users + grants, banking core (incl. employment / transactions / bureau / facilities), decisioning + HITL + chat persistence, system_config + history, REPORTING view sets — all in place (`001–006`).
+- Remaining schema: vector RAG corpus (`008`), TxEventQ queues (`009`), larger synthetic seed (`010`).
+- Select AI bootstrap: register two Select AI profiles (`chat_profile` customer-safe, `research_profile` broader) against the `REPORTING.*` views, plus RAG vector index over `policy_corpus` once `008` lands.
 - OPA MCP and OCR MCP services, the Company Registry FastAPI (PAF HTTP datasource for employer verification), then the production `CHAT_AGENT` flow (customer-facing, recommendation → HITL).
 - Spring Boot Application Service + the two Angular UIs.
 - `RESEARCH_AGENT` flow (backoffice-only, broader read scope) wired into the HITL detail screen.

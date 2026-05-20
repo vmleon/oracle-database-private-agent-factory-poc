@@ -11,3 +11,9 @@ databaseChangeLog:
   - include:
       file: 004-chat-persistence.yaml
       relativeToChangelogFile: true
+  - include:
+      file: 005-system-config.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: 006-reporting-views.yaml
+      relativeToChangelogFile: true
