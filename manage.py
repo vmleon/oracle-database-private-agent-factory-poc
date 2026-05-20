@@ -31,6 +31,12 @@ PAF_KIT_DIR = PROJECT_ROOT / "paf-kit"
 PAF_VERSION_FILE = PAF_KIT_DIR / "applied-ai" / "kit" / "agent_factory" / "internal" / "version.json"
 PAF_BUILD_SCRIPT = PAF_KIT_DIR / "build-image.sh"
 PAF_IMAGE_REPO = "localhost/applied-ai-label"
+# Snapshot of the kit-shipped initial state of `applied-ai/{volume,dev-shared}`,
+# captured at `paf prepare` time. `local down --purge` restores from this so
+# runtime accretions (admin user records, .config_complete.marker, /mount/data)
+# are wiped while kit-shipped seed content is preserved.
+PAF_PURGE_TEMPLATE_DIR = PAF_KIT_DIR / ".purge-template"
+PAF_BIND_MOUNTS = ("volume", "dev-shared")
 
 LOCAL_PREREQS = {
     "podman": "Install: https://podman.io/docs/installation",
@@ -246,32 +252,65 @@ def _grant_sysdba_post_liquibase(container: str = "paf-oracle-free-26ai") -> Non
     console.print("[green]✓[/green] SYS-only grants applied to AGENT_FACTORY.")
 
 
-def _wipe_paf_bind_mount_state() -> None:
-    """Empty PAF's bind-mounted runtime state, preserving the directories so
-    the next `local up` can still attach the bind mounts.
+def _snapshot_paf_bind_mounts() -> None:
+    """Capture the kit-shipped initial state of `applied-ai/{volume,dev-shared}`
+    into a sidecar template directory. Called once at `paf prepare` time,
+    immediately after the tar is extracted. `local down --purge` restores
+    from this snapshot.
+
+    The kit ships seed content (config templates, startup scripts) in
+    `applied-ai/volume` that PAF's startup.sh expects to find on first boot.
+    Wiping the bind mount empty would crash PAF; resetting to this snapshot
+    keeps the kit's seed while clearing every runtime accretion.
+    """
+    if PAF_PURGE_TEMPLATE_DIR.exists():
+        shutil.rmtree(PAF_PURGE_TEMPLATE_DIR)
+    PAF_PURGE_TEMPLATE_DIR.mkdir()
+    for sub in PAF_BIND_MOUNTS:
+        src = PAF_KIT_DIR / "applied-ai" / sub
+        if src.exists():
+            shutil.copytree(src, PAF_PURGE_TEMPLATE_DIR / sub)
+    console.print(
+        f"[green]✓[/green] Snapshotted kit bind-mount state into "
+        f"{PAF_PURGE_TEMPLATE_DIR.relative_to(PROJECT_ROOT)}/."
+    )
+
+
+def _reset_paf_bind_mount_state() -> None:
+    """Reset PAF's bind-mounted directories to the kit-shipped initial state
+    captured at `paf prepare` time.
 
     The Oracle data volume is a named podman volume and gets wiped by
     `compose down -v`. PAF's installed-state markers (admin user records,
     `.config_complete.marker`, `/mount/data/...` contents) live in
-    `paf-kit/applied-ai/volume` and `paf-kit/applied-ai/dev-shared` —
-    host bind mounts that compose can't reach. Without this cleanup,
-    `down --purge` followed by `local up` lands the user on PAF's login
-    screen instead of the installer wizard, because PAF reads the
-    marker + persisted config and skips re-installation.
+    `paf-kit/applied-ai/{volume,dev-shared}` — host bind mounts that
+    compose can't reach. Without this cleanup, `down --purge` followed by
+    `local up` lands the user on PAF's login screen instead of the
+    installer wizard, because PAF reads the marker + persisted config and
+    skips re-installation.
 
     The kit binaries under `paf-kit/applied-ai/kit/` are NOT touched —
     no re-extract of the tar is needed.
     """
-    for sub in ("volume", "dev-shared"):
+    if not PAF_PURGE_TEMPLATE_DIR.exists():
+        console.print(
+            "[yellow]No purge template found.[/yellow] "
+            "Re-run [cyan]python manage.py paf prepare <tar>[/cyan] to capture "
+            "the kit's initial state, then `local down --purge` will work."
+        )
+        return
+    for sub in PAF_BIND_MOUNTS:
         path = PAF_KIT_DIR / "applied-ai" / sub
-        if not path.exists():
-            continue
-        for child in path.iterdir():
-            if child.is_dir():
-                shutil.rmtree(child)
-            else:
-                child.unlink()
-        console.print(f"[green]✓[/green] Emptied {path.relative_to(PROJECT_ROOT)}.")
+        if path.exists():
+            shutil.rmtree(path)
+        template = PAF_PURGE_TEMPLATE_DIR / sub
+        if template.exists():
+            shutil.copytree(template, path)
+        else:
+            path.mkdir(parents=True, exist_ok=True)
+        console.print(
+            f"[green]✓[/green] Reset {path.relative_to(PROJECT_ROOT)} to kit defaults."
+        )
 
 
 def _paf_post_start(container: str = "paf-agent-factory") -> None:
@@ -524,7 +563,7 @@ def local_down(purge: bool) -> None:
         args.append("-v")
     _run(args)
     if purge:
-        _wipe_paf_bind_mount_state()
+        _reset_paf_bind_mount_state()
 
 
 @local.command("logs")
@@ -606,6 +645,7 @@ def paf_prepare(tarball: Path) -> None:
     version = json.loads(PAF_VERSION_FILE.read_text())["app_version"]
     _write_env_key("PAF_APP_VERSION", version)
     console.print(f"[green]✓[/green] PAF kit extracted. PAF_APP_VERSION={version}")
+    _snapshot_paf_bind_mounts()
     console.print("Next: [cyan]python manage.py paf build[/cyan] (or just [cyan]local up[/cyan])")
 
 
