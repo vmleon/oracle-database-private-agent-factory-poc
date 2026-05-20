@@ -200,31 +200,49 @@ def _compute_ollama_hosts_entry() -> str | None:
         return None
 
 
-def _grant_sysdba_only_privs(container: str = "paf-oracle-free-26ai") -> None:
-    """Grant SYS-owned privileges Liquibase can't grant as SYSTEM. PAF's
-    `testInstallationDatabaseConnection` reads V$PARAMETER to detect the
-    DB compatibility level — without SELECT on SYS.V_$PARAMETER it returns
-    HTTP 400 with `ORA-00942 SYS.V_$PARAMETER does not exist`.
-
-    SYSTEM also needs TABLE RETENTION to create blockchain/immutable tables
-    with retention longer than the default 16 days (ORA-05807 otherwise);
-    APP.decision uses NO DROP UNTIL 2555 DAYS IDLE (~7 years).
-
-    Re-granting is a no-op, so this is safe to run every `local up`.
-    """
-    sql = (
-        "ALTER SESSION SET CONTAINER=FREEPDB1;\n"
-        "GRANT SELECT ON SYS.V_$PARAMETER TO AGENT_FACTORY;\n"
-        "GRANT TABLE RETENTION TO SYSTEM;\n"
-        "EXIT;\n"
-    )
+def _run_sysdba_sql(sql: str, label: str, container: str = "paf-oracle-free-26ai") -> None:
     result = subprocess.run(
         ["podman", "exec", "-i", container, "sqlplus", "-s", "-L", "/", "as", "sysdba"],
         input=sql, capture_output=True, text=True,
     )
     if result.returncode != 0 or "ORA-" in result.stdout:
-        console.print(f"[red]sysdba grant failed:[/red]\n{result.stdout}\n{result.stderr}")
+        console.print(f"[red]{label} failed:[/red]\n{result.stdout}\n{result.stderr}")
         sys.exit(1)
+
+
+def _grant_sysdba_pre_liquibase(container: str = "paf-oracle-free-26ai") -> None:
+    """Grants that must be in place BEFORE Liquibase runs.
+
+    SYSTEM needs TABLE RETENTION to create blockchain/immutable tables with
+    retention longer than the default 16 days (ORA-05807 otherwise);
+    APP.decision uses NO DROP UNTIL 2555 DAYS IDLE (~7 years), so without
+    this grant the `CREATE BLOCKCHAIN TABLE` changeset fails. Re-granting
+    is a no-op, so this is safe to run every `local up`.
+    """
+    sql = (
+        "ALTER SESSION SET CONTAINER=FREEPDB1;\n"
+        "GRANT TABLE RETENTION TO SYSTEM;\n"
+        "EXIT;\n"
+    )
+    _run_sysdba_sql(sql, "Pre-Liquibase sysdba grant", container)
+    console.print("[green]✓[/green] TABLE RETENTION granted to SYSTEM (pre-Liquibase).")
+
+
+def _grant_sysdba_post_liquibase(container: str = "paf-oracle-free-26ai") -> None:
+    """Grants that depend on users created by Liquibase.
+
+    PAF's `testInstallationDatabaseConnection` reads V$PARAMETER to detect
+    the DB compatibility level — without SELECT on SYS.V_$PARAMETER it
+    returns HTTP 400 with `ORA-00942 SYS.V_$PARAMETER does not exist`.
+    AGENT_FACTORY is created by `001-init.yaml`, so this grant must run
+    after Liquibase. Re-granting is a no-op.
+    """
+    sql = (
+        "ALTER SESSION SET CONTAINER=FREEPDB1;\n"
+        "GRANT SELECT ON SYS.V_$PARAMETER TO AGENT_FACTORY;\n"
+        "EXIT;\n"
+    )
+    _run_sysdba_sql(sql, "Post-Liquibase sysdba grant", container)
     console.print("[green]✓[/green] SYS-only grants applied to AGENT_FACTORY.")
 
 
@@ -437,20 +455,33 @@ def local_up() -> None:
     ])
     console.print("[bold]Waiting for Oracle DB to be healthy (up to 5 min)...[/bold]")
     _wait_for_db()
+    console.print("[bold]Applying pre-Liquibase sysdba grants...[/bold]")
+    _grant_sysdba_pre_liquibase()
     console.print("[bold]Provisioning database (Ansible → Liquibase)...[/bold]")
     _provision_local()
-    console.print("[bold]Applying SYS-only grants...[/bold]")
-    _grant_sysdba_only_privs()
+    console.print("[bold]Applying post-Liquibase sysdba grants...[/bold]")
+    _grant_sysdba_post_liquibase()
     if paf_ready:
         console.print("[bold]Configuring PAF container (post-start handshake)...[/bold]")
         _paf_post_start()
-    if not paf_ready:
+    console.print("\n[green]✓ Local stack up.[/green]")
+    if paf_ready:
         console.print(
-            "\n[yellow]PAF not started.[/yellow] "
-            "Run [cyan]python manage.py paf prepare <path-to-tar>[/cyan] "
+            "Next: [cyan]python manage.py paf bootstrap[/cyan] "
+            "to walk through the PAF UI installer."
+        )
+        console.print(
+            "Anytime: [cyan]python manage.py info[/cyan] for URLs and connection details."
+        )
+    else:
+        console.print(
+            "[yellow]PAF not started.[/yellow] "
+            "Next: [cyan]python manage.py paf prepare <path-to-tar>[/cyan] "
             "and re-run [cyan]local up[/cyan]."
         )
-    console.print("\n[green]✓ Local stack up.[/green] Run [cyan]python manage.py info[/cyan].")
+        console.print(
+            "Anytime: [cyan]python manage.py info[/cyan] for DB connection details."
+        )
 
 
 @local.command("down")
@@ -477,8 +508,9 @@ def local_logs(service: str | None) -> None:
 def local_provision() -> None:
     """Apply Liquibase + grants against the local DB (idempotent)."""
     _ensure_env()
+    _grant_sysdba_pre_liquibase()
     _provision_local()
-    _grant_sysdba_only_privs()
+    _grant_sysdba_post_liquibase()
 
 
 # ---------------------------------------------------------------- info
