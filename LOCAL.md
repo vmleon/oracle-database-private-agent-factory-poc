@@ -1,24 +1,29 @@
 # Local deployment
 
-End-to-end local deployment of the Decisioning Engine PoC using rootless podman.
+End-to-end runbook for the Decisioning Engine PoC on rootless podman. The architecture that motivates this is in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md); this file is the click-by-click runbook.
 
-See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for the design; this file is the runbook.
+You walk through five steps:
 
-## Status
+1. [Install prereqs and extract the PAF kit.](#1-install-prereqs-and-extract-the-paf-kit)
+2. [Boot the stack (`local up`).](#2-boot-the-stack)
+3. [Install PAF through its UI wizard.](#3-install-paf)
+4. [Register Ollama (LLM) and the OPA MCP server in PAF.](#4-register-the-llm-and-the-mcp-server)
+5. [Smoke-test with a `HELLO_AGENT` flow.](#5-smoke-test)
 
-After running the commands below, you have:
+When you're done you have:
 
-- Oracle Database Free 26ai on `localhost:1521` (service `FREEPDB1`), with `max_string_size=EXTENDED`, four schema users (`APP`, `REPORTING`, `AGENT_TOOLS`, `AGENT_FACTORY`), the banking + decisioning schema in place, and `DBMS_CLOUD` + `DBMS_CLOUD_AI` installed.
-- Private Agent Factory at `https://localhost:8080/` — UI installer on first boot, sign-in page thereafter — installed against the local 26ai database under `AGENT_FACTORY`.
-- A `caddy-ollama-tls` container terminating TLS in front of Ollama, plus an Oracle SSL wallet trusting Caddy's CA (registered via the `SSL_WALLET` database property). Plain `UTL_HTTP` from any session reaches Ollama over HTTPS — useful for any future HTTPS-from-DB work.
-- LLM Configuration registered against your configured Ollama host (laptop or LAN GPU).
-- A `HELLO_AGENT` flow you can build in Agent Builder and run from Playground in under a minute (see [Smoke-test in PAF](#smoke-test-in-paf)).
+- Oracle Database Free 26ai on `localhost:1521` (service `FREEPDB1`), `max_string_size=EXTENDED`, schema users `APP` / `REPORTING` / `AGENT_TOOLS` / `AGENT_FACTORY`, full banking + decisioning schema, and `DBMS_CLOUD` + `DBMS_CLOUD_AI` installed.
+- Private Agent Factory at `https://localhost:8080/`, installed against the local 26ai database under `AGENT_FACTORY`.
+- An `opa` container (Open Policy Agent in server mode loading every `.rego` under `opa/packages/`) and a sibling `opa-mcp` container — a FastMCP wrapper exposing each Rego rule as a typed MCP tool at `http://opa-mcp:8500/mcp/`. PAF reaches it as an **MCP Server node** wired to `CHAT_AGENT` only.
+- A `caddy-ollama-tls` container terminating TLS in front of Ollama, plus an Oracle SSL wallet trusting Caddy's CA (registered via the `SSL_WALLET` database property — kept for future HTTPS-from-DB work).
+- LLM Configuration in PAF registered against your Ollama host (laptop or LAN GPU).
+- A `HELLO_AGENT` flow you can build in under a minute.
 
 **Not wired locally**: Select AI profiles (`chat_profile` / `research_profile`). Oracle Database Free 26ai (23.26.x) rejects custom `provider_endpoint` values in `DBMS_CLOUD_AI` pre-flight (`ORA-20401`) — see [`docs/DEPLOYMENT.md §7`](docs/DEPLOYMENT.md). The `CHAT_AGENT` flow uses a SQL Query node + LLM locally; full Select AI Bridge is the ADB demo path.
 
-OPA, OCR, the Spring Boot backend, and the Angular UIs are not yet in the compose; they're tracked in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
+OCR, the Spring Boot backend, and the Angular UIs are not yet in the compose; they're tracked in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 
-## Prerequisites
+## Prereqs
 
 Install these on the host once.
 
@@ -35,61 +40,59 @@ Install these on the host once.
 You also need network access to pull:
 
 - `container-registry.oracle.com/database/free:latest` (Oracle Database Free 26ai image; ~9 GB).
+- `docker.io/openpolicyagent/opa:latest`, `docker.io/caddy:2-alpine`, `docker.io/python:3.12-slim` (built once for `opa-mcp`).
 - `ojdbc11` JDBC driver from Maven Central (the Ansible role caches it to `~/.cache/paf-poc/liquibase-libs/`).
 
-## Quickstart
+## 1. Install prereqs and extract the PAF kit
 
 ```bash
 python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 
-python manage.py setup local                                          # writes .env
-python manage.py paf prepare ~/Downloads/oracle_agent_factory_<v>.tar.gz  # extract kit + record version
-python manage.py local up                                             # podman compose up + ansible → liquibase + paf
-python manage.py paf bootstrap                                        # prints PAF UI installer steps
-python manage.py info                                                 # prints JDBC URL + service users + PAF URL
+python manage.py setup local
 ```
 
-`paf prepare` is required only once (or after a kit upgrade). `local up` is otherwise idempotent — it builds the PAF image the first time it sees a new `PAF_APP_VERSION` and starts the `paf` service after the database is healthy and Liquibase has run.
+`setup local` checks the prereqs in the table above and writes a `.env` with your Oracle password and Ollama host/port choices.
 
-## Day-2
-
-| Command                                        | What it does                                                                                                                                                                                                                                                                                           |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `python manage.py local up`                    | Idempotent: starts containers if down, runs Liquibase if any pending changesets.                                                                                                                                                                                                                       |
-| `python manage.py local provision`             | Re-runs Liquibase + grants only (no podman restart). Use after editing the changelog.                                                                                                                                                                                                                  |
-| `python manage.py local logs oracle-free-26ai` | Tails the Oracle DB container logs.                                                                                                                                                                                                                                                                    |
-| `python manage.py local down`                  | Stops and removes containers. State persists in the `paf-oradata` volume and PAF's bind-mounted `paf-kit/applied-ai/{volume,dev-shared}` directories.                                                                                                                                                  |
-| `python manage.py local down --purge`          | Also removes the Oracle data volume **and** resets PAF's bind-mounted `applied-ai/{volume,dev-shared}` directories to the kit-shipped defaults (snapshotted at `paf prepare` time). Next `local up` starts with a fresh DB and PAF presents the install wizard again. Does **not** re-extract the kit. |
-
-## Private Agent Factory (PAF)
-
-The PAF container is built locally from Oracle's kit tarball — the image is not on a public registry.
-
-### One-time: prepare the kit
-
-Download the ARM64 tarball from Oracle (e.g. `oracle_agent_factory_25.3.9_arm.tar.gz`, ~2.3 GB) and run:
+Download the ARM64 PAF tarball from Oracle (e.g. `oracle_agent_factory_25.3.9_arm.tar.gz`, ~2.3 GB), then:
 
 ```bash
 python manage.py paf prepare ~/Downloads/oracle_agent_factory_25.3.9_arm.tar.gz
 ```
 
-This extracts the kit into `./paf-kit/` (gitignored, ~6 GB on disk), reads `app_version` from the kit's `version.json`, and writes `PAF_APP_VERSION=…` into `.env`. The directory is required by the compose mounts (`paf-kit/applied-ai/dev-shared` and `paf-kit/applied-ai/volume`).
+This extracts the kit into `./paf-kit/` (gitignored, ~6 GB on disk), reads `app_version` from the kit's `version.json`, writes `PAF_APP_VERSION=…` into `.env`, and snapshots the kit's pristine bind-mount state so `local down --purge` can restore it. Required once, plus once per kit upgrade.
 
-### Image build
-
-`python manage.py local up` builds the PAF image automatically if `localhost/applied-ai-label:<version>` is missing. To force a rebuild or to build ahead of time:
+## 2. Boot the stack
 
 ```bash
-python manage.py paf build
+python manage.py local up
 ```
 
-The build invokes the kit's `build-image.sh aai` inside `paf-kit/`. First build can take 10+ minutes (Java 23 JDK + Oracle Instant Client + Python deps).
+What this does, in order:
 
-### UI installer
+- Starts the Oracle container, waits for `DATABASE IS READY TO USE!`, sets `max_string_size=EXTENDED`.
+- Generates a self-signed Caddy CA + server cert, builds an Oracle SSL wallet that trusts the CA, and points the database at it via the `SSL_WALLET` property.
+- Installs `DBMS_CLOUD` (if missing) via `catcon.pl`.
+- Applies pre-Liquibase sysdba grants (TABLE RETENTION, required before the Blockchain `decision` table is created).
+- Runs Liquibase against `database/liquibase/oracle/` (via Ansible).
+- Applies post-Liquibase sysdba grants + network ACL for `caddy-ollama-tls:443`.
+- Builds the `opa-mcp` image (first run only) and starts the `opa`, `opa-mcp`, `caddy-ollama-tls`, and `paf` containers.
+- Writes PAF's `.config_complete.marker` and `version.json` so the kit's startup script unblocks.
 
-On first boot PAF presents a setup wizard. Open it after `local up`:
+The command is idempotent — re-running it from any state is safe and converges to a healthy stack.
+
+Confirm everything is up:
+
+```bash
+python manage.py info
+```
+
+Prints the JDBC URL, service users, PAF URL, OPA URL, and OPA MCP URL.
+
+## 3. Install PAF
+
+Open the installer in your browser:
 
 ```
 https://localhost:8080/agentFactory/installation
@@ -97,17 +100,85 @@ https://localhost:8080/agentFactory/installation
 
 PAF terminates TLS itself with a self-signed cert — your browser will warn; accept and continue. Plain `http://` returns HTTP 400.
 
-Run `python manage.py paf bootstrap` for the exact values to paste — in short:
+`python manage.py paf bootstrap` prints the exact values to paste. In short:
 
-- Mode: **Production** (the existing 26ai container, not the kit's bundled DB).
-- DB host: `oracle-free-26ai` (the compose service name; PAF resolves it through the project network).
+- Mode: **Production** (use the existing 26ai container, not the kit's bundled DB).
+- DB host: `oracle-free-26ai` — the compose service name. PAF resolves it through the project network. **Do not use `localhost`** — that would point at the PAF container itself.
 - DB port: `1521`, service: `FREEPDB1`, user: `AGENT_FACTORY`, password: same `DB_PASSWORD` as in `.env`.
+- Admin user: pick a name and password; you'll sign in as this user.
 
-After install completes, sign in as the admin user you set in step 1 and register Ollama under LLM Management.
+After install completes, sign in as the admin user.
 
-## Smoke-test in PAF
+## 4. Register the LLM and the MCP server
 
-Once you're signed in and both LLM Configurations show as saved:
+PAF needs two things wired up before any agent flow can do useful work: the LLM endpoint (Ollama) and the tool endpoints (the OPA MCP server). Both are registered in the PAF admin area; you don't write code for either.
+
+### 4a. LLM (Ollama)
+
+Admin → **LLM Management** → **Add Configuration**.
+
+- Type: `Generative` (chat model).
+- Provider: `Ollama`.
+- Host: the value of `OLLAMA_HOST` in your `.env` (e.g. `<your-gpu-host>.local` if you offloaded to a LAN GPU, otherwise the host running Ollama).
+- Port: `OLLAMA_PORT` from `.env` (default `11434`).
+- Model: `llama3.3:70b-instruct-q4_K_M`.
+
+Save, then click **Test connection** — it should respond within a few seconds.
+
+Repeat with type `Embedding` and model `bge-m3`. Needed for any RAG flow; the smoke-test in §5 doesn't strictly need it, but the eventual `CHAT_AGENT` does.
+
+### 4b. MCP server (OPA)
+
+Admin → **MCP Servers** → **Add MCP Server**.
+
+- Name: `opa-mcp`
+- Transport: `streamable-http`
+- URL: `http://opa-mcp:8500/mcp/` — compose service name + port. **Do not use `localhost`** — PAF runs in a different container; the address must resolve on the compose network.
+- No auth header. The MCP server is internal to the compose network and is not published to the host.
+
+Save. PAF's tool-discovery panel should populate with seven entries:
+
+| Tool                          | Rego rule                        | What it does                                                     |
+| ----------------------------- | -------------------------------- | ---------------------------------------------------------------- |
+| `required_documents`          | `decisioning.required_documents` | Document set for `(product, employment, residency, amount_band)` |
+| `evaluate_eligibility`        | `decisioning.eligibility`        | Age / DTI / PTI / score gates → `{allow, deny[], warn[]}`        |
+| `evaluate_aml`                | `decisioning.aml`                | Sanctions / PEP / suspicious-pattern flags                       |
+| `evaluate_kyc`                | `decisioning.kyc`                | ID validity, document expiry, OCR quality tier                   |
+| `evaluate_fair_lending_flags` | `decisioning.fair_lending`       | Disparate-impact pre-flight against monitored patterns           |
+| `lookup_pricing`              | `decisioning.pricing.quote`      | Risk-band → indicative rate from the configured rate card        |
+| `list_policy_versions`        | `/v1/policies`                   | Audit: list loaded Rego modules                                  |
+
+Each tool's input schema is auto-derived from the FastMCP type hints in `src/ai/opa-mcp/server.py`. Outputs intentionally mirror Rego's `{allow, deny[], warn[]}` signal model — the agent folds them into the recommendation packet as evidence, never as automatic gates.
+
+The server gets wired into the `CHAT_AGENT` flow through an **MCP Server node** in Agent Builder (`docs/DESIGN.md §10`). The `RESEARCH_AGENT` flow has no MCP attached — it's read-only by design.
+
+#### If discovery fails
+
+Sanity-check the layers from the outside in.
+
+```bash
+# 1. OPA itself — does the policy load and a rule evaluate?
+podman exec paf-oracle-free-26ai curl -s http://opa:8181/v1/data/decisioning/eligibility \
+  -H 'content-type: application/json' \
+  -d '{"input":{"applicant":{"age":34,"dti":0.41,"pti":0.18,"credit_score":642}}}'
+# Expect: {"result":{"allow":false,"deny":[],"warn":["Credit score 642 in caution band (< 670)"]}}
+
+# 2. MCP wrapper — does the FastMCP process accept the streamable-http handshake?
+podman exec paf-oracle-free-26ai curl -sf -o /dev/null -w "HTTP %{http_code}\n" \
+  http://opa-mcp:8500/mcp/ -X POST -d '{}' -H 'content-type: application/json'
+# Expect: HTTP 307 (FastMCP's trailing-slash redirect) or HTTP 4xx with a JSON-RPC error.
+#         Anything else (timeout, connection refused) = wrapper isn't healthy.
+
+# 3. Logs
+podman logs paf-opa-mcp           # FastMCP startup banner + per-request log
+podman logs paf-opa               # OPA bundle load + per-request log
+```
+
+If OPA returns a 404 on `/v1/data/decisioning/...`, the `.rego` files didn't load — check `podman logs paf-opa` for a parse error and run `podman restart paf-opa` after fixing.
+
+## 5. Smoke-test
+
+Once Ollama and OPA MCP are both registered:
 
 1. Open Agent Builder → new flow named `HELLO_AGENT`.
 2. Add four nodes:
@@ -127,7 +198,28 @@ Once you're signed in and both LLM Configurations show as saved:
 
 3. Wire **Chat input → Prompt.message → LLM → Chat output**, save, hit **Playground**, type "say hello in three words". The model should answer.
 
-If it hangs or errors, `python manage.py local logs paf` shows the backend trace.
+To also exercise the MCP path end-to-end inside PAF, add an **MCP Server node** pointing at `opa-mcp` and wire it to the LLM node's tool input. The node's tool list should match the seven entries from §4b. Calling the flow with `"what documents does a self-employed expat need for a $25k personal loan?"` should round-trip through `required_documents` and return `ID, TAX_RETURN, STATEMENT, ADDRESS_PROOF`.
+
+If anything hangs or errors, `python manage.py local logs paf` shows the backend trace.
+
+## Day-2
+
+| Command                                 | What it does                                                                                                                                                                                                                                                                                           |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `python manage.py local up`             | Idempotent: starts containers if down, runs Liquibase if any pending changesets.                                                                                                                                                                                                                       |
+| `python manage.py local provision`      | Re-runs Liquibase + grants only (no podman restart). Use after editing the changelog.                                                                                                                                                                                                                  |
+| `python manage.py local logs <service>` | Tails a service (`oracle-free-26ai`, `paf`, `opa`, `opa-mcp`, `caddy-ollama-tls`).                                                                                                                                                                                                                     |
+| `python manage.py local down`           | Stops and removes containers. State persists in the `paf-oradata` volume and PAF's bind-mounted `paf-kit/applied-ai/{volume,dev-shared}` directories.                                                                                                                                                  |
+| `python manage.py local down --purge`   | Also removes the Oracle data volume **and** resets PAF's bind-mounted `applied-ai/{volume,dev-shared}` directories to the kit-shipped defaults (snapshotted at `paf prepare` time). Next `local up` starts with a fresh DB and PAF presents the install wizard again. Does **not** re-extract the kit. |
+
+Editing OPA policy: change a `.rego` file under `opa/packages/`, then `podman restart paf-opa`. The `opa-mcp` wrapper is stateless and picks up the new policy on the next call — no rebuild needed.
+
+Rebuilding the OPA MCP wrapper (after editing `src/ai/opa-mcp/`):
+
+```bash
+podman compose -f deploy/podman/compose.local.yml -p paf build opa-mcp
+podman compose -f deploy/podman/compose.local.yml -p paf up -d opa-mcp
+```
 
 ## Optional: Ollama on a LAN GPU host (e.g. NVIDIA DGX Spark)
 
@@ -261,3 +353,9 @@ The kit's startup script polls for `/mount/.config_complete.marker` (a host-side
 ```bash
 touch paf-kit/applied-ai/volume/.config_complete.marker
 ```
+
+**PAF MCP discovery for `opa-mcp` returns 0 tools, or "connection refused".**
+Most common cause is using `localhost` instead of `opa-mcp` in the URL — PAF must reach the wrapper over the compose network, not the host. Confirm with `podman exec paf-agent-factory getent hosts opa-mcp` (should print the container IP). If the address resolves but tool discovery still fails, run the three sanity-check curls in [§4b](#4b-mcp-server-opa).
+
+**OPA returns `404` on `/v1/data/decisioning/...` rules.**
+A `.rego` file failed to load. Check `podman logs paf-opa` for a parse error (line number + message), fix the file under `opa/packages/`, and `podman restart paf-opa`. The wrapper does not need a restart.

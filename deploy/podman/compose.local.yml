@@ -53,6 +53,38 @@ services:
       USE_WALLET: "false"
       INCLUDE_KA_DATA: "false"
 
+  # Open Policy Agent — runs in server mode loading every .rego file
+  # in ./packages. PAF reaches it via the OPA MCP server (below); no
+  # host port is published, only the compose network reaches it.
+  opa:
+    image: docker.io/openpolicyagent/opa:latest
+    container_name: paf-opa
+    restart: unless-stopped
+    command:
+      - "run"
+      - "--server"
+      - "--addr=:8181"
+      - "--log-level=info"
+      - "/packages"
+    volumes:
+      - ../../opa/packages:/packages:ro
+
+  # MCP wrapper around OPA — exposes each Rego rule as a typed MCP
+  # tool over streamable-http. PAF's MCP Server node connects to
+  # http://opa-mcp:8500/mcp/. Wired to CHAT_AGENT only per the
+  # two-agent security model.
+  opa-mcp:
+    build:
+      context: ../../src/ai/opa-mcp
+    container_name: paf-opa-mcp
+    restart: unless-stopped
+    depends_on:
+      opa:
+        condition: service_started
+    environment:
+      OPA_URL: "http://opa:8181"
+      PORT: "8500"
+
   # TLS terminator in front of Ollama. Exists because Oracle 26ai's
   # DBMS_CLOUD_AI rejects HTTP endpoints on-prem (ORA-20047). Caddy
   # serves a pre-generated self-signed cert; the matching CA root is
