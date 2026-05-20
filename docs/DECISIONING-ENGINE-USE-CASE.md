@@ -1027,5 +1027,6 @@ The test bench is for **functionality and observability**, not performance. Each
 - Build `RESEARCH_AGENT` in PAF: broader read-only Select AI profile, deeper RAG, **no side-effect tools**.
 - Build the two UIs as thin shells over the API; the backoffice's HITL task detail screen carries the Case Research Agent conversational panel.
 - Walk the test bench end-to-end; every scenario green with complete `decision_audit` + `research_audit` + Blockchain `decision` row.
+- **Later (once the end-to-end pipeline is stable): surface a plain-language rejection reason in the customer chat.** When the reviewer closes a HITL task with REJECT, the Application Service appends an outcome message containing the **dominant** signal translated into one actionable sentence — e.g., _"Declined because your debt-to-income is 0.55, above our cap of 0.45 — you may reapply once your DTI is below the cap."_ Sufficient for the customer to know what to address and retry; not the full evidence packet. The bank chooses which signals are customer-disclosable via `system_config` (some reasons — e.g., sanctions / AML — are never surfaced in detail).
 
 ---
