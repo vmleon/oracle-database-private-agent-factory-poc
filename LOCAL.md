@@ -7,7 +7,7 @@ You walk through five steps:
 1. [Install prereqs and extract the PAF kit.](#1-install-prereqs-and-extract-the-paf-kit)
 2. [Boot the stack (`local up`).](#2-boot-the-stack)
 3. [Install PAF and register the LLM through its UI wizard.](#3-install-paf)
-4. [Register the OPA MCP server in PAF.](#4-register-the-opa-mcp-server)
+4. [Register the MCP servers and HTTP datasource in PAF.](#4-register-tools-and-datasources)
 5. [Smoke-test with a `HELLO_AGENT` flow that uses OPA via the Agent node.](#5-smoke-test)
 
 When you're done you have:
@@ -15,13 +15,15 @@ When you're done you have:
 - Oracle Database Free 26ai on `localhost:1521` (service `FREEPDB1`), `max_string_size=EXTENDED`, schema users `APP` / `REPORTING` / `AGENT_TOOLS` / `AGENT_FACTORY`, full banking + decisioning schema, and `DBMS_CLOUD` + `DBMS_CLOUD_AI` installed.
 - Private Agent Factory at `https://localhost:8080/`, installed against the local 26ai database under `AGENT_FACTORY`.
 - An `opa` container (Open Policy Agent in server mode loading every `.rego` under `opa/packages/`) and a sibling `opa-mcp` container — a FastMCP wrapper exposing each Rego rule as a typed MCP tool at `http://opa-mcp:8500/mcp/`. PAF reaches it as an **MCP Server node** wired to `CHAT_AGENT` only.
+- A stub `ocr-mcp` container — FastMCP wrapper with one `extract_document` tool at `http://ocr-mcp:8501/mcp/`. Returns canned classification + extraction results keyed on the document filename (placeholder for the real YOLO + PaddleOCR/Tesseract pipeline).
+- A `registry-api` container — synthetic FastAPI Company Registry with a single `verify_employer(name)` route. OpenAPI 3.1 spec at `http://registry-api:8600/openapi.json`. Registered with PAF as an **HTTP datasource** wired to `CHAT_AGENT` only.
 - A `caddy-ollama-tls` container terminating TLS in front of Ollama, plus an Oracle SSL wallet trusting Caddy's CA (registered via the `SSL_WALLET` database property — kept for future HTTPS-from-DB work).
 - LLM Configuration in PAF registered against your Ollama host (laptop or LAN GPU).
 - A `HELLO_AGENT` flow you can build in under a minute.
 
 **Not wired locally**: Select AI profiles (`chat_profile` / `research_profile`). Oracle Database Free 26ai (23.26.x) rejects custom `provider_endpoint` values in `DBMS_CLOUD_AI` pre-flight (`ORA-20401`) — see [`docs/DEPLOYMENT.md §7`](docs/DEPLOYMENT.md). The `CHAT_AGENT` flow uses a SQL Query node + LLM locally; full Select AI Bridge is the ADB demo path.
 
-OCR, the Spring Boot backend, and the Angular UIs are not in the compose yet. The next-steps list in [`README.md`](README.md#current-state) shows the order they land in.
+The Spring Boot backend and the Angular UIs are not in the compose yet, and the OCR service is a stub (real YOLO/Tesseract pipeline is a separate workstream). The next-steps list in [`README.md`](README.md#current-state) shows the order they land in.
 
 ## Prereqs
 
@@ -40,7 +42,7 @@ Install these on the host once.
 You also need network access to pull:
 
 - `container-registry.oracle.com/database/free:latest` (Oracle Database Free 26ai image; ~9 GB).
-- `docker.io/openpolicyagent/opa:latest`, `docker.io/caddy:2-alpine`, `docker.io/python:3.12-slim` (built once for `opa-mcp`).
+- `docker.io/openpolicyagent/opa:latest`, `docker.io/caddy:2-alpine`, `docker.io/python:3.12-slim` (the slim base is built once each for `opa-mcp`, `ocr-mcp`, and `registry-api`).
 - `ojdbc11` JDBC driver from Maven Central (the Ansible role caches it to `~/.cache/paf-poc/liquibase-libs/`).
 
 ## 1. Install prereqs and extract the PAF kit
@@ -77,7 +79,7 @@ What this does, in order:
 - Applies pre-Liquibase sysdba grants (TABLE RETENTION, required before the Blockchain `decision` table is created).
 - Runs Liquibase against `database/liquibase/oracle/` (via Ansible).
 - Applies post-Liquibase sysdba grants + network ACL for `caddy-ollama-tls:443`.
-- Builds the `opa-mcp` image (first run only) and starts the `opa`, `opa-mcp`, `caddy-ollama-tls`, and `paf` containers.
+- Builds the `opa-mcp`, `ocr-mcp`, and `registry-api` images (first run only) and starts the `opa`, `opa-mcp`, `ocr-mcp`, `registry-api`, `caddy-ollama-tls`, and `paf` containers.
 - Writes PAF's `.config_complete.marker` and `version.json` so the kit's startup script unblocks.
 
 The command is idempotent — re-running it from any state is safe and converges to a healthy stack.
@@ -88,7 +90,7 @@ Confirm everything is up:
 python manage.py info
 ```
 
-Prints the JDBC URL, service users, PAF URL, OPA URL, and OPA MCP URL.
+Prints the JDBC URL, service users, PAF URL, OPA URL, OPA MCP URL, OCR MCP URL, and Registry API URL.
 
 ## 3. Install PAF
 
@@ -109,17 +111,24 @@ PAF terminates TLS itself with a self-signed cert — your browser will warn; ac
 
 After install completes, sign in as the admin user.
 
-## 4. Register the OPA MCP server
+## 4. Register tools and datasources
 
-Admin → **MCP Servers** → **Add MCP server**. The form has three fields:
+Three post-install registrations in the PAF admin area — two MCP servers and one HTTP datasource. All three target the `CHAT_AGENT` flow; the `RESEARCH_AGENT` flow has no external tools by design.
 
-| Field                   | Value                                                                                                                                  |
-| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| **Server name**         | `opa-mcp`                                                                                                                              |
-| **Server URL**          | `http://opa-mcp:8500/mcp/` — compose service name + port. **Do not use `localhost`**; the address must resolve on the project network. |
-| **Authentication mode** | `Direct` (no auth header — the MCP wrapper is internal to the compose network, not published to the host).                             |
+### 4a. MCP servers (opa-mcp + ocr-mcp)
 
-Save. The server should report a connected status. The seven discovered tools surface inside the **Agent node** in Agent Builder once you wire this MCP Server node to it (§5) — there isn't a separate global tool-list view.
+Admin → **MCP Servers** → **Add MCP server**, twice. The form has three fields each time; use the same `Direct` authentication mode for both (no auth — the wrappers are internal to the compose network, not published to the host).
+
+| Server name | Server URL                 | Tools                                                                                                              |
+| ----------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `opa-mcp`   | `http://opa-mcp:8500/mcp/` | seven typed tools wrapping the Rego rules — see table below                                                        |
+| `ocr-mcp`   | `http://ocr-mcp:8501/mcp/` | one stub tool `extract_document(storage_uri, requested_doc_type?)` returning canned classification + OCR responses |
+
+**Do not use `localhost`** in either URL — PAF must reach the wrappers over the compose network, not the host.
+
+After saving, each server should report a connected status. The discovered tools surface inside the **Agent node** in Agent Builder once you wire each MCP Server node to it (§5) — there isn't a separate global tool-list view.
+
+`opa-mcp` exposes:
 
 | Tool                          | Rego rule                        | What it does                                                     |
 | ----------------------------- | -------------------------------- | ---------------------------------------------------------------- |
@@ -133,9 +142,21 @@ Save. The server should report a connected status. The seven discovered tools su
 
 Each tool's input schema is auto-derived from the FastMCP type hints in `src/ai/opa-mcp/server.py`. Outputs mirror Rego's `{allow, deny[], warn[]}` signal model — the agent folds them into the recommendation packet as evidence, never as automatic gates.
 
-This MCP Server gets wired into the `CHAT_AGENT` flow through an **MCP Server node** in Agent Builder (`docs/DESIGN.md §10`). The `RESEARCH_AGENT` flow has no MCP attached — it's read-only by design.
+`ocr-mcp` is a stub. Its single `extract_document` tool returns canned responses keyed on the filename in `storage_uri` so the test-bench scenarios from `010-seed-synthetic.yaml` resolve correctly (e.g. `henry-payslip.pdf` → `MARGINAL`, `iris-*.pdf` → `UNUSABLE`, anything else → a `USABLE` fallback). Source: `src/ai/ocr-mcp/server.py`. Real OCR (YOLO + PaddleOCR/Tesseract, async via `OCR_REQUEST` queue) is a separate workstream.
 
-### If the server won't connect
+### 4b. HTTP datasource (Company Registry)
+
+Admin → **Data Sources** → **Add HTTP data source**.
+
+| Field                   | Value                                                                                                                            |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| **Name**                | `registry-api`                                                                                                                   |
+| **OpenAPI spec URL**    | `http://registry-api:8600/openapi.json` — compose service name + port; PAF reads the spec to expose `verify_employer` as a tool. |
+| **Authentication mode** | `Direct` (the service is internal to the compose network and has no auth).                                                       |
+
+The `registry-api` service ships eight synthetic company records that align with the employer names seeded by `010-seed-synthetic.yaml`, including `Phoenix Holdings Ltd` (`dormant`, scenario 28) and `Atlantis Innovations Ltd` (deliberately absent → `registered=false`, scenario 27). Source: `src/api/registry/`.
+
+### If a server or datasource won't connect
 
 Sanity-check the layers from the outside in.
 
@@ -146,14 +167,23 @@ podman exec paf-oracle-free-26ai curl -s http://opa:8181/v1/data/decisioning/eli
   -d '{"input":{"applicant":{"age":34,"dti":0.41,"pti":0.18,"credit_score":642}}}'
 # Expect: {"result":{"allow":false,"deny":[],"warn":["Credit score 642 in caution band (< 670)"]}}
 
-# 2. MCP wrapper — does the FastMCP process accept the streamable-http handshake?
-podman exec paf-oracle-free-26ai curl -sf -o /dev/null -w "HTTP %{http_code}\n" \
+# 2. MCP wrappers — do the FastMCP processes accept the streamable-http handshake?
+podman exec paf-oracle-free-26ai curl -sf -o /dev/null -w "opa-mcp HTTP %{http_code}\n" \
   http://opa-mcp:8500/mcp/ -X POST -d '{}' -H 'content-type: application/json'
+podman exec paf-oracle-free-26ai curl -sf -o /dev/null -w "ocr-mcp HTTP %{http_code}\n" \
+  http://ocr-mcp:8501/mcp/ -X POST -d '{}' -H 'content-type: application/json'
 # Expect: HTTP 307 (FastMCP's trailing-slash redirect) or HTTP 4xx with a JSON-RPC error.
 #         Anything else (timeout, connection refused) = wrapper isn't healthy.
 
-# 3. Logs
+# 3. Registry API — does the FastAPI service answer and serve its OpenAPI spec?
+podman exec paf-oracle-free-26ai curl -sf -o /dev/null -w "registry-api HTTP %{http_code}\n" \
+  http://registry-api:8600/openapi.json
+# Expect: HTTP 200. PAF reads the spec to expose verify_employer as a tool.
+
+# 4. Logs
 podman logs paf-opa-mcp           # FastMCP startup banner + per-request log
+podman logs paf-ocr-mcp           # same
+podman logs paf-registry-api      # uvicorn startup + per-request log
 podman logs paf-opa               # OPA bundle load + per-request log
 ```
 
@@ -201,6 +231,14 @@ The agent should call `required_documents` and reply with the four required doc 
 
 If the model answers from memory (e.g. lists generic docs without the trace pane showing a tool call), strengthen the prompt with an explicit "you must call a tool before answering" instruction, or lower the LLM temperature on the Agent node closer to 0.
 
+To also exercise the OCR stub, add a second **MCP server** node pointing at `ocr-mcp` and wire its `Tools` output into the **same** Agent node (the Agent accepts tools from multiple MCP servers). Then ask:
+
+```
+Extract the document at oci://bucket/seed/henry-payslip.pdf
+```
+
+The agent should call `extract_document` and return a `PAYSLIP` classified as `MARGINAL` (the canned response from `src/ai/ocr-mcp/server.py`). Swap the path for `iris-id.pdf` to see an `UNUSABLE` response.
+
 If anything hangs or errors, `python manage.py local logs paf` shows the backend trace.
 
 ## Day-2
@@ -209,18 +247,20 @@ If anything hangs or errors, `python manage.py local logs paf` shows the backend
 | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `python manage.py local up`             | Idempotent: starts containers if down, runs Liquibase if any pending changesets.                                                                                                                                                                                                                       |
 | `python manage.py local provision`      | Re-runs Liquibase + grants only (no podman restart). Use after editing the changelog.                                                                                                                                                                                                                  |
-| `python manage.py local logs <service>` | Tails a service (`oracle-free-26ai`, `paf`, `opa`, `opa-mcp`, `caddy-ollama-tls`).                                                                                                                                                                                                                     |
+| `python manage.py local logs <service>` | Tails a service (`oracle-free-26ai`, `paf`, `opa`, `opa-mcp`, `ocr-mcp`, `registry-api`, `caddy-ollama-tls`).                                                                                                                                                                                          |
 | `python manage.py local down`           | Stops and removes containers. State persists in the `paf-oradata` volume and PAF's bind-mounted `paf-kit/applied-ai/{volume,dev-shared}` directories.                                                                                                                                                  |
 | `python manage.py local down --purge`   | Also removes the Oracle data volume **and** resets PAF's bind-mounted `applied-ai/{volume,dev-shared}` directories to the kit-shipped defaults (snapshotted at `paf prepare` time). Next `local up` starts with a fresh DB and PAF presents the install wizard again. Does **not** re-extract the kit. |
 
 Editing OPA policy: change a `.rego` file under `opa/packages/`, then `podman restart paf-opa`. The `opa-mcp` wrapper is stateless and picks up the new policy on the next call — no rebuild needed.
 
-Rebuilding the OPA MCP wrapper (after editing `src/ai/opa-mcp/`):
+Rebuilding a wrapper image (after editing `src/ai/opa-mcp/`, `src/ai/ocr-mcp/`, or `src/api/registry/`) — replace `<service>` with `opa-mcp`, `ocr-mcp`, or `registry-api`:
 
 ```bash
-podman compose -f deploy/podman/compose.local.yml -p paf build opa-mcp
-podman compose -f deploy/podman/compose.local.yml -p paf up -d opa-mcp
+podman compose -f deploy/podman/compose.local.yml build <service>
+podman compose -f deploy/podman/compose.local.yml up -d <service>
 ```
+
+(No `-p <name>` flag — `manage.py local up` uses the default project name derived from the compose dir, so all containers share network `podman_default`. Passing `-p paf` here would put the rebuilt container on a separate `paf_default` network and break DNS to its siblings.)
 
 ## Optional: bigger model on a LAN GPU host (e.g. NVIDIA DGX Spark)
 
@@ -355,8 +395,8 @@ The kit's startup script polls for `/mount/.config_complete.marker` (a host-side
 touch paf-kit/applied-ai/volume/.config_complete.marker
 ```
 
-**PAF MCP discovery for `opa-mcp` returns 0 tools, or "connection refused".**
-Most common cause is using `localhost` instead of `opa-mcp` in the URL — PAF must reach the wrapper over the compose network, not the host. Confirm with `podman exec paf-agent-factory getent hosts opa-mcp` (should print the container IP). If the address resolves but tool discovery still fails, run the three sanity-check curls in [§4b](#4b-mcp-server-opa).
+**PAF MCP discovery for `opa-mcp` or `ocr-mcp` returns 0 tools, or "connection refused".**
+Most common cause is using `localhost` instead of `opa-mcp` / `ocr-mcp` in the URL — PAF must reach the wrapper over the compose network, not the host. Confirm with `podman exec paf-agent-factory getent hosts opa-mcp` (should print the container IP); same for `ocr-mcp`. If the address resolves but tool discovery still fails, run the sanity-check curls in [§4 — If a server or datasource won't connect](#if-a-server-or-datasource-wont-connect). The second most common cause is a network mismatch from rebuilding the container with `-p paf` — see the rebuild snippet in the Day-2 section.
 
 **OPA returns `404` on `/v1/data/decisioning/...` rules.**
 A `.rego` file failed to load. Check `podman logs paf-opa` for a parse error (line number + message), fix the file under `opa/packages/`, and `podman restart paf-opa`. The wrapper does not need a restart.
