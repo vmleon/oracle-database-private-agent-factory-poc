@@ -54,9 +54,26 @@ Template: `{{message}}` — keep the prompt body minimal. Saving exposes the `me
 
 Resolves the customer's current open application so the Agent doesn't have to ask the customer for an `application_id`.
 
-- Datasource: the **PAF metadata database** connection (`AGENT_FACTORY` schema, same DB).
-- Bind: `customer_id` — wired from the flow input variable.
-- Query:
+- **Prerequisite — Database data source.** PAF's SQL Query node only sees databases registered in **Admin → Data Sources → Add new data source**. Register one once (it isn't auto-created from the PAF install connection). Fill the form in this order:
+
+  | Field               | Value                                                                                                                 |
+  | ------------------- | --------------------------------------------------------------------------------------------------------------------- |
+  | Source type         | `Database`                                                                                                            |
+  | Source name         | `Banking Application DB`                                                                                              |
+  | Description         | `Oracle AI Database 26ai — banking + decisioning schema. Read-only customer-safe REPORTING views for the CHAT_AGENT.` |
+  | Connection type     | `Basic`                                                                                                               |
+  | Connection protocol | `TCP` (default)                                                                                                       |
+  | Host                | `oracle-free-26ai`                                                                                                    |
+  | Port                | `1521`                                                                                                                |
+  | Service name        | `FREEPDB1`                                                                                                            |
+  | Username            | `AGENT_FACTORY`                                                                                                       |
+  | Password            | the `DB_PASSWORD` value from `.env`                                                                                   |
+
+  Click **Test connection** — it should succeed. Then **Add database source**. `AGENT_FACTORY` already has `SELECT` on the `REPORTING.chat_v_*` views (granted in changeset 006), so the SQL below will work.
+
+- **Select database** (in the SQL Query node): `Banking Application DB` (the source you just registered).
+- **Bind**: `customer_id` — wired from the flow input variable.
+- **Query**:
 
   ```sql
   SELECT application_id,
