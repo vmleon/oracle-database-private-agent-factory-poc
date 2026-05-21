@@ -6,9 +6,9 @@ You walk through five steps:
 
 1. [Install prereqs and extract the PAF kit.](#1-install-prereqs-and-extract-the-paf-kit)
 2. [Boot the stack (`local up`).](#2-boot-the-stack)
-3. [Install PAF through its UI wizard.](#3-install-paf)
-4. [Register Ollama (LLM) and the OPA MCP server in PAF.](#4-register-the-llm-and-the-mcp-server)
-5. [Smoke-test with a `HELLO_AGENT` flow.](#5-smoke-test)
+3. [Install PAF and register the LLM through its UI wizard.](#3-install-paf)
+4. [Register the OPA MCP server in PAF.](#4-register-the-opa-mcp-server)
+5. [Smoke-test with a `HELLO_AGENT` flow that uses OPA via the Agent node.](#5-smoke-test)
 
 When you're done you have:
 
@@ -100,43 +100,26 @@ https://localhost:8080/agentFactory/installation
 
 PAF terminates TLS itself with a self-signed cert — your browser will warn; accept and continue. Plain `http://` returns HTTP 400.
 
-`python manage.py paf bootstrap` prints the exact values to paste. In short:
+`python manage.py paf bootstrap` prints the exact values to paste. It covers all four wizard steps:
 
-- Mode: **Production** (use the existing 26ai container, not the kit's bundled DB).
-- DB host: `oracle-free-26ai` — the compose service name. PAF resolves it through the project network. **Do not use `localhost`** — that would point at the PAF container itself.
-- DB port: `1521`, service: `FREEPDB1`, user: `AGENT_FACTORY`, password: same `DB_PASSWORD` as in `.env`.
-- Admin user: pick a name and password; you'll sign in as this user.
+- **Step 1 — admin user.** Pick a name and password; you'll sign in as this user.
+- **Step 2 — database.** DB host: `oracle-free-26ai` (compose service name — **not** `localhost`, which would point at the PAF container itself). Port `1521`, service `FREEPDB1`, user `AGENT_FACTORY`, password = `DB_PASSWORD` from `.env`.
+- **Step 3 — install.** Click Install. PAF creates its metadata tables under `AGENT_FACTORY` and a read-only worker user `AAI_RO_AGENT_FACTORY`.
+- **Step 4 — LLM Management.** Register the generative model (`llama3.3:70b-instruct-q4_K_M`) and the embedding model (`bge-m3`) against your Ollama endpoint. `paf bootstrap` resolves `.local` mDNS names to an IPv4 address for you, since the PAF container can't do mDNS.
 
 After install completes, sign in as the admin user.
 
-## 4. Register the LLM and the MCP server
+## 4. Register the OPA MCP server
 
-PAF needs two things wired up before any agent flow can do useful work: the LLM endpoint (Ollama) and the tool endpoints (the OPA MCP server). Both are registered in the PAF admin area; you don't write code for either.
+Admin → **MCP Servers** → **Add MCP server**. The form has three fields:
 
-### 4a. LLM (Ollama)
+| Field                   | Value                                                                                                                                  |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| **Server name**         | `opa-mcp`                                                                                                                              |
+| **Server URL**          | `http://opa-mcp:8500/mcp/` — compose service name + port. **Do not use `localhost`**; the address must resolve on the project network. |
+| **Authentication mode** | `Direct` (no auth header — the MCP wrapper is internal to the compose network, not published to the host).                             |
 
-Admin → **LLM Management** → **Add Configuration**.
-
-- Type: `Generative` (chat model).
-- Provider: `Ollama`.
-- Host: the value of `OLLAMA_HOST` in your `.env` (e.g. `<your-gpu-host>.local` if you offloaded to a LAN GPU, otherwise the host running Ollama).
-- Port: `OLLAMA_PORT` from `.env` (default `11434`).
-- Model: `llama3.3:70b-instruct-q4_K_M`.
-
-Save, then click **Test connection** — it should respond within a few seconds.
-
-Repeat with type `Embedding` and model `bge-m3`. Needed for any RAG flow; the smoke-test in §5 doesn't strictly need it, but the eventual `CHAT_AGENT` does.
-
-### 4b. MCP server (OPA)
-
-Admin → **MCP Servers** → **Add MCP Server**.
-
-- Name: `opa-mcp`
-- Transport: `streamable-http`
-- URL: `http://opa-mcp:8500/mcp/` — compose service name + port. **Do not use `localhost`** — PAF runs in a different container; the address must resolve on the compose network.
-- No auth header. The MCP server is internal to the compose network and is not published to the host.
-
-Save. PAF's tool-discovery panel should populate with seven entries:
+Save. The server should report a connected status. The seven discovered tools surface inside the **Agent node** in Agent Builder once you wire this MCP Server node to it (§5) — there isn't a separate global tool-list view.
 
 | Tool                          | Rego rule                        | What it does                                                     |
 | ----------------------------- | -------------------------------- | ---------------------------------------------------------------- |
@@ -148,11 +131,11 @@ Save. PAF's tool-discovery panel should populate with seven entries:
 | `lookup_pricing`              | `decisioning.pricing.quote`      | Risk-band → indicative rate from the configured rate card        |
 | `list_policy_versions`        | `/v1/policies`                   | Audit: list loaded Rego modules                                  |
 
-Each tool's input schema is auto-derived from the FastMCP type hints in `src/ai/opa-mcp/server.py`. Outputs intentionally mirror Rego's `{allow, deny[], warn[]}` signal model — the agent folds them into the recommendation packet as evidence, never as automatic gates.
+Each tool's input schema is auto-derived from the FastMCP type hints in `src/ai/opa-mcp/server.py`. Outputs mirror Rego's `{allow, deny[], warn[]}` signal model — the agent folds them into the recommendation packet as evidence, never as automatic gates.
 
-The server gets wired into the `CHAT_AGENT` flow through an **MCP Server node** in Agent Builder (`docs/DESIGN.md §10`). The `RESEARCH_AGENT` flow has no MCP attached — it's read-only by design.
+This MCP Server gets wired into the `CHAT_AGENT` flow through an **MCP Server node** in Agent Builder (`docs/DESIGN.md §10`). The `RESEARCH_AGENT` flow has no MCP attached — it's read-only by design.
 
-#### If discovery fails
+### If the server won't connect
 
 Sanity-check the layers from the outside in.
 
@@ -178,27 +161,37 @@ If OPA returns a 404 on `/v1/data/decisioning/...`, the `.rego` files didn't loa
 
 ## 5. Smoke-test
 
-Once Ollama and OPA MCP are both registered:
+Build one flow that exercises both the LLM and the OPA MCP server end-to-end.
 
-1. Open Agent Builder → new flow named `HELLO_AGENT`.
-2. Add four nodes:
-   - **Chat input**
-   - **Prompt** with template:
+Open Agent Builder → **New Flow** → name it `HELLO_AGENT`. Drop five nodes onto the canvas:
 
-     ```
-     You are a terse assistant. Answer in under 20 words.
+| Node            | Configuration                                                                                                                                                                                                                                                          |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Chat input**  | Default.                                                                                                                                                                                                                                                               |
+| **Prompt**      | Template: `You are a loan assistant. When the user asks about required documents, eligibility, AML, KYC, fair-lending, or pricing, always call the matching tool — never answer from memory.\n\nUser: {{message}}` Save the prompt to expose the `message` input port. |
+| **MCP server**  | Pick `opa-mcp` from the dropdown. Default timeout (`45` s).                                                                                                                                                                                                            |
+| **Agent**       | Select your saved generative LLM (e.g. `ollama-llm`). The Agent node — **not** the LLM node — is the one with a `Tools` input.                                                                                                                                         |
+| **Chat output** | Default.                                                                                                                                                                                                                                                               |
 
-     User: {{message}}
-     ```
+Wire them as follows (each row is one edge, port names match what the UI labels):
 
-     Saving the prompt makes a `message` input port appear on the node (the Prompt node only grows input ports for template variables — that's why a direct Chat input → Prompt wire is impossible without a `{{…}}` reference).
+```mermaid
+flowchart LR
+    CI["Chat input<br/>Message"] -->|Message → message| P["Prompt<br/>Prompt message"]
+    P -->|Prompt message → Prompt| A["Agent<br/>Message"]
+    MCP["MCP server<br/>Tools"] -->|Tools → Tools| A
+    A -->|Message → Message| CO["Chat output"]
+```
 
-   - **LLM** — pick your saved generative configuration.
-   - **Chat output**
+Save the flow, click **Playground**, then ask:
 
-3. Wire **Chat input → Prompt.message → LLM → Chat output**, save, hit **Playground**, type "say hello in three words". The model should answer.
+```
+What documents does a self-employed expat need for a $25,000 personal loan?
+```
 
-To also exercise the MCP path end-to-end inside PAF, add an **MCP Server node** pointing at `opa-mcp` and wire it to the LLM node's tool input. The node's tool list should match the seven entries from §4b. Calling the flow with `"what documents does a self-employed expat need for a $25k personal loan?"` should round-trip through `required_documents` and return `ID, TAX_RETURN, STATEMENT, ADDRESS_PROOF`.
+The agent should call `required_documents` and reply with the four required doc types (`ID`, `TAX_RETURN`, `STATEMENT`, `ADDRESS_PROOF`). The Playground's trace pane shows the tool invocation + raw JSON response — that's the signal the round-trip worked.
+
+If the model answers from memory (e.g. lists generic docs without the trace pane showing a tool call), strengthen the prompt with an explicit "you must call a tool before answering" instruction, or lower the LLM temperature on the Agent node closer to 0.
 
 If anything hangs or errors, `python manage.py local logs paf` shows the backend trace.
 
