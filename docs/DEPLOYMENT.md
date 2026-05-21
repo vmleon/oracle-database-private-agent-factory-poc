@@ -283,7 +283,8 @@ Policy values (DTI cap, score floor, OCR thresholds, fair-lending bucketing, rec
 What works today on the local stack:
 
 - Oracle Database Free 26ai container with `max_string_size=EXTENDED` and four schema users (`APP`, `REPORTING`, `AGENT_TOOLS`, `AGENT_FACTORY`) created by Liquibase. `AGENT_FACTORY` carries the PAF-specific privileges (`CONNECT, RESOURCE, CREATE SYNONYM/DATABASE LINK/ANY INDEX, INSERT ANY TABLE, CREATE USER, DROP USER, CREATE SESSION WITH ADMIN OPTION`, `READ/WRITE ON DIRECTORY DATA_PUMP_DIR`) plus the SYS-only `SELECT ON SYS.V_$PARAMETER` grant applied as sysdba.
-- Liquibase changelog `001-006` applied: users + grants, banking core (customer / account / loan*application / employment / account_transaction / credit_bureau_snapshot / existing_facility), decisioning + HITL + chat persistence, `system_config` + parameter history, REPORTING view sets (`chat_v*_`customer-safe,`research*v*_` broader).
+- Liquibase changelog `001-010` applied: users + grants, banking core (customer / account / loan*application / employment / account_transaction / credit_bureau_snapshot / existing_facility), decisioning + HITL + chat persistence, `system_config` + parameter history, REPORTING view sets (`chat_v*_`customer-safe,`research*v*_`broader),`AGENT_TOOLS.PKG_AGENT_TOOLS` PL/SQL package (`create_hitl_task`returning`task_id`), vector RAG tables `policy_corpus`+`case_history`with`VECTOR(1024, FLOAT32)`columns, TxEventQ queues`HITL_REQUEST`/`OCR_REQUEST`/`OCR_EXCEPTION_Q`(JSON payload, single-consumer), and a scenario seed (eight customers mapped to the path-defining test-bench scenarios plus eight`case_history` rows).
+- In-DB tool `create_hitl_task` verified end-to-end on Free 26ai: a single call inserts the recommendation packet into `APP.hitl_task` and enqueues `HITL_REQUEST` (`{ application_id, task_id, agent_recommendation, agent_run_id }`) in the same transaction. Grants in place: `AGENT_TOOLS` has `INSERT` + `SELECT` on `APP.hitl_task` (the `RETURNING` clause needs `SELECT`), `EXECUTE ON DBMS_AQ`, and `ENQUEUE` on `APP.HITL_REQUEST`.
 - `DBMS_CLOUD` + `DBMS_CLOUD_AI` installed via `catcon.pl`. Caddy TLS terminator in front of Ollama plus an Oracle SSL wallet trusting Caddy's CA (`SSL_WALLET` database property) — HTTPS-from-DB calls work end-to-end via `UTL_HTTP`. Network ACL grants `AGENT_FACTORY → caddy-ollama-tls:443`.
 - PAF container built from the vendor kit and installed under `AGENT_FACTORY` (PAF's read-only worker user `AAI_RO_AGENT_FACTORY` is created by the wizard).
 - LLM Configuration in PAF registered against an Ollama endpoint (laptop or LAN GPU host; friendly hostname resolved via compose `extra_hosts`).
@@ -292,12 +293,17 @@ What works today on the local stack:
 
 Next deliverables, in order:
 
-1. Schema: `007-agent-tools` (PL/SQL packages — `create_hitl_task`, `lookup_pricing`, `extract_features`), `008-vector-rag` (`policy_corpus`, `case_history`), `009-tx-event-queues` (`HITL_REQUEST` / `OCR_REQUEST` / exception queue), `010-seed-synthetic` (larger demo dataset).
-2. OCR MCP service under `src/ai/` (FastMCP wrapper around YOLO + PaddleOCR/Tesseract) and Company Registry FastAPI under `src/api/registry/` (synthetic JSON-backed data, OpenAPI 3.1 spec, registered with PAF as an HTTP datasource).
-3. `CHAT_AGENT` flow in PAF — customer-safe, combines OPA MCP + OCR MCP + Company Registry datasource + in-DB `create_hitl_task` tool. Writes the recommendation packet to the HITL queue.
-4. `RESEARCH_AGENT` flow — broader read-only Select AI profile + RAG. No side-effect tools.
-5. Spring Boot Application Service (including the Blockchain `decision` write at HITL close) and the two Angular UIs (customer chat + backoffice with the Case Research Agent panel on the HITL detail screen).
-6. Cloud deployment (Terraform + Ansible) — designed in §4, not implemented.
+1. OCR MCP service under `src/ai/` (FastMCP wrapper around YOLO + PaddleOCR/Tesseract) and Company Registry FastAPI under `src/api/registry/` (synthetic JSON-backed data, OpenAPI 3.1 spec, registered with PAF as an HTTP datasource). The OCR worker owns retry semantics application-side and pushes poison messages to `OCR_EXCEPTION_Q` directly — `DBMS_AQADM.ALTER_QUEUE` rejects TxEventQ with `ORA-24218`, so DB-enforced `max_retries` isn't on the table on Free 26ai.
+2. `CHAT_AGENT` flow in PAF — customer-safe, combines OPA MCP + OCR MCP + Company Registry datasource + in-DB `create_hitl_task` tool. Writes the recommendation packet to the HITL queue.
+3. `RESEARCH_AGENT` flow — broader read-only Select AI profile + RAG. No side-effect tools.
+4. Spring Boot Application Service (including the Blockchain `decision` write at HITL close) and the two Angular UIs (customer chat + backoffice with the Case Research Agent panel on the HITL detail screen).
+5. Cloud deployment (Terraform + Ansible) — designed in §4, not implemented.
+
+Schema-side follow-ups deferred until a concrete consumer needs them:
+
+- Vector indexes on `policy_corpus.embedding` / `case_history.case_embedding` — meaningless until the bge-m3 embedding pipeline populates the columns. Add as a `runOnChange` changeset when seed data lands.
+- Per-schema `ENQUEUE` / `DEQUEUE` grants on `OCR_REQUEST` and `OCR_EXCEPTION_Q` — land with the OCR worker (no producer/consumer exists in-DB today, so no grants today).
+- `policy_corpus` text + embeddings ingestion, and synthetic `sanctions_list` for the AML scenario.
 
 Known constraint, decided and not in the "next" list:
 

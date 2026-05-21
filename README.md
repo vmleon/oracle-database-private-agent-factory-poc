@@ -118,7 +118,8 @@ Detailed prerequisites, day-2 commands, and troubleshooting in [`LOCAL.md`](LOCA
 What works today on the local stack:
 
 - Oracle Database Free 26ai with `max_string_size=EXTENDED`, four schema users (`APP`, `REPORTING`, `AGENT_TOOLS`, `AGENT_FACTORY`), and PAF-specific grants on `AGENT_FACTORY`.
-- Liquibase changelog `001-006`: users + grants, banking core (incl. employment / transactions / bureau / facilities), decisioning + HITL + chat persistence, `system_config` + parameter history, REPORTING view sets.
+- Liquibase changelog `001-010`: users + grants, banking core (incl. employment / transactions / bureau / facilities), decisioning + HITL + chat persistence, `system_config` + parameter history, REPORTING view sets, `AGENT_TOOLS` PL/SQL package (`create_hitl_task`), vector RAG tables (`policy_corpus`, `case_history`), TxEventQ queues (`HITL_REQUEST`, `OCR_REQUEST`, `OCR_EXCEPTION_Q`), and scenario seed customers + `case_history` rows for the test bench.
+- `create_hitl_task` in `AGENT_TOOLS` verified end-to-end on Free 26ai: writes the recommendation packet to `APP.hitl_task` and enqueues `HITL_REQUEST` (JSON payload) in the same transaction.
 - `DBMS_CLOUD` + `DBMS_CLOUD_AI` installed via `manage.py`. Caddy TLS proxy + Oracle SSL wallet make HTTPS-from-DB calls work end-to-end (validated by `UTL_HTTP`).
 - Private Agent Factory container built from the vendor kit, installed under `AGENT_FACTORY` and reachable at `https://localhost:8080/`.
 - **LLM** (large language model) Configuration in PAF registered against an Ollama endpoint (laptop or LAN GPU host; mDNS hostnames auto-resolved into the container via `extra_hosts`).
@@ -127,12 +128,13 @@ What works today on the local stack:
 
 What's next, in order:
 
-1. **Schema**: `007-agent-tools` (`AGENT_TOOLS` PL/SQL packages incl. `create_hitl_task`), `008-vector-rag` (`policy_corpus`, `case_history`), `009-tx-event-queues` (`HITL_REQUEST`, `OCR_REQUEST`, exception queue), `010-seed-synthetic` (larger demo dataset).
-2. **OCR MCP** service under `src/ai/` and **Company Registry FastAPI** under `src/api/registry/` (synthetic JSON-backed data, OpenAPI 3.1 spec, registered as a PAF HTTP datasource).
-3. **`CHAT_AGENT` flow** in PAF — customer-facing, combines OPA MCP + OCR MCP + Company Registry datasource + the in-DB `create_hitl_task` tool. Writes the recommendation packet to the HITL queue.
-4. **`RESEARCH_AGENT` flow** — backoffice-only, broader read-only scope (full transactions, `decision_audit`, `policy_parameter_history`, RAG over `policy_corpus`). No side-effect tools.
-5. **Spring Boot Application Service** (incl. Blockchain `decision` write at HITL close) + the two Angular UIs (customer chat, backoffice with Case Research Agent panel).
-6. **Cloud deployment** (OCI Terraform + Ansible, ADB + LB).
+1. **OCR MCP** service under `src/ai/` and **Company Registry FastAPI** under `src/api/registry/` (synthetic JSON-backed data, OpenAPI 3.1 spec, registered as a PAF HTTP datasource).
+2. **`CHAT_AGENT` flow** in PAF — customer-facing, combines OPA MCP + OCR MCP + Company Registry datasource + the in-DB `create_hitl_task` tool. Writes the recommendation packet to the HITL queue.
+3. **`RESEARCH_AGENT` flow** — backoffice-only, broader read-only scope (full transactions, `decision_audit`, `policy_parameter_history`, RAG over `policy_corpus`). No side-effect tools.
+4. **Spring Boot Application Service** (incl. Blockchain `decision` write at HITL close) + the two Angular UIs (customer chat, backoffice with Case Research Agent panel).
+5. **Cloud deployment** (OCI Terraform + Ansible, ADB + LB).
+
+Schema-side follow-ups deferred until a consumer needs them: vector index on `policy_corpus` / `case_history` (waits for the embedding pipeline that populates the `VECTOR(1024, FLOAT32)` columns via bge-m3), `OCR_REQUEST` / `OCR_EXCEPTION_Q` per-schema enqueue/dequeue grants (land with the OCR worker), and the `policy_corpus` / sanctions seed data.
 
 Two known constraints not in the "next" list because they're decided:
 
