@@ -249,6 +249,14 @@ The agent should call `extract_document` and return a `PAYSLIP` classified as `M
 
 If anything hangs or errors, `python manage.py local logs paf` shows the backend trace.
 
+## 6. Build `CHAT_AGENT`
+
+`HELLO_AGENT` proves the four tool channels in isolation. The customer-facing `CHAT_AGENT` flow — the actual showcase — adds session context (current `customer_id` → `application_id`), the three-tier recommendation contract, and the terminal `create_hitl_task` side effect.
+
+Build it in PAF Agent Builder from the blueprint at [`paf/flows/CHAT_AGENT.md`](paf/flows/CHAT_AGENT.md). The doc gives the node graph, the SQL Query that resolves the application context, the full **Custom instructions** block to paste into the Agent node, the wiring table, and five Playground prompts mapped to scenario customers (21 / 22 / 23 / 25 / 27).
+
+When the flow is green across all five scenarios, export the JSON from Agent Builder and save to `paf/flows/chat_agent.flow.json` so a clean redeploy can re-import it.
+
 ## Day-2
 
 | Command                                 | What it does                                                                                                                                                                                                                                                                                           |
