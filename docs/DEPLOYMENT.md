@@ -289,15 +289,17 @@ What works today on the local stack:
 - PAF container built from the vendor kit and installed under `AGENT_FACTORY` (PAF's read-only worker user `AAI_RO_AGENT_FACTORY` is created by the wizard).
 - LLM Configuration in PAF registered against an Ollama endpoint (laptop or LAN GPU host; friendly hostname resolved via compose `extra_hosts`).
 - OPA + OPA MCP wrapper: `opa` container in server mode loading every `.rego` under `opa/packages/` (config / eligibility / aml / kyc / fair_lending / required_documents / pricing); `opa-mcp` FastMCP wrapper exposing the rules as seven typed MCP tools at `http://opa-mcp:8500/mcp/`. Registered in PAF as an MCP Server node; wired to `CHAT_AGENT` only per the two-agent security model.
-- `HELLO_AGENT` flow executes successfully via the PAF Playground.
+- Stub `ocr-mcp` at `http://ocr-mcp:8501/mcp/`: one `extract_document(storage_uri, requested_doc_type?)` tool returning canned classification + OCR responses keyed on filename. Aligned with the 010 seed documents so scenarios 8 (MARGINAL) and 9 (UNUSABLE) resolve correctly. The real YOLO + PaddleOCR/Tesseract pipeline (with retries managed application-side and poison routed to `OCR_EXCEPTION_Q` — `DBMS_AQADM.ALTER_QUEUE` rejects TxEventQ on Free 26ai with `ORA-24218`, so DB-enforced `max_retries` isn't an option) is a separate workstream.
+- `hitl-mcp` at `http://hitl-mcp:8502/mcp/`: a thin Python wrapper that calls `AGENT_TOOLS.PKG_AGENT_TOOLS.create_hitl_task` via `oracledb.callfunc` as `AGENT_FACTORY`. Locally it's the only side-effect path for the agent (PAF's SQL Query node is read-only by design); in cloud the same PL/SQL function is exposed natively as a Select AI Tool — see DESIGN.md §11.
+- `registry-api` at `http://registry-api:8600/`: FastAPI Company Registry with one `verify_employer(name)` route, OpenAPI 3.1 self-describing (`servers` + `securitySchemes` blocks set so PAF's importer accepts it). Eight synthetic records aligned with the 010 seed employers including `Phoenix Holdings Ltd` (dormant) and `Atlantis Innovations Ltd` (not registered).
+- `HELLO_AGENT` flow exercises three of four CHAT_AGENT tool channels end-to-end against qwen2.5:7b: OPA (`required_documents` → four-doc list), OCR (MARGINAL + UNUSABLE responses), and Company Registry (active / dormant / not-registered). `hitl-mcp.create_hitl_task` is verified independently via direct Python end-to-end against the DB (task row + queue message confirmed); agent-level wiring of it waits for the Application Service to thread session context.
 
 Next deliverables, in order:
 
-1. OCR MCP service under `src/ai/` (FastMCP wrapper around YOLO + PaddleOCR/Tesseract) and Company Registry FastAPI under `src/api/registry/` (synthetic JSON-backed data, OpenAPI 3.1 spec, registered with PAF as an HTTP datasource). The OCR worker owns retry semantics application-side and pushes poison messages to `OCR_EXCEPTION_Q` directly — `DBMS_AQADM.ALTER_QUEUE` rejects TxEventQ with `ORA-24218`, so DB-enforced `max_retries` isn't on the table on Free 26ai.
-2. `CHAT_AGENT` flow in PAF — customer-safe, combines OPA MCP + OCR MCP + Company Registry datasource + in-DB `create_hitl_task` tool. Writes the recommendation packet to the HITL queue.
-3. `RESEARCH_AGENT` flow — broader read-only Select AI profile + RAG. No side-effect tools.
-4. Spring Boot Application Service (including the Blockchain `decision` write at HITL close) and the two Angular UIs (customer chat + backoffice with the Case Research Agent panel on the HITL detail screen).
-5. Cloud deployment (Terraform + Ansible) — designed in §4, not implemented.
+1. `CHAT_AGENT` flow in PAF — customer-safe, combines OPA MCP + OCR MCP + Company Registry datasource + HITL MCP. Replaces `HELLO_AGENT` with a flow that sources `customer_id` / `application_id` from session context (not from the user) so `create_hitl_task` can be called as the agent's terminal action.
+2. `RESEARCH_AGENT` flow — broader read-only Select AI profile + RAG. No side-effect tools.
+3. Spring Boot Application Service — threads `customer_id` into PAF invocations, handles document uploads (enqueues `OCR_REQUEST`), writes the Blockchain `decision` row at HITL close. Plus the two Angular UIs (customer chat + backoffice with the Case Research Agent panel on the HITL detail screen).
+4. Cloud deployment (Terraform + Ansible) — designed in §4, not implemented.
 
 Schema-side follow-ups deferred until a concrete consumer needs them:
 
