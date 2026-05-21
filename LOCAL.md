@@ -8,7 +8,7 @@ You walk through five steps:
 2. [Boot the stack (`local up`).](#2-boot-the-stack)
 3. [Install PAF and register the LLM through its UI wizard.](#3-install-paf)
 4. [Register the MCP servers and HTTP datasource in PAF.](#4-register-tools-and-datasources)
-5. [Smoke-test with a `HELLO_AGENT` flow that uses OPA via the Agent node.](#5-smoke-test)
+5. [Build the `CHAT_AGENT` Agent Builder flow.](#5-build-chat_agent)
 
 When you're done you have:
 
@@ -19,7 +19,7 @@ When you're done you have:
 - A `registry-api` container — synthetic FastAPI Company Registry with a single `verify_employer(name)` route. OpenAPI 3.1 spec at `http://registry-api:8600/openapi.json`. Registered with PAF as an **HTTP datasource** wired to `CHAT_AGENT` only.
 - A `caddy-ollama-tls` container terminating TLS in front of Ollama, plus an Oracle SSL wallet trusting Caddy's CA (registered via the `SSL_WALLET` database property — kept for future HTTPS-from-DB work).
 - LLM Configuration in PAF registered against your Ollama host (laptop or LAN GPU).
-- A `HELLO_AGENT` flow you can build in under a minute.
+- The customer-facing `CHAT_AGENT` flow built in PAF Agent Builder from a versioned blueprint, exercising all four tool channels against the seed data.
 
 **Not wired locally**: Select AI profiles (`chat_profile` / `research_profile`). Oracle Database Free 26ai (23.26.x) rejects custom `provider_endpoint` values in `DBMS_CLOUD_AI` pre-flight (`ORA-20401`) — see [`docs/DEPLOYMENT.md §7`](docs/DEPLOYMENT.md). The `CHAT_AGENT` flow uses a SQL Query node + LLM locally; full Select AI Bridge is the ADB demo path.
 
@@ -129,7 +129,7 @@ Admin → **MCP Servers** → **Add MCP server**, three times. The form has thre
 
 After saving, each server should report a connected status. The discovered tools surface inside the **Agent node** in Agent Builder once you wire each MCP Server node to it (§5) — there isn't a separate global tool-list view.
 
-**Note on `hitl-mcp`.** Register it for completeness, but **don't wire it into HELLO_AGENT yet.** It's the agent's only side-effect tool — it writes a `hitl_task` row and enqueues `HITL_REQUEST` — and calling it correctly needs the customer's current `application_id`, which only the Application Service (roadmap item 4) can thread into the conversation. Wiring it into a smoke-test flow forces the user to type their own application id, which is a UX precedent we don't want. The Python end-to-end (verified via `podman exec paf-hitl-mcp python -c "from server import create_hitl_task; ..."`) is sufficient until the real `CHAT_AGENT` flow lands with session context. The cloud-path equivalent is documented in `docs/DESIGN.md §11` ("`create_hitl_task` transport").
+**Note on `hitl-mcp`.** This is the agent's only side-effect tool — it writes a `hitl_task` row and enqueues `HITL_REQUEST` atomically. The `CHAT_AGENT` flow you build in §5 calls it as the terminal action, sourcing `application_id` from the in-flow SQL Query node (never from the user). The cloud-path equivalent — exposing the same PL/SQL function as a Select AI Tool through the Select AI Bridge node — is documented in `docs/DESIGN.md §11` ("`create_hitl_task` transport").
 
 `opa-mcp` exposes:
 
@@ -197,65 +197,31 @@ podman logs paf-opa               # OPA bundle load + per-request log
 
 If OPA returns a 404 on `/v1/data/decisioning/...`, the `.rego` files didn't load — check `podman logs paf-opa` for a parse error and run `podman restart paf-opa` after fixing.
 
-## 5. Smoke-test
+## 5. Build `CHAT_AGENT`
 
-Build one flow that exercises both the LLM and the OPA MCP server end-to-end.
+`CHAT_AGENT` is the customer-facing Agent Builder flow that combines OPA, OCR, Company Registry, and the in-DB HITL tool into the three-tier recommendation contract documented in `docs/DECISIONING-ENGINE-USE-CASE.md`. It is the only Agent Builder flow you need to build in this runbook.
 
-Open Agent Builder → **New Flow** → name it `HELLO_AGENT`. Drop five nodes onto the canvas:
+The full blueprint is at [`paf/flows/CHAT_AGENT.md`](paf/flows/CHAT_AGENT.md). It gives you, in one place:
 
-| Node            | Configuration                                                                                                                                                                                |
-| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Chat input**  | Default.                                                                                                                                                                                     |
-| **Prompt**      | Template: `{{message}}` — saving the prompt exposes the `message` input port. The Prompt node carries only the user message; system guidance goes in the Agent node (below).                 |
-| **MCP server**  | Pick `opa-mcp` from the dropdown. Default timeout (`45` s).                                                                                                                                  |
-| **Agent**       | Select your saved generative LLM (e.g. `ollama-llm`). The Agent node — **not** the LLM node — is the one with a `Tools` input. Paste the system guidance below into **Custom instructions**. |
-| **Chat output** | Default.                                                                                                                                                                                     |
+- The node graph (Chat input + Prompt + SQL Query for application context + three MCP server nodes + one REST API datasource node + Agent + Chat output).
+- The SQL Query that resolves `customer_id → application_id` from `REPORTING.chat_v_loan_application`.
+- The full **Custom instructions** block to paste into the Agent node — encodes the three-tier recommendation contract, currency parsing, enum exactness, and the "exactly one `create_hitl_task` as the terminal action" rule.
+- The wiring table (port → port).
+- Five Playground test prompts mapped to scenario customers `21` / `22` / `23` / `25` / `27`. Each should leave a row in `APP.hitl_task` and one message on `APP.HITL_REQUEST`.
 
-Paste into the Agent node's **Custom instructions** field:
+Verify each run with:
 
-```
-You are a loan assistant. When the user asks about required documents,
-eligibility, AML, KYC, fair-lending, or pricing, ALWAYS call the
-matching tool — never answer from memory.
-```
+```sql
+SELECT task_id, application_id, agent_recommendation, agent_run_id
+  FROM APP.hitl_task
+ ORDER BY task_id DESC FETCH FIRST 5 ROWS ONLY;
 
-Wire them as follows (each row is one edge, port names match what the UI labels):
-
-```mermaid
-flowchart LR
-    CI["Chat input<br/>Message"] -->|Message → message| P["Prompt<br/>Prompt message"]
-    P -->|Prompt message → Prompt| A["Agent<br/>Message"]
-    MCP["MCP server<br/>Tools"] -->|Tools → Tools| A
-    A -->|Message → Message| CO["Chat output"]
+SELECT COUNT(*) FROM "APP"."HITL_REQUEST";
 ```
 
-Save the flow, click **Playground**, then ask:
-
-```
-What documents does a self-employed expat need for a $25,000 personal loan?
-```
-
-The agent should call `required_documents` and reply with the four required doc types (`ID`, `TAX_RETURN`, `STATEMENT`, `ADDRESS_PROOF`). The Playground's trace pane shows the tool invocation + raw JSON response — that's the signal the round-trip worked.
-
-If the model answers from memory (e.g. lists generic docs without the trace pane showing a tool call), strengthen the prompt with an explicit "you must call a tool before answering" instruction, or lower the LLM temperature on the Agent node closer to 0.
-
-To also exercise the OCR stub, add a second **MCP server** node pointing at `ocr-mcp` and wire its `Tools` output into the **same** Agent node (the Agent accepts tools from multiple MCP servers). Then ask:
-
-```
-Extract the document at oci://bucket/seed/henry-payslip.pdf
-```
-
-The agent should call `extract_document` and return a `PAYSLIP` classified as `MARGINAL` (the canned response from `src/ai/ocr-mcp/server.py`). Swap the path for `iris-id.pdf` to see an `UNUSABLE` response.
+When the flow is green across all five scenarios, export the JSON from Agent Builder (top-right menu → Export) and save to `paf/flows/chat_agent.flow.json` so a clean redeploy can re-import it.
 
 If anything hangs or errors, `python manage.py local logs paf` shows the backend trace.
-
-## 6. Build `CHAT_AGENT`
-
-`HELLO_AGENT` proves the four tool channels in isolation. The customer-facing `CHAT_AGENT` flow — the actual showcase — adds session context (current `customer_id` → `application_id`), the three-tier recommendation contract, and the terminal `create_hitl_task` side effect.
-
-Build it in PAF Agent Builder from the blueprint at [`paf/flows/CHAT_AGENT.md`](paf/flows/CHAT_AGENT.md). The doc gives the node graph, the SQL Query that resolves the application context, the full **Custom instructions** block to paste into the Agent node, the wiring table, and five Playground prompts mapped to scenario customers (21 / 22 / 23 / 25 / 27).
-
-When the flow is green across all five scenarios, export the JSON from Agent Builder and save to `paf/flows/chat_agent.flow.json` so a clean redeploy can re-import it.
 
 ## Day-2
 

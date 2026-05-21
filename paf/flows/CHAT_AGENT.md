@@ -1,6 +1,6 @@
 # `CHAT_AGENT` — flow design
 
-This is the build blueprint for the customer-facing agent flow in PAF Agent Builder. It supersedes `HELLO_AGENT` (which proved tool wiring against qwen2.5:7b but lacked session context and a recommendation contract).
+This is the build blueprint for the customer-facing agent flow in PAF Agent Builder.
 
 Source-of-truth references:
 
@@ -52,7 +52,7 @@ Template: `{{message}}` — keep the prompt body minimal. Saving exposes the `me
 
 ### SQL Query (new — application context)
 
-The piece HELLO_AGENT didn't have. Resolves the customer's current open application so the Agent doesn't have to ask the customer for an `application_id`.
+Resolves the customer's current open application so the Agent doesn't have to ask the customer for an `application_id`.
 
 - Datasource: the **PAF metadata database** connection (`AGENT_FACTORY` schema, same DB).
 - Bind: `customer_id` — wired from the flow input variable.
