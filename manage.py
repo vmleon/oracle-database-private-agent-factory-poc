@@ -965,7 +965,7 @@ def local_up() -> None:
         console.print(f"[bold]PAF image {paf_tag} missing — building from kit...[/bold]")
         _run(["bash", str(PAF_BUILD_SCRIPT), "aai"], cwd=str(PAF_KIT_DIR))
     _ensure_tls_certs()
-    services = ["oracle-free-26ai", "caddy-ollama-tls", "opa", "opa-mcp", "ocr-mcp", "registry-api"]
+    services = ["oracle-free-26ai", "caddy-ollama-tls", "opa", "opa-mcp", "ocr-mcp", "hitl-mcp", "registry-api"]
     # Always export so compose substitution succeeds even when paf isn't started.
     os.environ["PAF_APP_VERSION"] = _paf_app_version() or "unset"
     os.environ.setdefault("HOST_OS", platform.system())
@@ -1085,6 +1085,7 @@ def info() -> None:
         console.print(f"OPA:            http://opa:8181 (compose-internal)")
         console.print(f"OPA MCP:        http://opa-mcp:8500/mcp/ (compose-internal — wire as PAF MCP server)")
         console.print(f"OCR MCP (stub): http://ocr-mcp:8501/mcp/ (compose-internal — wire as PAF MCP server)")
+        console.print(f"HITL MCP:       http://hitl-mcp:8502/mcp/ (compose-internal — wire as PAF MCP server; create_hitl_task side effect)")
         console.print(f"Registry API:   http://registry-api:8600/openapi.json (compose-internal — wire as PAF HTTP datasource)")
         console.print(f"Caddy TLS:      https://caddy-ollama-tls/v1 (compose-internal — Oracle SSL wallet trusted)")
         paf_version = _paf_app_version()

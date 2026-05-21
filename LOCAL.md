@@ -117,16 +117,19 @@ Three post-install registrations in the PAF admin area — two MCP servers and o
 
 ### 4a. MCP servers (opa-mcp + ocr-mcp)
 
-Admin → **MCP Servers** → **Add MCP server**, twice. The form has three fields each time; use the same `Direct` authentication mode for both (no auth — the wrappers are internal to the compose network, not published to the host).
+Admin → **MCP Servers** → **Add MCP server**, three times. The form has three fields each time; use the same `Direct` authentication mode for all (no auth — the wrappers are internal to the compose network, not published to the host).
 
-| Server name | Server URL                 | Tools                                                                                                              |
-| ----------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `opa-mcp`   | `http://opa-mcp:8500/mcp/` | seven typed tools wrapping the Rego rules — see table below                                                        |
-| `ocr-mcp`   | `http://ocr-mcp:8501/mcp/` | one stub tool `extract_document(storage_uri, requested_doc_type?)` returning canned classification + OCR responses |
+| Server name | Server URL                  | Tools                                                                                                              |
+| ----------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `opa-mcp`   | `http://opa-mcp:8500/mcp/`  | seven typed tools wrapping the Rego rules — see table below                                                        |
+| `ocr-mcp`   | `http://ocr-mcp:8501/mcp/`  | one stub tool `extract_document(storage_uri, requested_doc_type?)` returning canned classification + OCR responses |
+| `hitl-mcp`  | `http://hitl-mcp:8502/mcp/` | one side-effect tool `create_hitl_task(...)` — calls the in-DB PL/SQL function in `AGENT_TOOLS.PKG_AGENT_TOOLS`    |
 
-**Do not use `localhost`** in either URL — PAF must reach the wrappers over the compose network, not the host.
+**Do not use `localhost`** in any URL — PAF must reach the wrappers over the compose network, not the host.
 
 After saving, each server should report a connected status. The discovered tools surface inside the **Agent node** in Agent Builder once you wire each MCP Server node to it (§5) — there isn't a separate global tool-list view.
+
+**Note on `hitl-mcp`.** Register it for completeness, but **don't wire it into HELLO_AGENT yet.** It's the agent's only side-effect tool — it writes a `hitl_task` row and enqueues `HITL_REQUEST` — and calling it correctly needs the customer's current `application_id`, which only the Application Service (roadmap item 4) can thread into the conversation. Wiring it into a smoke-test flow forces the user to type their own application id, which is a UX precedent we don't want. The Python end-to-end (verified via `podman exec paf-hitl-mcp python -c "from server import create_hitl_task; ..."`) is sufficient until the real `CHAT_AGENT` flow lands with session context. The cloud-path equivalent is documented in `docs/DESIGN.md §11` ("`create_hitl_task` transport").
 
 `opa-mcp` exposes:
 

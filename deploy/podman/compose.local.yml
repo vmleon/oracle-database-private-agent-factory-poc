@@ -85,6 +85,28 @@ services:
       OPA_URL: "http://opa:8181"
       PORT: "8500"
 
+  # HITL MCP — exposes the in-DB AGENT_TOOLS.PKG_AGENT_TOOLS.create_hitl_task
+  # PL/SQL function as an MCP tool. PAF's SQL Query node is read-only by
+  # design, so anything with side effects (insert + enqueue) has to go
+  # through MCP/REST per docs/PAF.md §10. Connects to Oracle as
+  # AGENT_FACTORY (granted EXECUTE on the package in changeset 007).
+  # PAF reaches it at http://hitl-mcp:8502/mcp/. Wired to CHAT_AGENT only.
+  hitl-mcp:
+    build:
+      context: ../../src/ai/hitl-mcp
+    container_name: paf-hitl-mcp
+    restart: unless-stopped
+    depends_on:
+      oracle-free-26ai:
+        condition: service_healthy
+    environment:
+      PORT: "8502"
+      DB_HOST: "oracle-free-26ai"
+      DB_PORT: "1521"
+      DB_SERVICE: "FREEPDB1"
+      DB_USER: "AGENT_FACTORY"
+      DB_PASSWORD: "${DB_PASSWORD}"
+
   # STUB OCR MCP — placeholder for the YOLO + PaddleOCR/Tesseract pipeline.
   # Exposes a single `extract_document` MCP tool whose canned responses are
   # keyed on filename, aligned with the documents seeded by
