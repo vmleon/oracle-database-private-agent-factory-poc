@@ -21,7 +21,7 @@ packet as evidence, not as decision gates.
 from __future__ import annotations
 
 import os
-from typing import Any
+from typing import Any, Literal
 
 from fastmcp import FastMCP
 
@@ -30,17 +30,37 @@ import opa_client
 mcp = FastMCP("opa-mcp")
 
 
+# Type aliases mirror the Rego rule's expected input shape. Small models
+# (qwen2.5:7b) need the enum in the JSON Schema to pick the right string.
+ProductType = Literal["PERSONAL_LOAN"]
+EmploymentType = Literal["salaried", "self_employed"]
+Residency = Literal["resident", "expat"]
+
+
 @mcp.tool()
 def required_documents(
-    product_type: str,
-    employment_type: str,
-    residency: str,
+    product_type: ProductType,
+    employment_type: EmploymentType,
+    residency: Residency,
     amount: float,
 ) -> dict[str, Any]:
     """Required `doc_type` set for an applicant.
 
     Looked up from `data.decisioning.config.required_documents_matrix`
     keyed by (product_type, employment_type, residency, amount_band).
+    The Rego rule derives `amount_band` from `amount` internally.
+
+    Argument extraction guidance for the LLM:
+      - product_type    — must be "PERSONAL_LOAN" (the only product today).
+      - employment_type — pick "self_employed" for self-employed / business
+                          owners / contractors / freelancers; "salaried"
+                          for everyone else with regular employment.
+      - residency       — pick "expat" for expatriates / non-residents /
+                          foreigners; "resident" for citizens / permanent
+                          residents.
+      - amount          — the requested loan amount as a plain number.
+                          Convert currency strings: "$25,000" → 25000,
+                          "$5k" → 5000, "twenty thousand" → 20000.
     """
     result = opa_client.eval_rule(
         "decisioning.required_documents",
