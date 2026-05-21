@@ -726,28 +726,74 @@ def _reset_paf_bind_mount_state() -> None:
         )
 
 
+def _wait_for_container(container: str, timeout: int = 60) -> bool:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if subprocess.run(["podman", "inspect", container], capture_output=True).returncode == 0:
+            return True
+        time.sleep(2)
+    return False
+
+
+def _paf_bind_mounts_visible(container: str) -> bool:
+    """Return True if PAF's `/mount` bind from the host is populated.
+
+    On podman+macOS (applehv + virtiofs), multiple bind mounts from
+    related host paths can collapse onto a single empty virtiofs share.
+    When that happens `/mount` looks empty inside the container even
+    though `paf-kit/applied-ai/volume/` on the host has the kit-seeded
+    config — nginx then can't load its config and PAF serves an
+    error-page SPA. We probe for the `config/app` subtree because the
+    kit ships it and `startup.sh` populates more under it; if that
+    isn't there, the mount is broken.
+    """
+    probe = subprocess.run(
+        ["podman", "exec", container, "test", "-d", "/mount/config/app"],
+        capture_output=True,
+    )
+    return probe.returncode == 0
+
+
 def _paf_post_start(container: str = "paf-agent-factory") -> None:
     """Reproduce the post-start steps the kit's `deploy.sh` performs:
 
-    1. Start crond inside the container.
-    2. Drop `/mount/.config_complete.marker` so `startup.sh` stops polling and
+    1. Verify the `/mount` bind from the host is actually populated;
+       if not, recreate the container once to work around the podman
+       virtiofs collapse.
+    2. Start crond inside the container.
+    3. Drop `/mount/.config_complete.marker` so `startup.sh` stops polling and
        proceeds with the install (without this PAF crash-loops every ~120 s).
-    3. Seed `/mount/data/app/latest/version/version.json` from the kit's
+    4. Seed `/mount/data/app/latest/version/version.json` from the kit's
        `internal/version.json` — `db_migrate.py` reads this during the UI
        installer and fails the install otherwise.
     All steps are idempotent.
     """
-    deadline = time.time() + 60
-    while time.time() < deadline:
-        check = subprocess.run(
-            ["podman", "inspect", container], capture_output=True
-        )
-        if check.returncode == 0:
-            break
-        time.sleep(2)
-    else:
+    if not _wait_for_container(container):
         console.print(f"[red]PAF container '{container}' never appeared.[/red]")
         sys.exit(1)
+
+    if not _paf_bind_mounts_visible(container):
+        console.print(
+            "[yellow]PAF bind mount is empty inside the container "
+            "(podman virtiofs share collapsed). Recreating the container...[/yellow]"
+        )
+        subprocess.run(["podman", "stop", container], check=False)
+        subprocess.run(["podman", "rm", container], check=False)
+        _run([
+            "podman", "compose", "-f", str(PODMAN_COMPOSE),
+            "up", "-d", "paf",
+        ])
+        if not _wait_for_container(container):
+            console.print(f"[red]PAF container '{container}' did not come back after recreate.[/red]")
+            sys.exit(1)
+        if not _paf_bind_mounts_visible(container):
+            console.print(
+                "[red]PAF bind mount still empty after recreate. "
+                "Try `podman machine stop && podman machine start` "
+                "and re-run `local up`.[/red]"
+            )
+            sys.exit(1)
+        console.print("[green]✓[/green] PAF bind mount restored after container recreate.")
 
     subprocess.run(["podman", "exec", container, "crond", "start"], check=False)
 
@@ -983,6 +1029,16 @@ def local_down(purge: bool) -> None:
         args.append("-v")
     _run(args)
     if purge:
+        # `compose down -v` is supposed to remove the named oradata volume
+        # but podman-compose on macOS sometimes leaves it behind — a fresh
+        # `local up` then re-applies all 72 Liquibase changesets against an
+        # already-populated DATABASECHANGELOG and the seed data is stale.
+        # Force-remove so the next `local up` starts from an empty Oracle.
+        subprocess.run(
+            ["podman", "volume", "rm", "--force", "paf-oradata"],
+            check=False,
+            capture_output=True,
+        )
         _reset_paf_bind_mount_state()
 
 
