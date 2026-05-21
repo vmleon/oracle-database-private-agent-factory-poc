@@ -25,6 +25,17 @@ databaseChangeLog:
   # for moving exhausted-retry messages onto OCR_EXCEPTION_Q. We do NOT try
   # to bind OCR_EXCEPTION_Q as Oracle's exception_queue via alter_queue —
   # that parameter is on classic AQ and behaves differently with TxEventQ.
+  #
+  # Retry config (max_retries / retry_delay / retention_time): not set
+  # here. DBMS_AQADM.ALTER_QUEUE rejects TxEventQ with ORA-24218 ("feature
+  # ALTER_QUEUE not supported for transactional event queues"), and
+  # CREATE_TRANSACTIONAL_EVENT_QUEUE only accepts those params at create
+  # time (drop-and-recreate is destructive). The OCR worker manages retry
+  # attempts and pushes poison messages to OCR_EXCEPTION_Q application-
+  # side — that's a working POC contract. If/when we want DB-enforced
+  # retries, set them at CREATE_TRANSACTIONAL_EVENT_QUEUE time in a future
+  # rebuild, or experiment with DBMS_AQADM.SET_QUEUE_PARAMETER param names
+  # on a fresh stack.
 
   - changeSet:
       id: 009-create-hitl-request-queue
@@ -90,26 +101,6 @@ databaseChangeLog:
               END;
 
   - changeSet:
-      id: 009-alter-ocr-request-retries
-      author: paf-poc
-      runOnChange: true
-      # Retry config is a tunable; runOnChange so edits to these values
-      # re-apply without inventing a new changeset id.
-      changes:
-        - sql:
-            splitStatements: false
-            stripComments: false
-            sql: |-
-              BEGIN
-                DBMS_AQADM.ALTER_QUEUE(
-                  queue_name     => 'APP.OCR_REQUEST',
-                  max_retries    => 3,
-                  retry_delay    => 30,
-                  retention_time => 86400
-                );
-              END;
-
-  - changeSet:
       id: 009-start-queues
       author: paf-poc
       changes:
@@ -163,6 +154,19 @@ databaseChangeLog:
                   grantee    => 'AGENT_TOOLS'
                 );
               END;
+
+  # AGENT_TOOLS needs SELECT on APP.hitl_task in addition to INSERT because
+  # the package body uses `RETURNING task_id INTO ...`. Oracle requires
+  # SELECT for the RETURNING clause at PL/SQL compile time even though the
+  # row being read is the one just inserted by the same statement. Without
+  # this, the package body sits in INVALID state with ORA-01031.
+  - changeSet:
+      id: 009-grant-select-hitl-task-to-agent-tools
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              GRANT SELECT ON APP.hitl_task TO AGENT_TOOLS
 
   # Update PKG_AGENT_TOOLS.create_hitl_task to enqueue HITL_REQUEST in the
   # same transaction as the hitl_task insert (the second half deferred from
@@ -230,3 +234,15 @@ databaseChangeLog:
                 END create_hitl_task;
 
               END PKG_AGENT_TOOLS;
+
+  # Force a recompile so the body picks up the SELECT grant added above
+  # (without this, the body stays INVALID after Liquibase finishes —
+  # Oracle would auto-recompile on first call, but explicit is cleaner).
+  - changeSet:
+      id: 009-recompile-pkg-agent-tools-body
+      author: paf-poc
+      runOnChange: true
+      changes:
+        - sql:
+            sql: |-
+              ALTER PACKAGE AGENT_TOOLS.PKG_AGENT_TOOLS COMPILE BODY
