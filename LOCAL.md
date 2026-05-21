@@ -105,7 +105,7 @@ PAF terminates TLS itself with a self-signed cert — your browser will warn; ac
 - **Step 1 — admin user.** Pick a name and password; you'll sign in as this user.
 - **Step 2 — database.** DB host: `oracle-free-26ai` (compose service name — **not** `localhost`, which would point at the PAF container itself). Port `1521`, service `FREEPDB1`, user `AGENT_FACTORY`, password = `DB_PASSWORD` from `.env`.
 - **Step 3 — install.** Click Install. PAF creates its metadata tables under `AGENT_FACTORY` and a read-only worker user `AAI_RO_AGENT_FACTORY`.
-- **Step 4 — LLM Management.** Register the generative model (`llama3.3:70b-instruct-q4_K_M`) and the embedding model (`bge-m3`) against your Ollama endpoint. `paf bootstrap` resolves `.local` mDNS names to an IPv4 address for you, since the PAF container can't do mDNS.
+- **Step 4 — LLM Management.** Register the generative model (`qwen2.5:7b-instruct` — small, fast, native tool-calling, fits on a laptop) and the embedding model (`bge-m3`) against your Ollama endpoint. `paf bootstrap` resolves `.local` mDNS names to an IPv4 address for you, since the PAF container can't do mDNS.
 
 After install completes, sign in as the admin user.
 
@@ -165,13 +165,21 @@ Build one flow that exercises both the LLM and the OPA MCP server end-to-end.
 
 Open Agent Builder → **New Flow** → name it `HELLO_AGENT`. Drop five nodes onto the canvas:
 
-| Node            | Configuration                                                                                                                                                                                                                                                          |
-| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Chat input**  | Default.                                                                                                                                                                                                                                                               |
-| **Prompt**      | Template: `You are a loan assistant. When the user asks about required documents, eligibility, AML, KYC, fair-lending, or pricing, always call the matching tool — never answer from memory.\n\nUser: {{message}}` Save the prompt to expose the `message` input port. |
-| **MCP server**  | Pick `opa-mcp` from the dropdown. Default timeout (`45` s).                                                                                                                                                                                                            |
-| **Agent**       | Select your saved generative LLM (e.g. `ollama-llm`). The Agent node — **not** the LLM node — is the one with a `Tools` input.                                                                                                                                         |
-| **Chat output** | Default.                                                                                                                                                                                                                                                               |
+| Node            | Configuration                                                                                                                                                                                |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Chat input**  | Default.                                                                                                                                                                                     |
+| **Prompt**      | Template: `{{message}}` — saving the prompt exposes the `message` input port. The Prompt node carries only the user message; system guidance goes in the Agent node (below).                 |
+| **MCP server**  | Pick `opa-mcp` from the dropdown. Default timeout (`45` s).                                                                                                                                  |
+| **Agent**       | Select your saved generative LLM (e.g. `ollama-llm`). The Agent node — **not** the LLM node — is the one with a `Tools` input. Paste the system guidance below into **Custom instructions**. |
+| **Chat output** | Default.                                                                                                                                                                                     |
+
+Paste into the Agent node's **Custom instructions** field:
+
+```
+You are a loan assistant. When the user asks about required documents,
+eligibility, AML, KYC, fair-lending, or pricing, ALWAYS call the
+matching tool — never answer from memory.
+```
 
 Wire them as follows (each row is one edge, port names match what the UI labels):
 
@@ -214,9 +222,9 @@ podman compose -f deploy/podman/compose.local.yml -p paf build opa-mcp
 podman compose -f deploy/podman/compose.local.yml -p paf up -d opa-mcp
 ```
 
-## Optional: Ollama on a LAN GPU host (e.g. NVIDIA DGX Spark)
+## Optional: bigger model on a LAN GPU host (e.g. NVIDIA DGX Spark)
 
-If your laptop can't run `llama3.3:70b-instruct-q4_K_M` (~55–60 GB resident with `bge-m3`), offload Ollama to a LAN-reachable GPU box and point `.env` at it. Steps below target a DGX Spark but apply to any NVIDIA host with a container runtime.
+`qwen2.5:7b-instruct` (~5 GB resident with `bge-m3`) fits comfortably on a modern laptop. If you want to swap in a stronger model — e.g. `llama3.3:70b-instruct-q4_K_M` (~55–60 GB resident with `bge-m3`) for a closer-to-production demo — offload Ollama to a LAN-reachable GPU box and point `.env` at it. Steps below target a DGX Spark but apply to any NVIDIA host with a container runtime.
 
 ### On the GPU host
 
@@ -241,11 +249,11 @@ podman run -d --name ollama \
 Pull both models inside the running container:
 
 ```bash
-podman exec -it ollama ollama pull llama3.3:70b-instruct-q4_K_M
+podman exec -it ollama ollama pull qwen2.5:7b-instruct
 podman exec -it ollama ollama pull bge-m3
 ```
 
-First pull is ~40 GB (llama3.3) + ~1.2 GB (bge-m3); allow time and disk.
+Pull is ~4.7 GB (qwen2.5) + ~1.2 GB (bge-m3). Swap `qwen2.5:7b-instruct` for `llama3.3:70b-instruct-q4_K_M` if you want the bigger model (~40 GB pull).
 
 Open port `11434` only to the laptop's IP — Ollama has no auth:
 
@@ -263,7 +271,7 @@ Verify reachability:
 curl http://<GPU_HOST>:11434/api/tags
 ```
 
-Should list both `llama3.3:70b-instruct-q4_K_M` and `bge-m3`.
+Should list both `qwen2.5:7b-instruct` (or whichever model you pulled) and `bge-m3`.
 
 Re-run setup and pick the LAN host when prompted:
 

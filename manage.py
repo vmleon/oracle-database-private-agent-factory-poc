@@ -893,7 +893,7 @@ def setup_local() -> None:
     ).execute()
     ollama_llm = inquirer.text(
         message="Ollama LLM model:",
-        default="llama3.3:70b-instruct-q4_K_M",
+        default="qwen2.5:7b-instruct",
     ).execute()
     ollama_embed = inquirer.text(
         message="Ollama embedding model:",
