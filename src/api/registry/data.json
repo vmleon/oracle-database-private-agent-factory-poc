@@ -1,0 +1,58 @@
+[
+  {
+    "name": "Acme Tech Ltd",
+    "trading_status": "active",
+    "sector": "Software",
+    "registered_address": "1 Tech Park, San Mateo CA 94401",
+    "last_filed_year": 2024
+  },
+  {
+    "name": "Globex Inc",
+    "trading_status": "active",
+    "sector": "Diversified Holdings",
+    "registered_address": "5000 Globex Ave, Seattle WA 98101",
+    "last_filed_year": 2024
+  },
+  {
+    "name": "Initech",
+    "trading_status": "active",
+    "sector": "Software Consulting",
+    "registered_address": "2200 Office Park Dr, Austin TX 78701",
+    "last_filed_year": 2024
+  },
+  {
+    "name": "Stark Industries",
+    "trading_status": "active",
+    "sector": "Aerospace & Defense",
+    "registered_address": "10880 Malibu Point, Malibu CA 90265",
+    "last_filed_year": 2024
+  },
+  {
+    "name": "Wayne Enterprises",
+    "trading_status": "active",
+    "sector": "Diversified Holdings",
+    "registered_address": "1007 Mountain Drive, Gotham NJ 07101",
+    "last_filed_year": 2024
+  },
+  {
+    "name": "Soylent Corp",
+    "trading_status": "active",
+    "sector": "Food & Beverage",
+    "registered_address": "1 Soylent Plaza, New York NY 10001",
+    "last_filed_year": 2023
+  },
+  {
+    "name": "Phoenix Holdings Ltd",
+    "trading_status": "dormant",
+    "sector": "Real Estate Holdings",
+    "registered_address": "300 Ash Lane, Phoenix AZ 85001",
+    "last_filed_year": 2021
+  },
+  {
+    "name": "Bob Consulting LLC",
+    "trading_status": "active",
+    "sector": "Independent Consulting",
+    "registered_address": "742 Evergreen Terrace, Springfield IL 62701",
+    "last_filed_year": 2024
+  }
+]
