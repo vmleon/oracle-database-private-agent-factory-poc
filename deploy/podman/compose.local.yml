@@ -85,6 +85,17 @@ services:
       OPA_URL: "http://opa:8181"
       PORT: "8500"
 
+  # Synthetic Company Registry — FastAPI service with JSON-backed data,
+  # OpenAPI 3.1 spec at /openapi.json. Registered with PAF as an HTTP
+  # datasource for CHAT_AGENT (the third PAF datasource type, alongside
+  # Database and File). No host port published — only the compose
+  # network reaches it as http://registry-api:8600.
+  registry-api:
+    build:
+      context: ../../src/api/registry
+    container_name: paf-registry-api
+    restart: unless-stopped
+
   # TLS terminator in front of Ollama. Exists because Oracle 26ai's
   # DBMS_CLOUD_AI rejects HTTP endpoints on-prem (ORA-20047). Caddy
   # serves a pre-generated self-signed cert; the matching CA root is
