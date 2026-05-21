@@ -91,6 +91,19 @@ databaseChangeLog:
             sql: |-
               GRANT SELECT ON APP.case_history TO REPORTING
 
+  # Re-grant WITH GRANT OPTION so REPORTING can onward-grant SELECT on
+  # the research_v_case_history view to AGENT_FACTORY (Oracle resolves
+  # the view to its base table and checks the owner's privileges).
+  # Without this, the view's GRANT below fails with ORA-01720. Same
+  # pattern as 006-grant-app-to-reporting-with-grant-option.
+  - changeSet:
+      id: 008-grant-app-case-history-to-reporting-with-grant-option
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              GRANT SELECT ON APP.case_history TO REPORTING WITH GRANT OPTION
+
   - changeSet:
       id: 008-create-research-case-history-view
       author: paf-poc
