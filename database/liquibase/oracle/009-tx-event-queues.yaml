@@ -1,0 +1,232 @@
+databaseChangeLog:
+  # TxEventQ queues — HITL_REQUEST, OCR_REQUEST, OCR_EXCEPTION_Q.
+  #
+  # Design: docs/DECISIONING-ENGINE-USE-CASE.md §"Async messaging — TxEventQ"
+  # and docs/DESIGN.md §11. All queues are JSON-payload, single-consumer,
+  # owned by APP, started after creation. DDL is idempotent: CREATE wrapped
+  # in a PL/SQL block that swallows ORA-24006 (queue exists); START wrapped
+  # to swallow any "already started" condition.
+  #
+  # Liquibase connects as SYSTEM (see deploy/ansible .../liquibase.properties),
+  # which has the privileges to call DBMS_AQADM and to grant from APP. The
+  # queue admin code itself is what's idempotent here, not the changeset
+  # checksum — the runtime PL/SQL is what tolerates re-creation.
+  #
+  # Grant scope: only producers/consumers that exist today get explicit
+  # grants. Today that means AGENT_TOOLS gets ENQUEUE on HITL_REQUEST
+  # (used by create_hitl_task, wired up at the end of this changelog).
+  # OCR_REQUEST producer (Application Service) and OCR_REQUEST /
+  # OCR_EXCEPTION_Q consumers (OCR worker, operator UI) don't exist yet —
+  # their grants land in later changesets when those services arrive.
+  #
+  # Exception queue routing: TxEventQ auto-creates an internal exception
+  # queue per queue; the explicit OCR_EXCEPTION_Q exists as the surface the
+  # operator UI reads from. The application-level OCR worker is responsible
+  # for moving exhausted-retry messages onto OCR_EXCEPTION_Q. We do NOT try
+  # to bind OCR_EXCEPTION_Q as Oracle's exception_queue via alter_queue —
+  # that parameter is on classic AQ and behaves differently with TxEventQ.
+
+  - changeSet:
+      id: 009-create-hitl-request-queue
+      author: paf-poc
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |-
+              DECLARE
+                queue_exists EXCEPTION;
+                PRAGMA EXCEPTION_INIT(queue_exists, -24006);
+              BEGIN
+                DBMS_AQADM.CREATE_TRANSACTIONAL_EVENT_QUEUE(
+                  queue_name         => 'APP.HITL_REQUEST',
+                  queue_payload_type => 'JSON',
+                  multiple_consumers => FALSE
+                );
+              EXCEPTION
+                WHEN queue_exists THEN NULL;
+              END;
+
+  - changeSet:
+      id: 009-create-ocr-request-queue
+      author: paf-poc
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |-
+              DECLARE
+                queue_exists EXCEPTION;
+                PRAGMA EXCEPTION_INIT(queue_exists, -24006);
+              BEGIN
+                DBMS_AQADM.CREATE_TRANSACTIONAL_EVENT_QUEUE(
+                  queue_name         => 'APP.OCR_REQUEST',
+                  queue_payload_type => 'JSON',
+                  multiple_consumers => FALSE
+                );
+              EXCEPTION
+                WHEN queue_exists THEN NULL;
+              END;
+
+  - changeSet:
+      id: 009-create-ocr-exception-queue
+      author: paf-poc
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |-
+              DECLARE
+                queue_exists EXCEPTION;
+                PRAGMA EXCEPTION_INIT(queue_exists, -24006);
+              BEGIN
+                DBMS_AQADM.CREATE_TRANSACTIONAL_EVENT_QUEUE(
+                  queue_name         => 'APP.OCR_EXCEPTION_Q',
+                  queue_payload_type => 'JSON',
+                  multiple_consumers => FALSE
+                );
+              EXCEPTION
+                WHEN queue_exists THEN NULL;
+              END;
+
+  - changeSet:
+      id: 009-alter-ocr-request-retries
+      author: paf-poc
+      runOnChange: true
+      # Retry config is a tunable; runOnChange so edits to these values
+      # re-apply without inventing a new changeset id.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |-
+              BEGIN
+                DBMS_AQADM.ALTER_QUEUE(
+                  queue_name     => 'APP.OCR_REQUEST',
+                  max_retries    => 3,
+                  retry_delay    => 30,
+                  retention_time => 86400
+                );
+              END;
+
+  - changeSet:
+      id: 009-start-queues
+      author: paf-poc
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |-
+              BEGIN
+                BEGIN
+                  DBMS_AQADM.START_QUEUE(queue_name => 'APP.HITL_REQUEST');
+                EXCEPTION WHEN OTHERS THEN
+                  IF SQLCODE NOT IN (-24010) THEN RAISE; END IF;
+                END;
+                BEGIN
+                  DBMS_AQADM.START_QUEUE(queue_name => 'APP.OCR_REQUEST');
+                EXCEPTION WHEN OTHERS THEN
+                  IF SQLCODE NOT IN (-24010) THEN RAISE; END IF;
+                END;
+                BEGIN
+                  DBMS_AQADM.START_QUEUE(queue_name => 'APP.OCR_EXCEPTION_Q');
+                EXCEPTION WHEN OTHERS THEN
+                  IF SQLCODE NOT IN (-24010) THEN RAISE; END IF;
+                END;
+              END;
+
+  # AGENT_TOOLS needs EXECUTE ON DBMS_AQ to call DBMS_AQ.ENQUEUE from inside
+  # PKG_AGENT_TOOLS, and ENQUEUE privilege on APP.HITL_REQUEST specifically.
+  # Both run as SYSTEM in this changelog; the second uses the AQADM API so
+  # that the per-queue privilege model is preserved (no aq_administrator_role
+  # on application schemas — see docs/DESIGN.md §11).
+  - changeSet:
+      id: 009-grant-aq-exec-to-agent-tools
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              GRANT EXECUTE ON DBMS_AQ TO AGENT_TOOLS
+
+  - changeSet:
+      id: 009-grant-enqueue-hitl-request-to-agent-tools
+      author: paf-poc
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |-
+              BEGIN
+                DBMS_AQADM.GRANT_QUEUE_PRIVILEGE(
+                  privilege  => 'ENQUEUE',
+                  queue_name => 'APP.HITL_REQUEST',
+                  grantee    => 'AGENT_TOOLS'
+                );
+              END;
+
+  # Update PKG_AGENT_TOOLS.create_hitl_task to enqueue HITL_REQUEST in the
+  # same transaction as the hitl_task insert (the second half deferred from
+  # 007). Spec is unchanged — only the body changes.
+  - changeSet:
+      id: 009-update-pkg-agent-tools-body-add-enqueue
+      author: paf-poc
+      runOnChange: true
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |-
+              CREATE OR REPLACE PACKAGE BODY AGENT_TOOLS.PKG_AGENT_TOOLS AS
+
+                FUNCTION create_hitl_task(
+                  p_application_id  IN NUMBER,
+                  p_recommendation  IN VARCHAR2,
+                  p_reasoning       IN CLOB,
+                  p_explore_hints   IN CLOB,
+                  p_evidence        IN CLOB,
+                  p_agent_run_id    IN VARCHAR2
+                ) RETURN NUMBER
+                IS
+                  l_task_id        NUMBER;
+                  l_enq_msgid      RAW(16);
+                  l_enq_msg_props  DBMS_AQ.MESSAGE_PROPERTIES_T;
+                  l_enq_options    DBMS_AQ.ENQUEUE_OPTIONS_T;
+                  l_payload        JSON;
+                BEGIN
+                  INSERT INTO APP.hitl_task (
+                    application_id,
+                    agent_recommendation,
+                    agent_reasoning,
+                    agent_explore_hints,
+                    agent_evidence,
+                    agent_run_id
+                  ) VALUES (
+                    p_application_id,
+                    p_recommendation,
+                    p_reasoning,
+                    p_explore_hints,
+                    p_evidence,
+                    p_agent_run_id
+                  )
+                  RETURNING task_id INTO l_task_id;
+
+                  l_payload := JSON_OBJECT(
+                    KEY 'application_id'       VALUE p_application_id,
+                    KEY 'task_id'              VALUE l_task_id,
+                    KEY 'agent_recommendation' VALUE p_recommendation,
+                    KEY 'agent_run_id'         VALUE p_agent_run_id
+                    RETURNING JSON
+                  );
+
+                  DBMS_AQ.ENQUEUE(
+                    queue_name         => 'APP.HITL_REQUEST',
+                    enqueue_options    => l_enq_options,
+                    message_properties => l_enq_msg_props,
+                    payload            => l_payload,
+                    msgid              => l_enq_msgid
+                  );
+
+                  RETURN l_task_id;
+                END create_hitl_task;
+
+              END PKG_AGENT_TOOLS;

@@ -23,3 +23,6 @@ databaseChangeLog:
   - include:
       file: 008-vector-rag.yaml
       relativeToChangelogFile: true
+  - include:
+      file: 009-tx-event-queues.yaml
+      relativeToChangelogFile: true
