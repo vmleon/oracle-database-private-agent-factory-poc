@@ -1,0 +1,115 @@
+databaseChangeLog:
+  # AGENT_TOOLS PL/SQL packages exposed to PAF agent flows as in-DB tools.
+  # See docs/DESIGN.md §8 and docs/DECISIONING-ENGINE-USE-CASE.md.
+  #
+  # 007 ships the single tool CHAT_AGENT cannot operate without:
+  # create_hitl_task. Other tools mentioned in the design (lookup_pricing,
+  # extract_features) are deferred:
+  #   - lookup_pricing already lives in OPA MCP (see opa/packages/) and is
+  #     called by the agent as an MCP tool, not an in-DB tool.
+  #   - extract_features isn't specified yet — added when a concrete flow
+  #     needs it.
+  #
+  # The enqueue half of create_hitl_task (HITL_REQUEST on TxEventQ) is not
+  # included here because the queue is created in 009-tx-event-queues. A
+  # follow-up changeset will update the package body to enqueue in the same
+  # transaction once the queue exists.
+  #
+  # Package spec + body use runOnChange: true — they are code, not table
+  # state, so re-running CREATE OR REPLACE on edit is the intended pattern.
+  # The grant changesets are immutable (no runOnChange).
+
+  - changeSet:
+      id: 007-create-pkg-agent-tools-spec
+      author: paf-poc
+      runOnChange: true
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |-
+              CREATE OR REPLACE PACKAGE AGENT_TOOLS.PKG_AGENT_TOOLS AS
+                -- create_hitl_task: write the CHAT_AGENT recommendation packet
+                -- to APP.hitl_task and return the new task_id. state defaults
+                -- to 'OPEN', created_at to SYSTIMESTAMP.
+                --
+                -- p_recommendation must be one of 'APPROVE', 'REVIEW',
+                -- 'DECLINE' (enforced by the APP.hitl_task CHECK constraint).
+                -- p_explore_hints and p_evidence are JSON text; the target
+                -- columns are JSON-typed and accept CLOB on insert.
+                FUNCTION create_hitl_task(
+                  p_application_id  IN NUMBER,
+                  p_recommendation  IN VARCHAR2,
+                  p_reasoning       IN CLOB,
+                  p_explore_hints   IN CLOB,
+                  p_evidence        IN CLOB,
+                  p_agent_run_id    IN VARCHAR2
+                ) RETURN NUMBER;
+              END PKG_AGENT_TOOLS;
+
+  - changeSet:
+      id: 007-create-pkg-agent-tools-body
+      author: paf-poc
+      runOnChange: true
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |-
+              CREATE OR REPLACE PACKAGE BODY AGENT_TOOLS.PKG_AGENT_TOOLS AS
+
+                FUNCTION create_hitl_task(
+                  p_application_id  IN NUMBER,
+                  p_recommendation  IN VARCHAR2,
+                  p_reasoning       IN CLOB,
+                  p_explore_hints   IN CLOB,
+                  p_evidence        IN CLOB,
+                  p_agent_run_id    IN VARCHAR2
+                ) RETURN NUMBER
+                IS
+                  l_task_id NUMBER;
+                BEGIN
+                  INSERT INTO APP.hitl_task (
+                    application_id,
+                    agent_recommendation,
+                    agent_reasoning,
+                    agent_explore_hints,
+                    agent_evidence,
+                    agent_run_id
+                  ) VALUES (
+                    p_application_id,
+                    p_recommendation,
+                    p_reasoning,
+                    p_explore_hints,
+                    p_evidence,
+                    p_agent_run_id
+                  )
+                  RETURNING task_id INTO l_task_id;
+
+                  RETURN l_task_id;
+                END create_hitl_task;
+
+              END PKG_AGENT_TOOLS;
+
+  - changeSet:
+      id: 007-grant-insert-hitl-task-to-agent-tools
+      author: paf-poc
+      # Package runs with definer's rights (default), so AGENT_TOOLS itself
+      # needs INSERT on APP.hitl_task — callers do not.
+      changes:
+        - sql:
+            sql: |-
+              GRANT INSERT ON APP.hitl_task TO AGENT_TOOLS
+
+  - changeSet:
+      id: 007-grant-execute-pkg-agent-tools-to-agent-factory
+      author: paf-poc
+      # PAF connects as AGENT_FACTORY today, so that is the only schema that
+      # needs EXECUTE. The "CHAT_AGENT only; RESEARCH_AGENT no execute"
+      # boundary (DESIGN.md §8) is enforced at the PAF flow-config layer
+      # (which tools are wired into which agent). If CHAT_AGENT later gets
+      # its own DB user, this grant moves there.
+      changes:
+        - sql:
+            sql: |-
+              GRANT EXECUTE ON AGENT_TOOLS.PKG_AGENT_TOOLS TO AGENT_FACTORY

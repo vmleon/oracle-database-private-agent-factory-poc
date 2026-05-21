@@ -1,0 +1,113 @@
+databaseChangeLog:
+  # Vector RAG tables — policy_corpus + case_history.
+  #
+  # Canonical DDL: docs/DECISIONING-ENGINE-USE-CASE.md §"Schema sketch"
+  # (the `CREATE TABLE policy_corpus / case_history` blocks).
+  #
+  # Embedding model is bge-m3 at 1024 dims (DESIGN.md §11 — locked).
+  # Any change to dimensions requires re-ingestion of both tables and
+  # a new column type, so the dimension is hardcoded in the column
+  # definition, not parameterized.
+  #
+  # Vector indexes (HNSW / IVF) are NOT created here. They're only
+  # meaningful once 010-seed-synthetic has loaded enough rows for the
+  # index to do useful work, and the choice of index type depends on
+  # data shape. Add as a runOnChange follow-up when needed.
+  #
+  # Both tables live in APP (banking + decisioning data lives in APP;
+  # REPORTING is views only). RAG reads happen against APP directly via
+  # Select AI RAG profiles. NL2SQL over case_history (RESEARCH_AGENT
+  # only) goes through REPORTING.research_v_case_history.
+
+  - changeSet:
+      id: 008-create-policy-corpus
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              CREATE TABLE APP.policy_corpus (
+                chunk_id     NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                source_doc   VARCHAR2(300) NOT NULL,
+                section_ref  VARCHAR2(60),
+                text         CLOB NOT NULL,
+                embedding    VECTOR(1024, FLOAT32)
+              )
+        - sql:
+            sql: |-
+              CREATE INDEX APP.ix_policy_corpus_source
+                ON APP.policy_corpus(source_doc)
+
+  - changeSet:
+      id: 008-create-case-history
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              CREATE TABLE APP.case_history (
+                case_id         NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                amount          NUMBER(14,2) NOT NULL,
+                term_months     NUMBER NOT NULL,
+                dti             NUMBER(5,2),
+                pti             NUMBER(5,2),
+                credit_score    NUMBER,
+                outcome         VARCHAR2(20) NOT NULL
+                  CHECK (outcome IN ('APPROVE','REJECT')),
+                outcome_reason  CLOB,
+                case_embedding  VECTOR(1024, FLOAT32)
+              )
+        - sql:
+            sql: |-
+              CREATE INDEX APP.ix_case_history_outcome
+                ON APP.case_history(outcome)
+        - sql:
+            sql: |-
+              CREATE INDEX APP.ix_case_history_credit_score
+                ON APP.case_history(credit_score)
+
+  # Grants for Select AI RAG. Both profiles (chat_profile, research_profile)
+  # read these tables directly through their RAG configuration — neither
+  # writes. AGENT_FACTORY is PAF's owning user; if a separate read-only
+  # worker user is wired up later it gets the same SELECTs.
+  - changeSet:
+      id: 008-grant-rag-tables-to-agent-factory
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              GRANT SELECT ON APP.policy_corpus TO AGENT_FACTORY
+        - sql:
+            sql: |-
+              GRANT SELECT ON APP.case_history TO AGENT_FACTORY
+
+  # REPORTING owns the NL2SQL surface. research_v_case_history exposes
+  # case_history for RESEARCH_AGENT's deeper similarity queries (which
+  # combine vector search with structured filters — date range, outcome,
+  # reviewer). policy_corpus is RAG-only, no view needed.
+  - changeSet:
+      id: 008-grant-rag-tables-to-reporting
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              GRANT SELECT ON APP.case_history TO REPORTING
+
+  - changeSet:
+      id: 008-create-research-case-history-view
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              CREATE OR REPLACE VIEW REPORTING.research_v_case_history AS
+              SELECT
+                case_id,
+                amount,
+                term_months,
+                dti,
+                pti,
+                credit_score,
+                outcome,
+                outcome_reason
+              FROM APP.case_history
+        - sql:
+            sql: |-
+              GRANT SELECT ON REPORTING.research_v_case_history TO AGENT_FACTORY

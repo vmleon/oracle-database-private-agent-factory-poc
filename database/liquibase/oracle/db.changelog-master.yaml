@@ -17,3 +17,9 @@ databaseChangeLog:
   - include:
       file: 006-reporting-views.yaml
       relativeToChangelogFile: true
+  - include:
+      file: 007-agent-tools.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: 008-vector-rag.yaml
+      relativeToChangelogFile: true
