@@ -1,0 +1,528 @@
+databaseChangeLog:
+  # Synthetic dataset that exercises the test-bench scenarios from
+  # docs/DECISIONING-ENGINE-USE-CASE.md §"Scenarios". 002-banking-core
+  # already seeds Alice / Bob / Carol as a smoke trio (clean salaried /
+  # self-employed / expat-pending-KYC); this changelog adds the customers
+  # whose profiles trigger the specific decision paths the agent has to
+  # handle.
+  #
+  # Each new customer maps to one scenario:
+  #
+  #   #2  DTI above hard cap          → David
+  #   #3  Score below configured floor → Eva
+  #   #6  Mid-band score                → Frank
+  #   #7  Large amount, clean profile  → Grace
+  #   #8  One MARGINAL document        → Henry
+  #   #9  All UNUSABLE documents       → Iris
+  #   #27 Employer not in registry     → Jane
+  #   #28 Employer dormant in registry → Kyle
+  #
+  # Scenarios not seeded here:
+  #   - #1 (clean APPROVE) is Alice from 002.
+  #   - #5 needs sanctions_list — table not created in any prior changeset.
+  #   - #10 needs fair_lending_review pre-flight — separate flow.
+  #   - #11–#29 are runtime behaviours (agent / queue / UI) — no seed
+  #     pre-data needed beyond what these eight provide.
+  #
+  # case_history seed: structured fields only; case_embedding stays NULL.
+  # Vector retrieval needs bge-m3 over Ollama (the embedding pipeline lands
+  # outside Liquibase). NL2SQL filter queries from RESEARCH_AGENT still work
+  # against the structured columns.
+  #
+  # policy_corpus: not seeded here — same embedding-pipeline reason, plus
+  # the actual policy text comes from the kit's policy docs, not inline SQL.
+  #
+  # All changesets run under `context: seed`. Cloud (or any environment
+  # that wants a clean schema) sets `--contexts="!seed"` to skip.
+
+  - changeSet:
+      id: 010-seed-customers
+      author: paf-poc
+      context: seed
+      changes:
+        - sql:
+            sql: |-
+              INSERT INTO APP.customer
+                (full_name, date_of_birth, residency, email, phone, kyc_status, kyc_updated_at)
+              VALUES
+                ('David HighDti',       DATE '1985-06-15', 'RESIDENT', 'david@example.com',  '+10000000004', 'PASSED', SYSTIMESTAMP)
+        - sql:
+            sql: |-
+              INSERT INTO APP.customer
+                (full_name, date_of_birth, residency, email, phone, kyc_status, kyc_updated_at)
+              VALUES
+                ('Eva LowScore',        DATE '1990-11-03', 'RESIDENT', 'eva@example.com',    '+10000000005', 'PASSED', SYSTIMESTAMP)
+        - sql:
+            sql: |-
+              INSERT INTO APP.customer
+                (full_name, date_of_birth, residency, email, phone, kyc_status, kyc_updated_at)
+              VALUES
+                ('Frank MidBand',       DATE '1983-02-28', 'RESIDENT', 'frank@example.com',  '+10000000006', 'PASSED', SYSTIMESTAMP)
+        - sql:
+            sql: |-
+              INSERT INTO APP.customer
+                (full_name, date_of_birth, residency, email, phone, kyc_status, kyc_updated_at)
+              VALUES
+                ('Grace LargeAsk',      DATE '1978-07-20', 'RESIDENT', 'grace@example.com',  '+10000000007', 'PASSED', SYSTIMESTAMP)
+        - sql:
+            sql: |-
+              INSERT INTO APP.customer
+                (full_name, date_of_birth, residency, email, phone, kyc_status, kyc_updated_at)
+              VALUES
+                ('Henry MarginalDoc',   DATE '1991-10-08', 'RESIDENT', 'henry@example.com',  '+10000000008', 'PASSED', SYSTIMESTAMP)
+        - sql:
+            sql: |-
+              INSERT INTO APP.customer
+                (full_name, date_of_birth, residency, email, phone, kyc_status, kyc_updated_at)
+              VALUES
+                ('Iris UnusableDocs',   DATE '1987-03-17', 'RESIDENT', 'iris@example.com',   '+10000000009', 'PASSED', SYSTIMESTAMP)
+        - sql:
+            sql: |-
+              INSERT INTO APP.customer
+                (full_name, date_of_birth, residency, email, phone, kyc_status, kyc_updated_at)
+              VALUES
+                ('Jane UnknownEmployer', DATE '1986-12-04', 'RESIDENT', 'jane@example.com',  '+10000000010', 'PASSED', SYSTIMESTAMP)
+        - sql:
+            sql: |-
+              INSERT INTO APP.customer
+                (full_name, date_of_birth, residency, email, phone, kyc_status, kyc_updated_at)
+              VALUES
+                ('Kyle DormantEmployer', DATE '1982-08-22', 'RESIDENT', 'kyle@example.com',  '+10000000011', 'PASSED', SYSTIMESTAMP)
+
+  - changeSet:
+      id: 010-seed-customer-protected-attrs
+      author: paf-poc
+      context: seed
+      changes:
+        - sql:
+            sql: |-
+              INSERT INTO APP.customer_protected_attrs (customer_id, attrs)
+              SELECT customer_id, JSON('{"age_band":"40-49","gender":"M"}')
+                FROM APP.customer WHERE full_name='David HighDti'
+        - sql:
+            sql: |-
+              INSERT INTO APP.customer_protected_attrs (customer_id, attrs)
+              SELECT customer_id, JSON('{"age_band":"30-39","gender":"F"}')
+                FROM APP.customer WHERE full_name='Eva LowScore'
+        - sql:
+            sql: |-
+              INSERT INTO APP.customer_protected_attrs (customer_id, attrs)
+              SELECT customer_id, JSON('{"age_band":"40-49","gender":"M"}')
+                FROM APP.customer WHERE full_name='Frank MidBand'
+        - sql:
+            sql: |-
+              INSERT INTO APP.customer_protected_attrs (customer_id, attrs)
+              SELECT customer_id, JSON('{"age_band":"40-49","gender":"F"}')
+                FROM APP.customer WHERE full_name='Grace LargeAsk'
+        - sql:
+            sql: |-
+              INSERT INTO APP.customer_protected_attrs (customer_id, attrs)
+              SELECT customer_id, JSON('{"age_band":"30-39","gender":"M"}')
+                FROM APP.customer WHERE full_name='Henry MarginalDoc'
+        - sql:
+            sql: |-
+              INSERT INTO APP.customer_protected_attrs (customer_id, attrs)
+              SELECT customer_id, JSON('{"age_band":"30-39","gender":"F"}')
+                FROM APP.customer WHERE full_name='Iris UnusableDocs'
+        - sql:
+            sql: |-
+              INSERT INTO APP.customer_protected_attrs (customer_id, attrs)
+              SELECT customer_id, JSON('{"age_band":"30-39","gender":"F"}')
+                FROM APP.customer WHERE full_name='Jane UnknownEmployer'
+        - sql:
+            sql: |-
+              INSERT INTO APP.customer_protected_attrs (customer_id, attrs)
+              SELECT customer_id, JSON('{"age_band":"40-49","gender":"M"}')
+                FROM APP.customer WHERE full_name='Kyle DormantEmployer'
+
+  - changeSet:
+      id: 010-seed-employment
+      author: paf-poc
+      context: seed
+      # Employer names are signals for the Company Registry HTTP datasource
+      # (built in a later milestone). "Atlantis Innovations Ltd" and
+      # "Phoenix Holdings Ltd" are the registry's "unknown" and "dormant"
+      # responses respectively. Names match the Company Registry seed JSON
+      # that will live in src/api/registry/.
+      changes:
+        - sql:
+            sql: |-
+              INSERT INTO APP.employment
+                (customer_id, employer_name, employment_type, monthly_salary, tenure_months)
+              SELECT customer_id, 'Acme Tech Ltd', 'SALARIED', 3500, 24
+                FROM APP.customer WHERE full_name='David HighDti'
+        - sql:
+            sql: |-
+              INSERT INTO APP.employment
+                (customer_id, employer_name, employment_type, monthly_salary, tenure_months)
+              SELECT customer_id, 'Globex Inc', 'SALARIED', 4200, 18
+                FROM APP.customer WHERE full_name='Eva LowScore'
+        - sql:
+            sql: |-
+              INSERT INTO APP.employment
+                (customer_id, employer_name, employment_type, monthly_salary, tenure_months)
+              SELECT customer_id, 'Initech', 'SALARIED', 5100, 30
+                FROM APP.customer WHERE full_name='Frank MidBand'
+        - sql:
+            sql: |-
+              INSERT INTO APP.employment
+                (customer_id, employer_name, employment_type, monthly_salary, tenure_months)
+              SELECT customer_id, 'Stark Industries', 'SALARIED', 12000, 96
+                FROM APP.customer WHERE full_name='Grace LargeAsk'
+        - sql:
+            sql: |-
+              INSERT INTO APP.employment
+                (customer_id, employer_name, employment_type, monthly_salary, tenure_months)
+              SELECT customer_id, 'Wayne Enterprises', 'SALARIED', 6000, 48
+                FROM APP.customer WHERE full_name='Henry MarginalDoc'
+        - sql:
+            sql: |-
+              INSERT INTO APP.employment
+                (customer_id, employer_name, employment_type, monthly_salary, tenure_months)
+              SELECT customer_id, 'Soylent Corp', 'SALARIED', 5800, 36
+                FROM APP.customer WHERE full_name='Iris UnusableDocs'
+        - sql:
+            sql: |-
+              INSERT INTO APP.employment
+                (customer_id, employer_name, employment_type, monthly_salary, tenure_months)
+              SELECT customer_id, 'Atlantis Innovations Ltd', 'SALARIED', 5300, 14
+                FROM APP.customer WHERE full_name='Jane UnknownEmployer'
+        - sql:
+            sql: |-
+              INSERT INTO APP.employment
+                (customer_id, employer_name, employment_type, monthly_salary, tenure_months)
+              SELECT customer_id, 'Phoenix Holdings Ltd', 'SALARIED', 5500, 28
+                FROM APP.customer WHERE full_name='Kyle DormantEmployer'
+
+  - changeSet:
+      id: 010-seed-credit-bureau
+      author: paf-poc
+      context: seed
+      # Scores are the headline signal for each scenario.
+      changes:
+        - sql:
+            sql: |-
+              INSERT INTO APP.credit_bureau_snapshot
+                (customer_id, snapshot_date, score, score_scale_min, score_scale_max,
+                 bureau_name, total_debt, num_open_facilities, num_late_payments_12m)
+              SELECT customer_id, TRUNC(SYSDATE)-12, 705, 300, 850,
+                     'Demo Bureau', 18000, 3, 1
+                FROM APP.customer WHERE full_name='David HighDti'
+        - sql:
+            sql: |-
+              INSERT INTO APP.credit_bureau_snapshot
+                (customer_id, snapshot_date, score, score_scale_min, score_scale_max,
+                 bureau_name, total_debt, num_open_facilities, num_late_payments_12m)
+              SELECT customer_id, TRUNC(SYSDATE)-8, 540, 300, 850,
+                     'Demo Bureau', 4200, 2, 5
+                FROM APP.customer WHERE full_name='Eva LowScore'
+        - sql:
+            sql: |-
+              INSERT INTO APP.credit_bureau_snapshot
+                (customer_id, snapshot_date, score, score_scale_min, score_scale_max,
+                 bureau_name, total_debt, num_open_facilities, num_late_payments_12m)
+              SELECT customer_id, TRUNC(SYSDATE)-14, 660, 300, 850,
+                     'Demo Bureau', 9500, 2, 1
+                FROM APP.customer WHERE full_name='Frank MidBand'
+        - sql:
+            sql: |-
+              INSERT INTO APP.credit_bureau_snapshot
+                (customer_id, snapshot_date, score, score_scale_min, score_scale_max,
+                 bureau_name, total_debt, num_open_facilities, num_late_payments_12m)
+              SELECT customer_id, TRUNC(SYSDATE)-9, 790, 300, 850,
+                     'Demo Bureau', 6000, 1, 0
+                FROM APP.customer WHERE full_name='Grace LargeAsk'
+        - sql:
+            sql: |-
+              INSERT INTO APP.credit_bureau_snapshot
+                (customer_id, snapshot_date, score, score_scale_min, score_scale_max,
+                 bureau_name, total_debt, num_open_facilities, num_late_payments_12m)
+              SELECT customer_id, TRUNC(SYSDATE)-11, 735, 300, 850,
+                     'Demo Bureau', 3000, 1, 0
+                FROM APP.customer WHERE full_name='Henry MarginalDoc'
+        - sql:
+            sql: |-
+              INSERT INTO APP.credit_bureau_snapshot
+                (customer_id, snapshot_date, score, score_scale_min, score_scale_max,
+                 bureau_name, total_debt, num_open_facilities, num_late_payments_12m)
+              SELECT customer_id, TRUNC(SYSDATE)-7, 720, 300, 850,
+                     'Demo Bureau', 5000, 2, 0
+                FROM APP.customer WHERE full_name='Iris UnusableDocs'
+        - sql:
+            sql: |-
+              INSERT INTO APP.credit_bureau_snapshot
+                (customer_id, snapshot_date, score, score_scale_min, score_scale_max,
+                 bureau_name, total_debt, num_open_facilities, num_late_payments_12m)
+              SELECT customer_id, TRUNC(SYSDATE)-10, 710, 300, 850,
+                     'Demo Bureau', 4500, 2, 0
+                FROM APP.customer WHERE full_name='Jane UnknownEmployer'
+        - sql:
+            sql: |-
+              INSERT INTO APP.credit_bureau_snapshot
+                (customer_id, snapshot_date, score, score_scale_min, score_scale_max,
+                 bureau_name, total_debt, num_open_facilities, num_late_payments_12m)
+              SELECT customer_id, TRUNC(SYSDATE)-13, 715, 300, 850,
+                     'Demo Bureau', 4800, 2, 0
+                FROM APP.customer WHERE full_name='Kyle DormantEmployer'
+
+  - changeSet:
+      id: 010-seed-existing-facilities
+      author: paf-poc
+      context: seed
+      # David carries enough monthly debt service that DTI on a new loan
+      # crosses the configured hard cap. Others have modest balances.
+      changes:
+        - sql:
+            sql: |-
+              INSERT INTO APP.existing_facility
+                (customer_id, lender_name, facility_type, balance, monthly_payment, opened_at)
+              SELECT customer_id, 'First Bank', 'CREDIT_CARD', 9000, 450, ADD_MONTHS(SYSDATE,-18)
+                FROM APP.customer WHERE full_name='David HighDti'
+        - sql:
+            sql: |-
+              INSERT INTO APP.existing_facility
+                (customer_id, lender_name, facility_type, balance, monthly_payment, opened_at)
+              SELECT customer_id, 'Other Bank', 'AUTO_LOAN', 14500, 520, ADD_MONTHS(SYSDATE,-30)
+                FROM APP.customer WHERE full_name='David HighDti'
+        - sql:
+            sql: |-
+              INSERT INTO APP.existing_facility
+                (customer_id, lender_name, facility_type, balance, monthly_payment, opened_at)
+              SELECT customer_id, 'First Bank', 'CREDIT_CARD', 2200, 110, ADD_MONTHS(SYSDATE,-12)
+                FROM APP.customer WHERE full_name='Frank MidBand'
+        - sql:
+            sql: |-
+              INSERT INTO APP.existing_facility
+                (customer_id, lender_name, facility_type, balance, monthly_payment, opened_at)
+              SELECT customer_id, 'First Bank', 'MORTGAGE', 220000, 1450, ADD_MONTHS(SYSDATE,-72)
+                FROM APP.customer WHERE full_name='Grace LargeAsk'
+
+  - changeSet:
+      id: 010-seed-accounts
+      author: paf-poc
+      context: seed
+      changes:
+        - sql:
+            sql: |-
+              INSERT INTO APP.account (customer_id, account_type, currency, opened_at)
+              SELECT customer_id, 'CURRENT', 'USD', ADD_MONTHS(SYSDATE,-30)
+                FROM APP.customer
+               WHERE full_name IN ('David HighDti','Eva LowScore','Frank MidBand',
+                                   'Grace LargeAsk','Henry MarginalDoc','Iris UnusableDocs',
+                                   'Jane UnknownEmployer','Kyle DormantEmployer')
+
+  - changeSet:
+      id: 010-seed-transactions
+      author: paf-poc
+      context: seed
+      # Three months of representative activity per customer (salary in,
+      # one rent debit, one card purchase). Just enough for the NL2SQL
+      # views to return non-empty aggregates.
+      changes:
+        - sql:
+            sql: |-
+              INSERT INTO APP.account_transaction
+                (account_id, txn_date, amount, currency, txn_type, description, balance_after)
+              SELECT a.account_id, TRUNC(SYSDATE)-d.dd, sal.amount, 'USD', 'SALARY', sal.note, sal.amount
+                FROM APP.account a
+                JOIN APP.customer c ON c.customer_id = a.customer_id
+                JOIN (
+                  SELECT 'David HighDti'        AS nm, 3500  AS amount, 'Acme payroll'     AS note FROM dual UNION ALL
+                  SELECT 'Eva LowScore',                4200,           'Globex payroll'         FROM dual UNION ALL
+                  SELECT 'Frank MidBand',               5100,           'Initech payroll'        FROM dual UNION ALL
+                  SELECT 'Grace LargeAsk',             12000,           'Stark payroll'          FROM dual UNION ALL
+                  SELECT 'Henry MarginalDoc',           6000,           'Wayne payroll'          FROM dual UNION ALL
+                  SELECT 'Iris UnusableDocs',           5800,           'Soylent payroll'        FROM dual UNION ALL
+                  SELECT 'Jane UnknownEmployer',        5300,           'Atlantis payroll'       FROM dual UNION ALL
+                  SELECT 'Kyle DormantEmployer',        5500,           'Phoenix payroll'        FROM dual
+                ) sal ON sal.nm = c.full_name
+                CROSS JOIN (
+                  SELECT 60 AS dd FROM dual UNION ALL
+                  SELECT 30 FROM dual UNION ALL
+                  SELECT 1  FROM dual
+                ) d
+               WHERE a.account_type = 'CURRENT'
+        - sql:
+            sql: |-
+              INSERT INTO APP.account_transaction
+                (account_id, txn_date, amount, currency, txn_type, description, balance_after)
+              SELECT a.account_id, TRUNC(SYSDATE)-d.dd, -1200, 'USD', 'RENT', 'Monthly rent', 0
+                FROM APP.account a
+                JOIN APP.customer c ON c.customer_id = a.customer_id
+                CROSS JOIN (
+                  SELECT 55 AS dd FROM dual UNION ALL
+                  SELECT 25 FROM dual UNION ALL
+                  SELECT 5  FROM dual
+                ) d
+               WHERE a.account_type = 'CURRENT'
+                 AND c.full_name IN ('David HighDti','Eva LowScore','Frank MidBand',
+                                     'Grace LargeAsk','Henry MarginalDoc','Iris UnusableDocs',
+                                     'Jane UnknownEmployer','Kyle DormantEmployer')
+
+  - changeSet:
+      id: 010-seed-loan-applications
+      author: paf-poc
+      context: seed
+      # One application per scenario customer. Amount/term chosen to land
+      # the scenario in the intended recommendation tier; the agent
+      # computes DTI/PTI from the existing data.
+      changes:
+        - sql:
+            sql: |-
+              INSERT INTO APP.loan_application
+                (customer_id, product_id, amount_requested, term_months, purpose, channel, status, submitted_at)
+              SELECT c.customer_id, p.product_id, 20000, 36, 'Debt consolidation', 'CHAT', 'SUBMITTED', SYSTIMESTAMP
+                FROM APP.customer c, APP.product_catalog p
+               WHERE c.full_name='David HighDti' AND p.name='Personal Loan'
+        - sql:
+            sql: |-
+              INSERT INTO APP.loan_application
+                (customer_id, product_id, amount_requested, term_months, purpose, channel, status, submitted_at)
+              SELECT c.customer_id, p.product_id, 8000, 24, 'Home appliance', 'CHAT', 'SUBMITTED', SYSTIMESTAMP
+                FROM APP.customer c, APP.product_catalog p
+               WHERE c.full_name='Eva LowScore' AND p.name='Personal Loan'
+        - sql:
+            sql: |-
+              INSERT INTO APP.loan_application
+                (customer_id, product_id, amount_requested, term_months, purpose, channel, status, submitted_at)
+              SELECT c.customer_id, p.product_id, 15000, 36, 'Education', 'CHAT', 'SUBMITTED', SYSTIMESTAMP
+                FROM APP.customer c, APP.product_catalog p
+               WHERE c.full_name='Frank MidBand' AND p.name='Personal Loan'
+        - sql:
+            sql: |-
+              INSERT INTO APP.loan_application
+                (customer_id, product_id, amount_requested, term_months, purpose, channel, status, submitted_at)
+              SELECT c.customer_id, p.product_id, 45000, 60, 'Home renovation', 'CHAT', 'SUBMITTED', SYSTIMESTAMP
+                FROM APP.customer c, APP.product_catalog p
+               WHERE c.full_name='Grace LargeAsk' AND p.name='Personal Loan'
+        - sql:
+            sql: |-
+              INSERT INTO APP.loan_application
+                (customer_id, product_id, amount_requested, term_months, purpose, channel, status, submitted_at)
+              SELECT c.customer_id, p.product_id, 12000, 24, 'Wedding', 'CHAT', 'SUBMITTED', SYSTIMESTAMP
+                FROM APP.customer c, APP.product_catalog p
+               WHERE c.full_name='Henry MarginalDoc' AND p.name='Personal Loan'
+        - sql:
+            sql: |-
+              INSERT INTO APP.loan_application
+                (customer_id, product_id, amount_requested, term_months, purpose, channel, status, submitted_at)
+              SELECT c.customer_id, p.product_id, 10000, 24, 'Vehicle', 'CHAT', 'SUBMITTED', SYSTIMESTAMP
+                FROM APP.customer c, APP.product_catalog p
+               WHERE c.full_name='Iris UnusableDocs' AND p.name='Personal Loan'
+        - sql:
+            sql: |-
+              INSERT INTO APP.loan_application
+                (customer_id, product_id, amount_requested, term_months, purpose, channel, status, submitted_at)
+              SELECT c.customer_id, p.product_id, 14000, 30, 'Working capital', 'CHAT', 'SUBMITTED', SYSTIMESTAMP
+                FROM APP.customer c, APP.product_catalog p
+               WHERE c.full_name='Jane UnknownEmployer' AND p.name='Personal Loan'
+        - sql:
+            sql: |-
+              INSERT INTO APP.loan_application
+                (customer_id, product_id, amount_requested, term_months, purpose, channel, status, submitted_at)
+              SELECT c.customer_id, p.product_id, 18000, 36, 'Family expenses', 'CHAT', 'SUBMITTED', SYSTIMESTAMP
+                FROM APP.customer c, APP.product_catalog p
+               WHERE c.full_name='Kyle DormantEmployer' AND p.name='Personal Loan'
+
+  - changeSet:
+      id: 010-seed-application-documents
+      author: paf-poc
+      context: seed
+      # Henry's payslip is MARGINAL → scenario 8 path. Iris's three docs
+      # are all UNUSABLE → scenario 9 path. ocr_status=DONE so the agent
+      # picks up the quality_tier without waiting on the OCR worker.
+      changes:
+        - sql:
+            sql: |-
+              INSERT INTO APP.loan_application_document
+                (application_id, doc_type, requested_type, storage_uri, ocr_status, quality_tier)
+              SELECT la.application_id, 'PAYSLIP', 'PAYSLIP',
+                     'oci://bucket/seed/henry-payslip.pdf', 'DONE', 'MARGINAL'
+                FROM APP.loan_application la
+                JOIN APP.customer c ON c.customer_id = la.customer_id
+               WHERE c.full_name='Henry MarginalDoc'
+        - sql:
+            sql: |-
+              INSERT INTO APP.loan_application_document
+                (application_id, doc_type, requested_type, storage_uri, ocr_status, quality_tier)
+              SELECT la.application_id, 'ID', 'ID',
+                     'oci://bucket/seed/iris-id.pdf', 'DONE', 'UNUSABLE'
+                FROM APP.loan_application la
+                JOIN APP.customer c ON c.customer_id = la.customer_id
+               WHERE c.full_name='Iris UnusableDocs'
+        - sql:
+            sql: |-
+              INSERT INTO APP.loan_application_document
+                (application_id, doc_type, requested_type, storage_uri, ocr_status, quality_tier)
+              SELECT la.application_id, 'PAYSLIP', 'PAYSLIP',
+                     'oci://bucket/seed/iris-payslip.pdf', 'DONE', 'UNUSABLE'
+                FROM APP.loan_application la
+                JOIN APP.customer c ON c.customer_id = la.customer_id
+               WHERE c.full_name='Iris UnusableDocs'
+        - sql:
+            sql: |-
+              INSERT INTO APP.loan_application_document
+                (application_id, doc_type, requested_type, storage_uri, ocr_status, quality_tier)
+              SELECT la.application_id, 'STATEMENT', 'STATEMENT',
+                     'oci://bucket/seed/iris-statement.pdf', 'DONE', 'UNUSABLE'
+                FROM APP.loan_application la
+                JOIN APP.customer c ON c.customer_id = la.customer_id
+               WHERE c.full_name='Iris UnusableDocs'
+
+  # Anonymised past decisions for RESEARCH_AGENT similarity. case_embedding
+  # stays NULL — populated later by the bge-m3 embedding pipeline. The
+  # structured columns are enough for NL2SQL filter queries from
+  # REPORTING.research_v_case_history.
+  - changeSet:
+      id: 010-seed-case-history
+      author: paf-poc
+      context: seed
+      changes:
+        - sql:
+            sql: |-
+              INSERT INTO APP.case_history
+                (amount, term_months, dti, pti, credit_score, outcome, outcome_reason)
+              VALUES (12000, 24, 0.28, 0.18, 720, 'APPROVE',
+                      'Clean profile; stable salary; modest existing debt')
+        - sql:
+            sql: |-
+              INSERT INTO APP.case_history
+                (amount, term_months, dti, pti, credit_score, outcome, outcome_reason)
+              VALUES (8000,  18, 0.31, 0.22, 690, 'APPROVE',
+                      'Reviewer confirmed cashflow stability after small NSF cluster')
+        - sql:
+            sql: |-
+              INSERT INTO APP.case_history
+                (amount, term_months, dti, pti, credit_score, outcome, outcome_reason)
+              VALUES (25000, 48, 0.46, 0.32, 705, 'REJECT',
+                      'DTI above cap once new payment factored in')
+        - sql:
+            sql: |-
+              INSERT INTO APP.case_history
+                (amount, term_months, dti, pti, credit_score, outcome, outcome_reason)
+              VALUES (15000, 36, 0.34, 0.24, 545, 'REJECT',
+                      'Score below floor; no compensating factors')
+        - sql:
+            sql: |-
+              INSERT INTO APP.case_history
+                (amount, term_months, dti, pti, credit_score, outcome, outcome_reason)
+              VALUES (20000, 36, 0.38, 0.27, 665, 'APPROVE',
+                      'Mid-band score; reviewer accepted self-employed cashflow')
+        - sql:
+            sql: |-
+              INSERT INTO APP.case_history
+                (amount, term_months, dti, pti, credit_score, outcome, outcome_reason)
+              VALUES (10000, 24, 0.29, 0.19, 700, 'REJECT',
+                      'Persistently UNUSABLE documents after two re-uploads')
+        - sql:
+            sql: |-
+              INSERT INTO APP.case_history
+                (amount, term_months, dti, pti, credit_score, outcome, outcome_reason)
+              VALUES (40000, 60, 0.36, 0.25, 780, 'APPROVE',
+                      'Large amount; reviewer comfortable given mortgage track record')
+        - sql:
+            sql: |-
+              INSERT INTO APP.case_history
+                (amount, term_months, dti, pti, credit_score, outcome, outcome_reason)
+              VALUES (14000, 30, 0.33, 0.23, 710, 'REJECT',
+                      'Employer not in registry; customer could not provide alternative proof')
