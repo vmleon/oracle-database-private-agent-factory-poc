@@ -159,7 +159,7 @@ In PAF: **Data Sources** → **Add new data source** → **Source type: Rest API
 
 The `registry-api` service ships eight synthetic company records that align with the employer names seeded by `010-seed-synthetic.yaml`, including `Phoenix Holdings Ltd` (`dormant`, scenario 28) and `Atlantis Innovations Ltd` (deliberately absent → `registered=false`, scenario 27). Source: `src/api/registry/`.
 
-**Server URL after upload.** The OpenAPI spec FastAPI emits doesn't include a `servers` block, so PAF will default to relative paths. If PAF's UI surfaces a "base URL" or "server" field for the imported spec, set it to `http://registry-api:8600` (compose service name + port) — **not** `localhost`, since PAF must reach the service over the compose network.
+**Server URL.** The spec carries `"servers": [{"url": "http://registry-api:8600"}]` (set in `src/api/registry/main.py`'s `FastAPI(servers=...)`). PAF reads that — no separate base-URL prompt. If you need to point PAF at a non-compose host (e.g. cloud), override the spec at import time or edit the `servers` block in the file before upload.
 
 ### If a server or datasource won't connect
 

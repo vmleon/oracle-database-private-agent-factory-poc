@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import FastAPI, Query
+from fastapi.openapi.utils import get_openapi
 from pydantic import BaseModel, Field
 
 DATA_PATH = Path(__file__).parent / "data.json"
@@ -42,7 +43,46 @@ app = FastAPI(
         "CHAT_AGENT. One lookup per loan application."
     ),
     version="0.1.0",
+    # PAF's OpenAPI importer rejects specs without a `servers` block ("Missing
+    # servers"). The compose-internal URL is the only one PAF can reach from
+    # the project network; cloud deployments will override the spec at import
+    # time or run an out-of-band server. Hardcoded to keep the POC simple.
+    servers=[{"url": "http://registry-api:8600", "description": "compose-internal"}],
 )
+
+
+def _openapi_with_security() -> dict:
+    """Inject a no-op security scheme so PAF's importer accepts the spec.
+
+    PAF rejects specs without a `components.securitySchemes` block ("Could
+    not find security definitions"), but the service itself has no auth.
+    OpenAPI 3.x has no formal 'none' / 'anonymous' type, so we declare a
+    placeholder apiKey scheme that the service ignores at runtime — when
+    configuring the datasource in PAF pick `Direct` (or send any value as
+    the header; the service drops it).
+    """
+    if app.openapi_schema:
+        return app.openapi_schema
+    schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+        servers=app.servers,
+    )
+    schema.setdefault("components", {})["securitySchemes"] = {
+        "NoAuthApiKey": {
+            "type": "apiKey",
+            "in": "header",
+            "name": "X-API-Key",
+            "description": "Stub registry has no real auth — placeholder for PAF's importer.",
+        }
+    }
+    app.openapi_schema = schema
+    return schema
+
+
+app.openapi = _openapi_with_security
 
 
 TradingStatus = Literal["active", "dormant", "dissolved", "unknown"]
