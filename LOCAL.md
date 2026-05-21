@@ -146,15 +146,20 @@ Each tool's input schema is auto-derived from the FastMCP type hints in `src/ai/
 
 ### 4b. HTTP datasource (Company Registry)
 
-Admin → **Data Sources** → **Add HTTP data source**.
+PAF's **Add new data source** dialog expects a file upload, not a URL — and FastAPI generates the spec at runtime, so there's no static file in the repo. Pull the spec from the running container and save it to the host:
 
-| Field                   | Value                                                                                                                            |
-| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| **Name**                | `registry-api`                                                                                                                   |
-| **OpenAPI spec URL**    | `http://registry-api:8600/openapi.json` — compose service name + port; PAF reads the spec to expose `verify_employer` as a tool. |
-| **Authentication mode** | `Direct` (the service is internal to the compose network and has no auth).                                                       |
+```bash
+podman exec paf-oracle-free-26ai curl -s \
+  http://registry-api:8600/openapi.json > registry-api-openapi.json
+```
+
+The file should start with `{"openapi":"3.1.0",...`.
+
+In PAF: **Data Sources** → **Add new data source** → **Source type: Rest API → OpenAPI specification** → drag-and-drop `registry-api-openapi.json` into the upload area.
 
 The `registry-api` service ships eight synthetic company records that align with the employer names seeded by `010-seed-synthetic.yaml`, including `Phoenix Holdings Ltd` (`dormant`, scenario 28) and `Atlantis Innovations Ltd` (deliberately absent → `registered=false`, scenario 27). Source: `src/api/registry/`.
+
+**Server URL after upload.** The OpenAPI spec FastAPI emits doesn't include a `servers` block, so PAF will default to relative paths. If PAF's UI surfaces a "base URL" or "server" field for the imported spec, set it to `http://registry-api:8600` (compose service name + port) — **not** `localhost`, since PAF must reach the service over the compose network.
 
 ### If a server or datasource won't connect
 
