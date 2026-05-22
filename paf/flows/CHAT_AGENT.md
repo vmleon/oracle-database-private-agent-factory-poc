@@ -60,7 +60,7 @@ User question:
 
 ### SQL Query (application context)
 
-- **Datasource**: `Banking Application DB` (Database data source registered in PAF → Data Sources). See `LOCAL.md §4b` for the registration form.
+- **Datasource**: `Banking Application DB` (Database data source registered in PAF → Data Sources). See [`LOCAL.md §4b — Database datasource (Banking Application DB)`](../../LOCAL.md#4b-database-datasource-banking-application-db) for the registration form.
 - **Include columns**: **ON**. The Message output then formats the row as `column: value` text the LLM can read.
 - **Output wiring**: `Message` → `Prompt.app_ctx`. **Not** `JSON` — PAF's port-type system rejects `JSON → text-placeholder` wires.
 - **Query** (joins applicant + bureau, aggregates facilities, lowercases enums to match OPA's tool schema):

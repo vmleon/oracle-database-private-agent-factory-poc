@@ -7,7 +7,7 @@ You walk through five steps:
 1. [Install prereqs and extract the PAF kit.](#1-install-prereqs-and-extract-the-paf-kit)
 2. [Boot the stack (`local up`).](#2-boot-the-stack)
 3. [Install PAF and register the LLM through its UI wizard.](#3-install-paf)
-4. [Register the MCP servers and HTTP datasource in PAF.](#4-register-tools-and-datasources)
+4. [Register the MCP servers and datasources in PAF.](#4-register-tools-and-datasources)
 5. [Build the `CHAT_AGENT` Agent Builder flow.](#5-build-chat_agent)
 
 When you're done you have:
@@ -113,9 +113,9 @@ After install completes, sign in as the admin user.
 
 ## 4. Register tools and datasources
 
-Three post-install registrations in the PAF admin area — two MCP servers and one HTTP datasource. All three target the `CHAT_AGENT` flow; the `RESEARCH_AGENT` flow has no external tools by design.
+Four post-install registrations in the PAF admin area — three MCP servers, one Database datasource, and one HTTP datasource. All target the `CHAT_AGENT` flow; the `RESEARCH_AGENT` flow has no external tools by design.
 
-### 4a. MCP servers (opa-mcp + ocr-mcp)
+### 4a. MCP servers
 
 Admin → **MCP Servers** → **Add MCP server**, three times. The form has three fields each time; use the same `Direct` authentication mode for all (no auth — the wrappers are internal to the compose network, not published to the host).
 
@@ -147,7 +147,28 @@ Each tool's input schema is auto-derived from the FastMCP type hints in `src/ai/
 
 `ocr-mcp` is a stub. Its single `extract_document` tool returns canned responses keyed on the filename in `storage_uri` so the test-bench scenarios from `010-seed-synthetic.yaml` resolve correctly (e.g. `henry-payslip.pdf` → `MARGINAL`, `iris-*.pdf` → `UNUSABLE`, anything else → a `USABLE` fallback). Source: `src/ai/ocr-mcp/server.py`. Real OCR (YOLO + PaddleOCR/Tesseract, async via `OCR_REQUEST` queue) is a separate workstream.
 
-### 4b. HTTP datasource (Company Registry)
+### 4b. Database datasource (Banking Application DB)
+
+The `CHAT_AGENT` flow has a **SQL Query node** that joins `REPORTING.chat_v_loan_application` + `chat_v_applicant_profile` + `chat_v_credit_bureau` + `chat_v_existing_facilities` to resolve `customer_id → application_id` and pull DTI inputs into the prompt. SQL Query nodes only see databases registered as **Database data sources** — they don't reuse PAF's own metadata connection.
+
+In PAF: **Data Sources** → **Add new data source** → **Source type: Database**. Fill in:
+
+| Field        | Value                                               |
+| ------------ | --------------------------------------------------- |
+| Name         | `Banking Application DB`                            |
+| Host         | `oracle-free-26ai` (compose service name)           |
+| Port         | `1521`                                              |
+| Service name | `FREEPDB1`                                          |
+| User         | `REPORTING`                                         |
+| Password     | `DB_PASSWORD` from `.env` (same as `AGENT_FACTORY`) |
+
+`REPORTING` owns the `chat_v_*` and `research_v_*` views and is `SELECT`-only — appropriate for the read-only SQL Query node (per `docs/PAF.md §7.5`, database datasources reject anything other than `SELECT`-like queries). Side-effect writes go through `hitl-mcp`.
+
+**Do not use `localhost`** as the host — same reason as the MCP wrappers: PAF reaches Oracle over the compose network. The PAF installer's Step 2 already proved this hostname works.
+
+After saving, the datasource should report a connected status. It surfaces inside Agent Builder's **SQL Query node** under the **Datasource** dropdown.
+
+### 4c. HTTP datasource (Company Registry)
 
 PAF's **Add new data source** dialog expects a file upload, not a URL — and FastAPI generates the spec at runtime, so there's no static file in the repo. Pull the spec from the running container and save it to the host:
 
