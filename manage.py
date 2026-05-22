@@ -891,7 +891,7 @@ def setup_local() -> None:
         console.print(f"[green]✓[/green] Generated DB password (saved to .env)")
 
     vllm_host = inquirer.text(
-        message="vLLM host (e.g. spark-bc8a.local):",
+        message="vLLM host (e.g. gpu-host.local or its IPv4):",
         default=existing.get("VLLM_HOST", ""),
     ).execute()
     vllm_gen_port = inquirer.text(

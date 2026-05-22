@@ -51,13 +51,13 @@ Two one-time refreshes before building (or rebuilding) the workflow in the canva
 
 ```mermaid
 flowchart LR
-    CI["Chat input"] --> EP["Prompt (Evaluation)<br/>{{app_ctx}} + {{message}}"]
+    CI["Chat input"] --> EP["Prompt (Evaluation)<br/>app_ctx + message"]
     CTX["SQL Query<br/>application + applicant + bureau<br/>(REPORTING.chat_v_*)"] -->|Message| EP
     EP --> EA["EvaluationAgent<br/>qwen2.5:32B-AWQ • temp 0.0"]
     OPA["MCP: opa-mcp"] -->|Tools| EA
     REG["REST: Company Registry"] -->|Tools| EA
 
-    EA -->|Message<br/>evidence block| RP["Prompt (Recommendation)<br/>{{app_ctx}} + {{evidence}}"]
+    EA -->|Message<br/>evidence block| RP["Prompt (Recommendation)<br/>app_ctx + evidence"]
     CTX -.->|Message| RP
     RP --> RA["RecommendationAgent<br/>qwen2.5:32B-AWQ • temp 0.0"]
     HITL["MCP: hitl-mcp"] -->|Tools| RA

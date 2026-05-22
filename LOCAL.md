@@ -380,7 +380,7 @@ Re-run setup and pick the GPU host when prompted:
 
 ```bash
 python manage.py setup local
-# vLLM host (e.g. spark-bc8a.local): <GPU_HOST>
+# vLLM host (e.g. gpu-host.local or its IPv4): <GPU_HOST>
 # vLLM generation port:               8000
 # vLLM embedding port:                8001
 # vLLM generation model:              Qwen/Qwen2.5-32B-Instruct-AWQ
