@@ -1031,14 +1031,24 @@ The test bench is for **functionality and observability**, not performance. Each
 
 ## Next Steps
 
-- Generate the synthetic dataset and mock ID templates for the three quality tiers.
-- Add `opa test` coverage for the existing policy packages under `opa/packages/` — each rule's signal weighting toward APPROVE / REVIEW / DECLINE encoded in `system_config`, not in Rego.
-- Stand up the OCR MCP server; wire it to `CHAT_WORKFLOW` only.
-- Stand up the Company Registry FastAPI service (`src/api/registry/`) with synthetic data, OpenAPI 3.1 spec at `/openapi.json`, and a `verify_employer` route; register with PAF as an HTTP datasource for `CHAT_WORKFLOW`.
-- Build `CHAT_WORKFLOW` in PAF: customer-safe Select AI profile, OPA + OCR MCPs, Company Registry HTTP datasource, `create_hitl_task` in-DB tool.
-- Build `RESEARCH_WORKFLOW` in PAF: broader read-only Select AI profile, deeper RAG, **no side-effect tools**.
-- Build the two UIs as thin shells over the API; the backoffice's HITL task detail screen carries the Case Research Agent conversational panel.
-- Walk the test bench end-to-end; every scenario green with complete `decision_audit` + `research_audit` + Blockchain `decision` row.
-- **Later (once the end-to-end pipeline is stable): surface a plain-language rejection reason in the customer chat.** When the reviewer closes a HITL task with REJECT, the Application Service appends an outcome message containing the **dominant** signal translated into one actionable sentence — e.g., _"Declined because your debt-to-income is 0.55, above our cap of 0.45 — you may reapply once your DTI is below the cap."_ Sufficient for the customer to know what to address and retry; not the full evidence packet. The bank chooses which signals are customer-disclosable via `system_config` (some reasons — e.g., sanctions / AML — are never surfaced in detail).
+In priority order:
+
+1. **Parameterise `customer_id` in `CHAT_WORKFLOW`'s SQL Query.** Either a PAF flow-input variable bound to `:customer_id`, or threaded from the Application Service (item 6). Detail in [`paf/flows/CHAT_WORKFLOW.md §Open follow-ups`](../paf/flows/CHAT_WORKFLOW.md).
+2. **Switch `EvaluationAgent`'s evidence block to JSON-schema-constrained output.** vLLM supports `response_format`; once PAF's Agent node exposes it, swap the markdown contract for a strict JSON object so `RecommendationAgent`'s parsing cannot drift.
+3. **Export the `CHAT_WORKFLOW` JSON** to `paf/flows/chat_workflow.flow.json` so a clean redeploy can re-import without rebuilding the canvas.
+4. **Build `RESEARCH_WORKFLOW`** — backoffice-only, broader read-only scope (full transactions, `decision_audit`, `policy_parameter_history`, deeper RAG over `policy_corpus`). No side-effect tools. Reuses the build pattern proven by `CHAT_WORKFLOW`.
+5. **Real OCR pipeline + `OcrAgent`.** Replace the canned `ocr-mcp` stub with the YOLO + PaddleOCR/Tesseract workflow (async via `OCR_REQUEST` queue, exception routing to `OCR_EXCEPTION_Q`). Insert `OcrAgent` between `EvaluationAgent` and `RecommendationAgent`: it consumes `required_documents`, extracts each upload via `ocr-mcp.extract_document`, and appends `USABLE` / `MARGINAL` / `UNUSABLE` findings to the evidence block. `RecommendationAgent` reads the augmented evidence; OCR quality feeds the tier decision via the existing OPA `kyc` rule.
+6. **Spring Boot Application Service + two Angular UIs.** The service threads `customer_id` into PAF invocations (closing out item 1), handles document uploads (enqueues `OCR_REQUEST`), writes the Blockchain `decision` row at HITL close, and persists chat turns to `chat_message`. The customer chat UI replays from `chat_message` on every load; the backoffice UI carries the **Case Research Agent** panel on the HITL task detail screen.
+7. **OPA bundle reload on parameter change.** Currently OPA loads its bundle once at container start; parameter edits in the Backoffice still write `system_config` + `policy_parameter_history` but require an OPA restart to take effect. Add a reload-on-write trigger from the Application Service over OPA's REST API.
+8. **Cloud deployment** — OCI Terraform + Ansible, ADB + LB. Topology in [`DEPLOYMENT.md §4`](DEPLOYMENT.md).
+9. **Customer-facing rejection reason.** When the reviewer closes a HITL task with REJECT, the Application Service appends an outcome message containing the **dominant** signal translated into one actionable sentence — e.g., _"Declined because your debt-to-income is 0.55, above our cap of 0.45 — you may reapply once your DTI is below the cap."_ The bank chooses which signals are customer-disclosable via `system_config` (sanctions / AML are never surfaced in detail). Sufficient for the customer to know what to address and retry; not the full evidence packet.
+10. **`opa test` coverage.** Per-rule tests for the `opa/packages/` content (eligibility / aml / kyc / fair_lending / required_documents / pricing) with policy-parameter fixtures drawn from `system_config`.
+11. **Test bench walk-through.** Every scenario in [§Test Bench](#test-bench) green with a complete `decision_audit` + `research_audit` trail and a Blockchain `decision` row.
+
+Schema follow-ups deferred until a concrete consumer needs them:
+
+- Vector indexes on `policy_corpus.embedding` and `case_history.case_embedding` — meaningless until the embedding pipeline populates the `VECTOR(1024, FLOAT32)` columns via `BAAI/bge-m3`. Add as a `runOnChange` changeset when seed data lands.
+- Per-schema `ENQUEUE` / `DEQUEUE` grants on `OCR_REQUEST` and `OCR_EXCEPTION_Q` — land with the OCR worker (no producer/consumer exists in-DB today).
+- `policy_corpus` text + embeddings ingestion, and synthetic `sanctions_list` for the AML scenario.
 
 ---

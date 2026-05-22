@@ -17,7 +17,7 @@ When you're done you have:
 - An `opa` container (Open Policy Agent in server mode loading every `.rego` under `opa/packages/`) and a sibling `opa-mcp` container — a FastMCP wrapper exposing each Rego rule as a typed MCP tool at `http://opa-mcp:8500/mcp/`. PAF reaches it as an **MCP Server node** wired to `CHAT_WORKFLOW` only.
 - A stub `ocr-mcp` container — FastMCP wrapper with one `extract_document` tool at `http://ocr-mcp:8501/mcp/`. Returns canned classification + extraction results keyed on the document filename (placeholder for the real YOLO + PaddleOCR/Tesseract pipeline).
 - A `registry-api` container — synthetic FastAPI Company Registry with a single `verify_employer(name)` route. OpenAPI 3.1 spec at `http://registry-api:8600/openapi.json`. Registered with PAF as an **HTTP datasource** wired to `CHAT_WORKFLOW` only.
-- A `caddy-ollama-tls` container terminating TLS in front of the LAN LLM endpoint, plus an Oracle SSL wallet trusting Caddy's CA (registered via the `SSL_WALLET` database property — kept for future HTTPS-from-DB work). The compose service name retains the `-ollama-` suffix as a legacy detail; the upstream is whatever LLM you point it at.
+- A `caddy-ollama-tls` container terminating TLS in front of the LAN LLM endpoint, plus an Oracle SSL wallet trusting Caddy's CA (registered via the `SSL_WALLET` database property — kept for future HTTPS-from-DB work).
 - LLM Configuration in PAF registered against your vLLM endpoint on the GPU host (generation on `:8000`, embeddings on `:8001`).
 - The customer-facing `CHAT_WORKFLOW` flow built in PAF Agent Builder from a versioned blueprint, exercising all four tool channels against the seed data.
 
@@ -107,7 +107,7 @@ PAF terminates TLS itself with a self-signed cert — your browser will warn; ac
 - **Step 1 — admin user.** Pick a name and password; you'll sign in as this user.
 - **Step 2 — database.** DB host: `oracle-free-26ai` (compose service name — **not** `localhost`, which would point at the PAF container itself). Port `1521`, service `FREEPDB1`, user `AGENT_FACTORY`, password = `DB_PASSWORD` from `.env`.
 - **Step 3 — install.** Click Install. PAF creates its metadata tables under `AGENT_FACTORY` and a read-only worker user `AAI_RO_AGENT_FACTORY`.
-- **Step 4 — LLM Management.** Register the generative model (`Qwen/Qwen2.5-32B-Instruct-AWQ` — native tool-calling, reliably consistent on the 4-step CHAT_WORKFLOW recipe) and the embedding model (`BAAI/bge-m3`) against your vLLM endpoint. Pick **LLM provider: vLLM** (a first-class radio option in PAF's form, alongside OCI GenAI / OpenAI / Ollama / Gemini). The two models run as separate vLLM containers on separate ports (defaults `:8000` for generation, `:8001` for embeddings) — see [Setting up vLLM on a GPU host](#setting-up-vllm-on-a-gpu-host-eg-nvidia-dgx-spark). Paste the host with its scheme into the **Host** field (`http://<gpu_host>`) and the port (`8000` or `8001`) into the separate **Port** field — PAF appends `/v1/…` itself when the provider is vLLM. `paf bootstrap` resolves `.local` mDNS names to an IPv4 address for you, since the PAF container can't do mDNS. Smaller quantisations / 7B variants work for tool-call smoke tests but produce internally inconsistent recommendations across a 4-tool pipeline — see `paf/flows/CHAT_WORKFLOW.md §Lessons`.
+- **Step 4 — LLM Management.** Register the generative model (`Qwen/Qwen2.5-32B-Instruct-AWQ` — native tool-calling, reliably consistent on the 4-step CHAT_WORKFLOW recipe) and the embedding model (`BAAI/bge-m3`) against your vLLM endpoint. Pick **LLM provider: vLLM** (a first-class radio option in PAF's form, alongside OCI GenAI / OpenAI / Ollama / Gemini). The two models run as separate vLLM containers on separate ports (defaults `:8000` for generation, `:8001` for embeddings) — see [Setting up vLLM on a GPU host](#setting-up-vllm-on-a-gpu-host-eg-nvidia-dgx-spark). Paste the host with its scheme into the **Host** field (`http://<gpu_host>`) and the port (`8000` or `8001`) into the separate **Port** field — PAF appends `/v1/…` itself when the provider is vLLM. `paf bootstrap` resolves `.local` mDNS names to an IPv4 address for you, since the PAF container can't do mDNS. Smaller quantisations / 7B variants work for tool-call smoke tests but produce internally inconsistent recommendations across a 4-tool pipeline — see `paf/flows/CHAT_WORKFLOW.md §Operating constraints`.
 
 After install completes, sign in as the admin user.
 
@@ -229,7 +229,7 @@ The full blueprint is at [`paf/flows/CHAT_WORKFLOW.md`](paf/flows/CHAT_WORKFLOW.
 - The full **Custom instructions** block to paste into the Agent node — encodes a 4-step recipe (`required_documents` → `verify_employer` → DTI/PTI + `evaluate_eligibility` → `create_hitl_task`), the three-tier recommendation contract, and strict rules against tool loops and customer-facing disclosure of internal numbers.
 - The wiring table (port → port).
 - Playground test prompts mapped to scenario customers (`1` Alice / `4` David / `5` Eva / `6` Frank / `10` Jane). Each should leave one row in `APP.hitl_task` and one message on `APP.HITL_REQUEST`.
-- A **Lessons** section capturing every gotcha hit while building the flow (port-type incompatibilities, missing max-iterations, model-size choices, customer-id numbering after fresh deploys, etc.) — read it before iterating on the flow.
+- An **Operating constraints** section listing the non-obvious behaviours that shape the build (port-type compatibility rules, per-agent tool-surface discipline, model-size requirements, customer-id numbering on fresh deploys, etc.) — read it before iterating on the flow.
 
 Verify each run with:
 
@@ -399,7 +399,7 @@ VLLM_GEN_MODEL=Qwen/Qwen2.5-32B-Instruct-AWQ
 VLLM_EMBED_MODEL=BAAI/bge-m3
 ```
 
-Then `python manage.py local up` as usual — PAF will resolve `VLLM_HOST` to the GPU box. (`manage.py` re-exports `OLLAMA_HOST` / `OLLAMA_PORT` from these for the Caddy upstream in `compose.local.yml`, so the existing compose works without changes; a follow-up will rename the compose-side variables.)
+Then `python manage.py local up` as usual — PAF will resolve `VLLM_HOST` to the GPU box.
 
 If `VLLM_HOST` is a Bonjour/mDNS name (e.g. ends in `.local`), `manage.py local up` resolves it on the host (which can do mDNS) and injects a static `hostname → ip` mapping into the PAF container's `/etc/hosts` via compose's `extra_hosts`. You can then paste the friendly hostname into PAF's LLM Configuration form instead of the raw IP. The mapping refreshes on every `local up`, so a DHCP change is fixed by `python manage.py local up`.
 

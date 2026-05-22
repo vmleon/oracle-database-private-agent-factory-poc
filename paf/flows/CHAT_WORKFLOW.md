@@ -5,7 +5,7 @@ This is the build blueprint for the customer-facing workflow in PAF Agent Builde
 - **`EvaluationAgent`** — gathers evidence (required documents, employer verification, eligibility check). No recommendation, no side effects.
 - **`RecommendationAgent`** — reads the evidence, decides the recommendation tier, and writes the HITL task. Single tool, single side effect.
 
-Splitting these jobs across two agents (vs one big agent) was driven by failures observed on the single-agent version: the LLM would batch all four tool calls — including the terminal side-effect `create_hitl_task` — into a single response, then fabricate intermediate tool results. The split keeps each agent's tool surface small, isolates the side effect, and makes the evidence flow through an inspectable text block.
+The two-agent split keeps each agent's tool surface small, isolates the side effect, and makes the evidence flow through an inspectable text block. `RecommendationAgent` is the only agent that has access to `hitl-mcp`, and `create_hitl_task` is its only tool — it cannot call the evaluation tools and cannot fabricate intermediate results.
 
 Source-of-truth references:
 
@@ -36,7 +36,7 @@ Two one-time refreshes before building (or rebuilding) the workflow in the canva
 
    Without the rebuild, the old `create_hitl_task` schema still requires `agent_run_id` from the caller — and LLMs reliably hallucinate it (e.g. `a4b5c6d7-e8f9-g0h1-…` with non-hex characters, or literal phrases like `unique-id-for-this-run`).
 
-2. **Re-import the Company Registry HTTP datasource in PAF** so the tool surfaces under its `operationId` (`verify_employer`) rather than the auto-derived `GET_v1_companies_verify`. PAF's OpenAPI importer caches the spec on first import — adding `operation_id` to the FastAPI route does not retroactively rename a previously-imported tool. Refresh the local OpenAPI dump, then in PAF UI → Data Sources → Rest APIs → delete `Company Registry` → re-add via OpenAPI upload:
+2. **Import the Company Registry HTTP datasource in PAF** so the tool surfaces under its `operationId` (`verify_employer`). PAF's OpenAPI importer caches the spec at import time, so each `src/api/registry/` source change requires deleting and re-adding the datasource. Refresh the local OpenAPI dump, then in PAF UI → Data Sources → Rest APIs → delete `Company Registry` (if present) → add via OpenAPI upload:
 
    ```bash
    podman exec paf-oracle-free-26ai curl -s \
@@ -80,8 +80,6 @@ The actual PAF Agent Builder canvas after the workflow is wired up:
 Default. The customer message is just a trigger — the workflow runs deterministically regardless of its content.
 
 ### SQL Query (application context)
-
-Unchanged from the single-agent version.
 
 - **Datasource**: `Banking Application DB` (see [`LOCAL.md §4b`](../../LOCAL.md#4b-database-datasource-banking-application-db)).
 - **Include columns**: **ON**. The Message output formats each row as `column: value` text the LLM can read.
@@ -359,40 +357,40 @@ In priority order:
 3. **JSON-schema-constrained output for `EvaluationAgent`.** vLLM supports `response_format` / guided generation. If the PAF Agent node exposes this, swap the markdown Evidence block for a strict JSON object — RecommendationAgent's parsing becomes bulletproof.
 4. **Export the workflow JSON** to `paf/flows/chat_workflow.flow.json` for re-import on clean redeploys.
 
-## Lessons
+## Operating constraints
 
-Hard-won during the build. Skim before iterating.
+Non-obvious rules and limits that shape how this workflow has to be built. Skim before iterating.
 
 ### PAF Agent Builder
 
-- **SQL Query node is read-only / `SELECT`-only** (per `docs/PAF.md §10`). Side-effect tools — anything that writes — go through MCP (or REST). That's why `create_hitl_task` is wrapped in `hitl-mcp` rather than called as a SELECT-of-function.
-- **Agent node has no max-iterations / max-tool-calls setting in this PAF version.** When a model loops or batches, the runtime does not break it out. Mitigation: tight recipe-style Custom Instructions, smaller per-agent tool surface, stronger model.
-- **Orphan nodes are rejected by the graph validator.** To temporarily remove a tool, delete the node from the canvas; you can't just disconnect the wire.
-- **SQL Query output port types matter.** `JSON` (pink) can't connect to `Prompt.app_ctx` (blue / text). Use `Message` with **Include columns** ON.
+- **SQL Query node is read-only / `SELECT`-only** (per `docs/PAF.md §10`). Side-effect tools — anything that writes — go through MCP (or REST). `create_hitl_task` lives behind `hitl-mcp` for this reason.
+- **Agent node has no max-iterations / max-tool-calls setting.** If a model loops or batches, the runtime does not break it out. Mitigations: tight recipe-style Custom Instructions, narrow per-agent tool surface, stronger model.
+- **Orphan nodes are rejected by the graph validator.** To remove a tool, delete the node from the canvas — disconnecting the wire alone does not work.
+- **SQL Query output port types matter.** `JSON` (pink) cannot connect to `Prompt.app_ctx` (blue / text). Use `Message` with **Include columns** ON.
 - **Database data sources are separate from MCP / HTTP datasources.** The SQL Query node only sees databases registered in **Admin → Data Sources → Database**.
-- **PAF's OpenAPI importer caches the spec.** Adding `operation_id="verify_employer"` to the FastAPI route does NOT retroactively rename a previously-imported tool — delete and re-add the datasource. Otherwise the tool surfaces as `GET_v1_companies_verify` (PAF's method+path auto-name).
-- **`Agent.Message → Prompt.<var>` chains cleanly.** The same wire pattern the SQL Query uses (`Message → app_ctx`) works for piping `EvaluationAgent.Message` into the next Prompt's `evidence` slot. No supervisor / Sub-agents wiring required.
+- **PAF's OpenAPI importer caches the spec at import time.** Changing `operation_id` in `src/api/registry/main.py` requires deleting and re-adding the Company Registry datasource so the tool surfaces under the new name. Without the re-import the tool surfaces under PAF's method+path auto-name (e.g. `GET_v1_companies_verify`).
+- **`Agent.Message → Prompt.<var>` chains cleanly.** The same wire pattern as `SQL Query.Message → Prompt.app_ctx` works for piping `EvaluationAgent.Message` into the next Prompt's `evidence` slot. No supervisor / Sub-agents wiring required.
 
-### Two-agent split
+### Two-agent contract
 
-- **One-shot batching was the killer on the single-agent version.** The model would emit four tool requests in one response, including the terminal `create_hitl_task`, with fabricated intermediate tool results in its `evidence` argument. We observed an `APPROVE` recommendation with `evaluate_eligibility: {allow: true, deny: []}` in the same message that had passed `dti=0.85, pti=0.57` (both well over caps) to that very tool. Splitting into two agents eliminates this because `RecommendationAgent` literally has only one tool — it cannot call the evaluation tools and therefore cannot fabricate their outputs in advance.
-- **Each agent is its own LLM round-trip,** so end-to-end latency is the sum. On vLLM + GB10 with `qwen2.5:32B-AWQ`, `EvaluationAgent` takes ~10–25 s (three tool calls + reasoning), `RecommendationAgent` takes ~5–15 s (one tool call + decision). Total: ~30–60 s. Much better than the Ollama-CPU 15+ minute hangs; still slower than a single agent that doesn't misbehave.
-- **The Evidence block format is a contract between the two agents.** Drift breaks `RecommendationAgent`'s parsing. Temperature `0.0` + tight format instructions keep it stable. If your PAF version exposes JSON-schema-constrained output on Agent nodes, switch.
+- **Tool surface is enforced per agent.** `EvaluationAgent` must not see `hitl-mcp`; `RecommendationAgent` must see only `hitl-mcp`. This is the lever that prevents batched tool calls with fabricated intermediate results — if a single tool is all that's available, that's all the model can call.
+- **Latency is the sum of the two agent turns.** On vLLM + GB10 with `qwen2.5:32B-AWQ`, `EvaluationAgent` takes ~10–25 s (three tool calls + reasoning), `RecommendationAgent` takes ~5–15 s (one tool call + decision); total ~30–60 s per workflow run.
+- **The Evidence block format is a contract between the two agents.** Drift breaks `RecommendationAgent`'s parsing. Temperature `0.0` + tight format instructions keep it stable. The forward path — once PAF's Agent node exposes vLLM's `response_format` — is JSON-schema-constrained output instead of a markdown block (see [Open follow-ups](#open-follow-ups)).
 
 ### Agent / LLM behaviour
 
-- **`qwen2.5:32B-AWQ` on vLLM is the floor for tool-following reliability.** Smaller quantisations / 7B variants complete the pipeline but produce internally inconsistent results — the customer-facing reply and the structured `create_hitl_task` args drift apart. AWQ keeps the recommendation tier and the reasoning in sync.
-- **LLMs hallucinate UUIDs.** Even with no example in the prompt, `qwen2.5:32B-AWQ` emitted `a4b5c6d7-e8f9-g0h1-i2j3-k4l5m6n7o8p9` (non-hex letters) twice in a row. `hitl-mcp` now generates the UUID server-side and returns it; the agent's Custom Instructions forbid supplying it.
-- **Smaller LLMs leak internal numbers to the customer.** Without an explicit no-disclosure rule, the model includes DTI ratios and policy thresholds in the chat reply. The strict-rules block in `RecommendationAgent`'s Custom Instructions fixes that; keep it.
+- **`Qwen/Qwen2.5-32B-Instruct-AWQ` is the minimum for tool-following reliability.** Smaller models / smaller quantisations complete the pipeline but the customer-facing reply and the structured `create_hitl_task` args can drift apart. AWQ at 32B keeps the recommendation tier and reasoning in sync.
+- **The agent must not supply `agent_run_id`.** `hitl-mcp.create_hitl_task` generates a UUID-4 server-side and returns it in the response. The input schema has no `agent_run_id` field; the Custom Instructions explicitly forbid passing one.
+- **Customer-facing reply must contain no internal numbers.** DTI ratios, credit scores, policy thresholds, eligibility/AML/KYC labels, and the recommendation tier never appear in `RecommendationAgent`'s chat output. The closing sentence in Custom Instructions is the only thing the customer ever sees.
 
 ### Schema / data
 
-- **Customer IDs after a fresh `local down --purge && local up` are 1–11** (Alice = 1 … Kyle = 11), not 21–28.
-- **Existing facilities are NOT in `chat_v_loan_application` or `chat_v_applicant_profile`.** They live in `chat_v_existing_facilities`. The SQL Query aggregates them via subquery so DTI can include them.
-- **OPA `evaluate_eligibility` takes pre-computed `dti` / `pti`.** The Rego rule reads `input.applicant.dti` directly. The agent computes the ratio before calling the tool.
+- **Customer IDs after a fresh `local down --purge && local up` are 1–11** (Alice = 1 … Kyle = 11).
+- **Existing facilities live in `chat_v_existing_facilities`** — not in `chat_v_loan_application` or `chat_v_applicant_profile`. The SQL Query aggregates them via subquery so DTI can include them.
+- **OPA `evaluate_eligibility` takes pre-computed `dti` / `pti`.** The Rego rule reads `input.applicant.dti` directly; `EvaluationAgent` computes the ratio before calling the tool.
 - **Enum-typed columns in the DB are uppercase (`SALARIED`, `RESIDENT`); OPA tool enums are lowercase (`salaried`, `resident`).** The SQL Query lowercases them.
 
 ### Tool surface hygiene
 
-- **The Company Registry tool name depends on the import-time OpenAPI.** If you change `operation_id` in `src/api/registry/main.py`, refresh `registry-api-openapi.json` from the running container AND delete-and-re-add the datasource in PAF. The previous tool registration is sticky.
-- **`hitl-mcp.create_hitl_task` no longer accepts `agent_run_id` as input.** The MCP wrapper generates a UUID-4 and returns it in the response. Any future caller (Spring backend, follow-on flow) should rely on that, not pass its own value.
+- **Company Registry tool name comes from `operation_id` at OpenAPI import time.** Any change to `src/api/registry/main.py`'s `operation_id` requires refreshing `registry-api-openapi.json` from the running container AND re-importing the datasource in PAF.
+- **`hitl-mcp.create_hitl_task` is the single side-effect tool of the workflow.** Any future caller (Spring backend, follow-on flow) must rely on the server-generated `agent_run_id` returned in the response rather than supplying its own.

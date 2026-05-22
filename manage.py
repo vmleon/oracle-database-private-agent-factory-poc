@@ -290,7 +290,7 @@ def _grant_sysdba_post_liquibase(container: str = "paf-oracle-free-26ai") -> Non
 
 def _ensure_tls_certs() -> None:
     """Generate (once) the self-signed CA + leaf cert used by the Caddy
-    HTTPS proxy in front of Ollama. Idempotent: skipped if both files
+    HTTPS proxy in front of the LAN LLM endpoint. Idempotent: skipped if both files
     already exist.
 
     Why: Oracle 26ai's DBMS_CLOUD_AI rejects HTTP endpoints (ORA-20047),
@@ -501,9 +501,8 @@ def _drop_select_ai_artefacts(container: str = "paf-oracle-free-26ai") -> None:
     Called when local skips profile creation (DBMS_CLOUD_AI constraint —
     see `_bootstrap_select_ai_profiles`). Keeps the DB tidy: no half-wired
     artefacts to confuse demo viewers. Errors are ignored — the artefacts
-    may not exist on a fresh install. Both VLLM_CRED (current) and
-    OLLAMA_CRED (legacy) are dropped so a transition from the old Ollama
-    setup leaves nothing behind.
+    may not exist on a fresh install. Both `VLLM_CRED` and `OLLAMA_CRED`
+    aliases are dropped so any prior state under either name is removed.
     """
     db_password = os.getenv("DB_PASSWORD")
     if not db_password:
@@ -536,9 +535,8 @@ def _bootstrap_select_ai_profiles(container: str = "paf-oracle-free-26ai") -> No
 
     Uses the `openai` provider with a `provider_endpoint` pointed at the
     Caddy HTTPS proxy (`https://caddy-ollama-tls/v1`) rather than at
-    the vLLM endpoint directly. Caddy bridges Oracle's TLS requirement.
-    (The Caddy compose service still carries the historical `-ollama-`
-    suffix in its name; the upstream is whatever LLM you point it at.)
+    the vLLM endpoint directly. Caddy bridges Oracle's TLS requirement;
+    its upstream is whatever LLM `VLLM_HOST:VLLM_GEN_PORT` resolves to.
 
     A `credential_name` is mandatory on every DBMS_CLOUD_AI profile;
     vLLM doesn't enforce auth by default, so we create a dummy `VLLM_CRED`
@@ -981,11 +979,10 @@ def local_up() -> None:
     # Always export so compose substitution succeeds even when paf isn't started.
     os.environ["PAF_APP_VERSION"] = _paf_app_version() or "unset"
     os.environ.setdefault("HOST_OS", platform.system())
-    # Compat shim: `deploy/podman/compose.local.yml` still substitutes
-    # `${OLLAMA_HOST}` / `${OLLAMA_PORT}` for the Caddy upstream. Mirror
-    # the new VLLM_* values into the legacy names so the compose file
-    # doesn't need to change in lockstep with this rename. Drop the
-    # shim once compose is migrated.
+    # `deploy/podman/compose.local.yml` substitutes `${OLLAMA_HOST}` /
+    # `${OLLAMA_PORT}` for the Caddy upstream. Mirror the VLLM_* values
+    # into those names so the Caddy service resolves the configured LLM
+    # endpoint regardless of provider naming.
     os.environ["OLLAMA_HOST"] = os.environ.get("VLLM_HOST", "")
     os.environ["OLLAMA_PORT"] = os.environ.get("VLLM_GEN_PORT", "8000")
     hosts_entry = _compute_vllm_hosts_entry()
@@ -995,11 +992,11 @@ def local_up() -> None:
     if paf_ready:
         services.append("paf")
     console.print("[bold]Starting podman containers (rebuilds wrapper images when source changed)...[/bold]")
-    # `--build` makes `up` layer-aware: unchanged wrappers come up fast from
-    # cache, edited wrappers (src/ai/*-mcp, src/api/registry) get a fresh
-    # image. Without this, `local down --purge && local up` wipes volumes
-    # but reuses stale wrapper images — leading to e.g. hitl-mcp still
-    # running the old `agent_run_id`-as-input schema.
+    # `--build` makes `up` layer-aware: unchanged wrappers come up fast
+    # from cache; edited wrappers (src/ai/*-mcp, src/api/registry) get a
+    # fresh image. `local down --purge && local up` wipes volumes but
+    # leaves images alone, so without `--build` a wrapper edit would
+    # silently re-run the previous build.
     _run([
         "podman", "compose", "-f", str(PODMAN_COMPOSE),
         "up", "-d", "--build", *services,
