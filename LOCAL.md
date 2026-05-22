@@ -107,7 +107,7 @@ PAF terminates TLS itself with a self-signed cert — your browser will warn; ac
 - **Step 1 — admin user.** Pick a name and password; you'll sign in as this user.
 - **Step 2 — database.** DB host: `oracle-free-26ai` (compose service name — **not** `localhost`, which would point at the PAF container itself). Port `1521`, service `FREEPDB1`, user `AGENT_FACTORY`, password = `DB_PASSWORD` from `.env`.
 - **Step 3 — install.** Click Install. PAF creates its metadata tables under `AGENT_FACTORY` and a read-only worker user `AAI_RO_AGENT_FACTORY`.
-- **Step 4 — LLM Management.** Register the generative model (`qwen2.5:7b-instruct` — small, fast, native tool-calling, fits on a laptop) and the embedding model (`bge-m3`) against your Ollama endpoint. `paf bootstrap` resolves `.local` mDNS names to an IPv4 address for you, since the PAF container can't do mDNS.
+- **Step 4 — LLM Management.** Register the generative model (`qwen2.5:32b-instruct` — native tool-calling, reliably consistent on the 4-step CHAT_AGENT recipe) and the embedding model (`bge-m3`) against your Ollama endpoint. `paf bootstrap` resolves `.local` mDNS names to an IPv4 address for you, since the PAF container can't do mDNS. The 7B variant works for tool-call smoke tests but produces internally inconsistent recommendations across a 4-tool pipeline — see `paf/flows/CHAT_AGENT.md §Lessons`.
 
 After install completes, sign in as the admin user.
 
@@ -203,11 +203,12 @@ If OPA returns a 404 on `/v1/data/decisioning/...`, the `.rego` files didn't loa
 
 The full blueprint is at [`paf/flows/CHAT_AGENT.md`](paf/flows/CHAT_AGENT.md). It gives you, in one place:
 
-- The node graph (Chat input + Prompt + SQL Query for application context + three MCP server nodes + one REST API datasource node + Agent + Chat output).
-- The SQL Query that resolves `customer_id → application_id` from `REPORTING.chat_v_loan_application`.
-- The full **Custom instructions** block to paste into the Agent node — encodes the three-tier recommendation contract, currency parsing, enum exactness, and the "exactly one `create_hitl_task` as the terminal action" rule.
+- The node graph (Chat input + Prompt + SQL Query for application context + two MCP server nodes — `opa-mcp` and `hitl-mcp` — + one REST API datasource node + Agent + Chat output). `ocr-mcp` is intentionally NOT wired by default; re-add it only when testing OCR scenarios.
+- The SQL Query that resolves `customer_id → application_id`, joining `chat_v_loan_application` + `chat_v_applicant_profile` + `chat_v_credit_bureau` and aggregating monthly facility payments.
+- The full **Custom instructions** block to paste into the Agent node — encodes a 4-step recipe (`required_documents` → `verify_employer` → DTI/PTI + `evaluate_eligibility` → `create_hitl_task`), the three-tier recommendation contract, and strict rules against tool loops and customer-facing disclosure of internal numbers.
 - The wiring table (port → port).
-- Five Playground test prompts mapped to scenario customers `21` / `22` / `23` / `25` / `27`. Each should leave a row in `APP.hitl_task` and one message on `APP.HITL_REQUEST`.
+- Playground test prompts mapped to scenario customers (`1` Alice / `4` David / `5` Eva / `6` Frank / `10` Jane). Each should leave one row in `APP.hitl_task` and one message on `APP.HITL_REQUEST`.
+- A **Lessons** section capturing every gotcha hit while building the flow (port-type incompatibilities, missing max-iterations, model-size choices, customer-id numbering after fresh deploys, etc.) — read it before iterating on the flow.
 
 Verify each run with:
 
@@ -246,7 +247,7 @@ podman compose -f deploy/podman/compose.local.yml up -d <service>
 
 ## Optional: bigger model on a LAN GPU host (e.g. NVIDIA DGX Spark)
 
-`qwen2.5:7b-instruct` (~5 GB resident with `bge-m3`) fits comfortably on a modern laptop. If you want to swap in a stronger model — e.g. `llama3.3:70b-instruct-q4_K_M` (~55–60 GB resident with `bge-m3`) for a closer-to-production demo — offload Ollama to a LAN-reachable GPU box and point `.env` at it. Steps below target a DGX Spark but apply to any NVIDIA host with a container runtime.
+`qwen2.5:32b-instruct` (~20 GB resident with `bge-m3`) needs more memory than most laptops can spare while doing other work — that's why the local default points at an Ollama on a LAN GPU host. The same instructions apply if you want to step further up to `llama3.3:70b-instruct-q4_K_M` (~55–60 GB resident with `bge-m3`) for a closer-to-production demo, or step down to `qwen2.5:7b-instruct` (~5 GB) for cheap smoke tests where recommendation quality doesn't matter. Steps below target a DGX Spark but apply to any NVIDIA host with a container runtime.
 
 ### On the GPU host
 
@@ -271,11 +272,11 @@ podman run -d --name ollama \
 Pull both models inside the running container:
 
 ```bash
-podman exec -it ollama ollama pull qwen2.5:7b-instruct
+podman exec -it ollama ollama pull qwen2.5:32b-instruct
 podman exec -it ollama ollama pull bge-m3
 ```
 
-Pull is ~4.7 GB (qwen2.5) + ~1.2 GB (bge-m3). Swap `qwen2.5:7b-instruct` for `llama3.3:70b-instruct-q4_K_M` if you want the bigger model (~40 GB pull).
+Pull is ~20 GB (qwen2.5:32b) + ~1.2 GB (bge-m3). Swap `qwen2.5:32b-instruct` for `qwen2.5:7b-instruct` (~4.7 GB) for cheap smoke tests, or for `llama3.3:70b-instruct-q4_K_M` (~40 GB pull) for a stronger production-like model.
 
 Open port `11434` only to the laptop's IP — Ollama has no auth:
 
@@ -293,7 +294,7 @@ Verify reachability:
 curl http://<GPU_HOST>:11434/api/tags
 ```
 
-Should list both `qwen2.5:7b-instruct` (or whichever model you pulled) and `bge-m3`.
+Should list both `qwen2.5:32b-instruct` (or whichever model you pulled) and `bge-m3`.
 
 Re-run setup and pick the LAN host when prompted:
 
