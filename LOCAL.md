@@ -257,12 +257,14 @@ If anything hangs or errors, `python manage.py local logs paf` shows the backend
 
 Editing OPA policy: change a `.rego` file under `opa/packages/`, then `podman restart paf-opa`. The `opa-mcp` wrapper is stateless and picks up the new policy on the next call — no rebuild needed.
 
-Rebuilding a wrapper image (after editing `src/ai/opa-mcp/`, `src/ai/ocr-mcp/`, or `src/api/registry/`) — replace `<service>` with `opa-mcp`, `ocr-mcp`, or `registry-api`:
+Rebuilding a wrapper image after editing `src/ai/opa-mcp/`, `src/ai/ocr-mcp/`, `src/ai/hitl-mcp/`, or `src/api/registry/`: re-run `python manage.py local up`. It passes `--build` to compose, so changed contexts get a fresh image (layer cache makes unchanged ones near-instant). Force a single-service rebuild without restarting the stack with:
 
 ```bash
 podman compose -f deploy/podman/compose.local.yml build <service>
 podman compose -f deploy/podman/compose.local.yml up -d <service>
 ```
+
+…where `<service>` is `opa-mcp`, `ocr-mcp`, `hitl-mcp`, or `registry-api`.
 
 (No `-p <name>` flag — `manage.py local up` uses the default project name derived from the compose dir, so all containers share network `podman_default`. Passing `-p paf` here would put the rebuilt container on a separate `paf_default` network and break DNS to its siblings.)
 

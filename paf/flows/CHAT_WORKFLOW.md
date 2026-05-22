@@ -27,12 +27,14 @@ Neither agent ever approves, rejects, or discloses the recommendation tier to th
 
 Two one-time refreshes before building (or rebuilding) the workflow in the canvas:
 
-1. **Rebuild and restart `hitl-mcp`** to pick up the server-side UUID generation. Without this, the `create_hitl_task` schema still requires `agent_run_id` from the caller — and LLMs reliably hallucinate it (`a4b5c6d7-e8f9-g0h1-…`, non-hex characters):
+1. **Ensure `hitl-mcp` is running the current code** for server-side UUID generation. `python manage.py local up` now passes `--build` to compose so a fresh `local up` rebuilds wrapper images automatically when source has changed. If you already have the stack running and need to force-rebuild just this service:
 
    ```bash
    podman compose -f deploy/podman/compose.local.yml build hitl-mcp
    podman compose -f deploy/podman/compose.local.yml up -d hitl-mcp
    ```
+
+   Without the rebuild, the old `create_hitl_task` schema still requires `agent_run_id` from the caller — and LLMs reliably hallucinate it (e.g. `a4b5c6d7-e8f9-g0h1-…` with non-hex characters, or literal phrases like `unique-id-for-this-run`).
 
 2. **Re-import the Company Registry HTTP datasource in PAF** so the tool surfaces under its `operationId` (`verify_employer`) rather than the auto-derived `GET_v1_companies_verify`. PAF's OpenAPI importer caches the spec on first import — adding `operation_id` to the FastAPI route does not retroactively rename a previously-imported tool. Refresh the local OpenAPI dump, then in PAF UI → Data Sources → Rest APIs → delete `Company Registry` → re-add via OpenAPI upload:
 
@@ -64,6 +66,10 @@ flowchart LR
 
     RA --> CO["Chat output"]
 ```
+
+The actual PAF Agent Builder canvas after the workflow is wired up:
+
+![CHAT_WORKFLOW in PAF Agent Builder](../../images/CHAT_WORKFLOW.png)
 
 `ocr-mcp` is intentionally not wired into this workflow. When the OCR pipeline becomes real, the slot is between the existing two agents: `EvaluationAgent` emits `required_documents`, a new `OcrAgent` extracts each, the augmented evidence flows into `RecommendationAgent`. See [Open follow-ups](#open-follow-ups).
 
@@ -131,41 +137,10 @@ Wire: SQL Query.`Message` → `app_ctx`, Chat input.`Message` → `message`.
 - **Temperature**: `0.0` (deterministic).
 - **Agent description**: `Loan application evidence-gatherer`.
 - **Tools**: `opa-mcp` (the agent's PAF tool list is filtered to `required_documents` + `evaluate_eligibility`), Company Registry REST (`verify_employer`).
-- **Custom instructions**: see [EvaluationAgent — Custom instructions](#evaluationagent--custom-instructions-block).
 
 The tool surface is intentionally restricted: this agent must not see `hitl-mcp` and should not call `opa-mcp` tools other than the two listed. The narrower the surface, the less the model can drift.
 
-### Prompt (Recommendation)
-
-Template (exposes `app_ctx` + `evidence` input ports):
-
-```
-Decide the recommendation tier for this personal-loan application
-and write the HITL task by calling create_hitl_task exactly once.
-
-Application context:
-{{app_ctx}}
-
-{{evidence}}
-```
-
-Wire: SQL Query.`Message` → `app_ctx`, EvaluationAgent.`Message` → `evidence`.
-
-### RecommendationAgent
-
-- **LLM**: `Qwen/Qwen2.5-32B-Instruct-AWQ`.
-- **Temperature**: `0.0`.
-- **Agent description**: `Loan recommendation drafter`.
-- **Tools**: `hitl-mcp` only (single tool, single side effect).
-- **Custom instructions**: see [RecommendationAgent — Custom instructions](#recommendationagent--custom-instructions-block).
-
-### Chat output
-
-Default. Wire from RecommendationAgent.`Message`.
-
-## Custom instructions
-
-### EvaluationAgent — Custom instructions block
+**Custom instructions** — paste verbatim into the EvaluationAgent node:
 
 ```
 You gather evidence for a personal-loan recommendation. Your only
@@ -217,7 +192,30 @@ Strict rules:
   text, never explain or add prose beyond the Evidence block.
 ```
 
-### RecommendationAgent — Custom instructions block
+### Prompt (Recommendation)
+
+Template (exposes `app_ctx` + `evidence` input ports):
+
+```
+Decide the recommendation tier for this personal-loan application
+and write the HITL task by calling create_hitl_task exactly once.
+
+Application context:
+{{app_ctx}}
+
+{{evidence}}
+```
+
+Wire: SQL Query.`Message` → `app_ctx`, EvaluationAgent.`Message` → `evidence`.
+
+### RecommendationAgent
+
+- **LLM**: `Qwen/Qwen2.5-32B-Instruct-AWQ`.
+- **Temperature**: `0.0`.
+- **Agent description**: `Loan recommendation drafter`.
+- **Tools**: `hitl-mcp` only (single tool, single side effect).
+
+**Custom instructions** — paste verbatim into the RecommendationAgent node:
 
 ```
 You receive an "Evidence" block produced by EvaluationAgent. Decide
@@ -276,6 +274,10 @@ Strict rules:
   the specific warn[] or trading_status; if APPROVE, state
   "no deny, no warn, employer active".
 ```
+
+### Chat output
+
+Default. Wire from RecommendationAgent.`Message`.
 
 ## Wiring summary
 

@@ -994,10 +994,15 @@ def local_up() -> None:
         console.print(f"[dim]Injecting extra_hosts: {hosts_entry}[/dim]")
     if paf_ready:
         services.append("paf")
-    console.print("[bold]Starting podman containers...[/bold]")
+    console.print("[bold]Starting podman containers (rebuilds wrapper images when source changed)...[/bold]")
+    # `--build` makes `up` layer-aware: unchanged wrappers come up fast from
+    # cache, edited wrappers (src/ai/*-mcp, src/api/registry) get a fresh
+    # image. Without this, `local down --purge && local up` wipes volumes
+    # but reuses stale wrapper images — leading to e.g. hitl-mcp still
+    # running the old `agent_run_id`-as-input schema.
     _run([
         "podman", "compose", "-f", str(PODMAN_COMPOSE),
-        "up", "-d", *services,
+        "up", "-d", "--build", *services,
     ])
     console.print("[bold]Waiting for Oracle DB to be healthy (up to 5 min)...[/bold]")
     _wait_for_db()

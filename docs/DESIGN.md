@@ -12,7 +12,7 @@ The PoC is intentionally a _scaffolding_ — the repository layout, deployment t
 - Prove **end-to-end observability**: every decision is reproducible from an append-only audit trail (Blockchain Table + per-tool audit + parameter history).
 - Demonstrate the **PAF Hybrid runtime mode**: an Agent Builder flow in the PAF container that delegates SQL and **RAG** (retrieval-augmented generation) to in-database Select AI tools and external behaviour to **MCP** (Model Context Protocol) / REST tools.
 - Provide **two deployment options** with the same source tree: a fully-local podman stack on a laptop or LAN, and a cloud stack provisioned on Oracle Cloud Infrastructure (OCI) with Terraform + Ansible.
-- Keep the audience-facing posture **on-premises private by default** (Ollama everywhere), with a documented migration path to OCI Generative AI when sanctioned.
+- Keep the audience-facing posture **on-premises private by default** (vLLM on a self-hosted GPU host — NVIDIA-supported, OpenAI-compatible API surface), with a documented migration path to OCI Generative AI when sanctioned.
 - Stay **bank-agnostic**: every threshold, weight, scale, policy parameter, and protected-attribute set lives in database configuration, not in code.
 
 ## 2. Non-goals
@@ -47,7 +47,7 @@ flowchart TB
     registry["Company Registry API<br/>(FastAPI, OpenAPI 3.1)<br/>employer verification"]
     paf["Private Agent Factory (container)<br/>CHAT_WORKFLOW (customer)<br/>RESEARCH_WORKFLOW (backoffice)"]
     opa["OPA<br/>(Rego packages)"]
-    ollama["Ollama (LLM + embeddings)<br/>(local host or GPU node)"]
+    vllm["vLLM (gen + embed)<br/>(self-hosted GPU host)"]
     db[("Oracle AI Database 26ai<br/>schemas + vector + TxEventQ")]
 
     mobile -- chat --> appsvc
@@ -56,7 +56,7 @@ flowchart TB
     appsvc --> ai
     ai --> paf
     ai --> opa
-    paf --> ollama
+    paf --> vllm
     paf --> db
     paf -- "HTTP datasource<br/>(OpenAPI)" --> registry
     opa --> db
@@ -75,7 +75,7 @@ Components communicate as follows:
   - **OPA MCP** for eligibility, AML, KYC, escalation, fair-lending, pricing band — inputs to the recommendation, not the decision.
   - **OCR MCP** for document field extraction and quality tiering.
   - **Company Registry HTTP datasource** — typed OpenAPI 3.1 endpoint exposed by a FastAPI service. The agent calls it once per application to verify the customer's declared employer (or their own company, for self-employed). Light usage; this is the demo surface for PAF's HTTP datasource capability.
-  - **Ollama** as the configured **LLM** (large language model) and embedding endpoint (LLM Management).
+  - **vLLM** as the configured **LLM** (large language model) and embedding endpoint (LLM Management). Two vLLM containers run on the GPU host — one for generation (`Qwen/Qwen2.5-32B-Instruct-AWQ` on `:8000`), one for embeddings (`BAAI/bge-m3` on `:8001`) — both exposing OpenAI-compatible APIs that PAF reaches via its built-in **vLLM** provider.
   - In-DB tool `create_hitl_task` to write a recommendation packet to the HITL queue.
 - **PAF (`RESEARCH_WORKFLOW`, backoffice-only)** runs in the same PAF container with a **broader, read-only tool scope** — full transaction history, `decision_audit`, `policy_parameter_history`, deeper similarity over `case_history`, RAG over `policy_corpus`. The agent is read-only by design: it reads, analyses, and explains; it cannot mutate state. Invocation is gated by the backoffice (the customer chat path cannot reach it).
 - **Final decision** is written to `decision` (Blockchain Table) by the Application Service when the HITL reviewer closes the task. The agent's recommendation packet is captured as columns on the same row, so each Blockchain row is exactly one bank decision.
@@ -95,7 +95,7 @@ Mapping the use case to PAF's component types:
 | ----------------------------------------------------------- | -------------------------------------------------------------- | ------------------- | ---------------------------- |
 | Chat orchestration (customer)                               | Agent Builder flow, Agent node                                 | `CHAT_WORKFLOW`     | Near-DB, PAF container       |
 | Research orchestration (backoffice)                         | Agent Builder flow, Agent node                                 | `RESEARCH_WORKFLOW` | Near-DB, PAF container       |
-| LLM rationale + research composition                        | LLM node, configured Ollama                                    | Both                | Near-DB                      |
+| LLM rationale + research composition                        | LLM node, configured vLLM endpoint                             | Both                | Self-hosted GPU host         |
 | Per-tool audit envelope                                     | Agent run → `decision_audit` writer                            | `CHAT_WORKFLOW`     | Tool wrapper inside PAF flow |
 | Customer profile / transactions / bureau queries            | Select AI profile + tasks over curated views                   | `CHAT_WORKFLOW`     | In-DB                        |
 | Broader read scope (audit, parameter history, deeper cases) | Select AI profile + tasks over backoffice view set             | `RESEARCH_WORKFLOW` | In-DB                        |
@@ -139,13 +139,13 @@ Schema layers, following PAF's [recommended Oracle Database design pattern](PAF.
 | `AGENT_FACTORY` | PAF platform metadata only                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | PAF; no production data                                                                                                                           |
 | Vector          | `policy_corpus`, `case_history` with `VECTOR(<dim>, FLOAT32)`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Select AI RAG profiles — both agents read; neither writes.                                                                                        |
 
-Embedding dimension is set once at deploy time and tied to the chosen Ollama embedding model. Changing embedding model later requires re-ingestion — flagged in deployment notes (see [PAF §6.6](PAF.md#66-embedding-models)).
+Embedding dimension is set once at deploy time and tied to the chosen vLLM embedding model (`BAAI/bge-m3` → 1024 dims by default). Changing embedding model later requires re-ingestion — flagged in deployment notes (see [PAF §6.6](PAF.md#66-embedding-models)).
 
 ### 6.3 Private Agent Factory artefacts
 
 Stored under `paf/` and bootstrapped by `manage.py` after PAF is up:
 
-- **LLM Management** configurations: `ollama-llm`, `ollama-embed` pointing at the configured Ollama host.
+- **LLM Management** configurations: `vllm-gen-qwen2.5-32B`, `vllm-embed-bge-m3` pointing at the configured vLLM endpoints (provider: `vLLM`, separate Host + Port fields).
 - **Data sources**:
   - Two **Database** data sources over `REPORTING` (one customer-safe, one backoffice-broader).
   - One **File** data source for the seed `policy_corpus` PDFs/text.
@@ -155,7 +155,7 @@ Stored under `paf/` and bootstrapped by `manage.py` after PAF is up:
   - `research_profile` — NL2SQL object list scoped to the broader backoffice `REPORTING.*` views (full transactions, `decision_audit`, `policy_parameter_history`, `case_history`), RAG over both `policy_corpus` and `case_history`.
 - **MCP Server nodes**: `opa-mcp` and `ocr-mcp` — registered, but wired only to `CHAT_WORKFLOW`.
 - **Agent Builder flows** (two):
-  - `CHAT_WORKFLOW`: Chat Input → Prompt (system rules + tier thresholds) → Agent (tools = Select AI Bridge over `chat_profile`, OPA MCP, OCR MCP, Company Registry HTTP datasource, In-DB Tool `create_hitl_task`) → Processing nodes (Parser, Condition for OCR re-ask / completeness loop) → Chat Output. The only side-effect tool is `create_hitl_task`.
+  - `CHAT_WORKFLOW`: a two-agent pipeline — Chat Input + SQL Query (application context) → Prompt (Evaluation) → **EvaluationAgent** (tools: OPA MCP `required_documents` + `evaluate_eligibility`, Company Registry REST `verify_employer`; emits a structured evidence block) → Prompt (Recommendation) → **RecommendationAgent** (tools: HITL MCP `create_hitl_task` only) → Chat Output. `create_hitl_task` is the workflow's only side-effect tool, and it's reachable only from `RecommendationAgent`. Full build blueprint: [`paf/flows/CHAT_WORKFLOW.md`](../paf/flows/CHAT_WORKFLOW.md).
   - `RESEARCH_WORKFLOW`: Chat Input → Prompt (read-only research system rules) → Agent (tools = Select AI Bridge over `research_profile`, RAG, no MCP tools, no HTTP datasources, no In-DB write tools) → Chat Output. The flow is intentionally simple — its value is the broader read scope and the conversational interface, not orchestration.
 - **Published agent URLs** captured in `.env` (`PAF_CHAT_RUN_URL`, `PAF_RESEARCH_RUN_URL`) and surfaced by `manage.py info`.
 
@@ -165,7 +165,7 @@ Both flows follow PAF's [authoring-to-execution pipeline](PAF.md#105-authoring-t
 
 Two stores; nothing belongs in code:
 
-- **`.env`** (rendered by `manage.py setup`): infrastructure pointers — OCI profile, region, compartment, ADB/Local-DB connection, Ollama host:port, OCR host:port, PAF host:port, SSH key, OCI GenAI region (future), wallet path, embedding dimension.
+- **`.env`** (rendered by `manage.py setup`): infrastructure pointers — OCI profile, region, compartment, ADB/Local-DB connection, vLLM host + gen/embed ports + gen/embed model handles, OCR host:port, PAF host:port, SSH key, OCI GenAI region (future), wallet path, embedding dimension.
 - **`APP.system_config`** (edited from Backoffice UI): policy parameters — `min_age`, `dti_hard_cap`, `pti_hard_cap`, `score_floor`, `score_caution_band_upper`, OCR confidence thresholds, fair-lending bucketing, the **recommendation-tier weight set** (drives `APPROVE` / `REVIEW` / `DECLINE` from the composite signal), and the **`document_requirements_matrix`** (JSON: required `doc_type` set keyed by `(product_type, employment_type, residency_status, amount_band)`).
 
 Every write to `system_config` produces a row in `policy_parameter_history` (who, when, old value, new value, reason).
@@ -197,7 +197,7 @@ oracle-database-private-agent-factory-poc/
 │       ├── oracle/           # local Oracle Free 26ai changelog
 │       └── adb/              # cloud ADB 26ai changelog
 ├── paf/
-│   ├── llm-management/       # JSON/Yaml templates for Ollama LLM/embed configs
+│   ├── llm-management/       # JSON/Yaml templates for vLLM gen/embed configs
 │   ├── data-sources/         # data source manifests (DB + file)
 │   ├── select-ai/            # profile + NL2SQL object list + vector index
 │   ├── mcp-servers/          # OPA + OCR registration payloads
@@ -212,7 +212,7 @@ oracle-database-private-agent-factory-poc/
 │   │   ├── app/              # root module; renders tfvars from .env
 │   │   └── modules/
 │   │       ├── paf/
-│   │       ├── model/        # Ollama + OCR on a GPU shape
+│   │       ├── model/        # vLLM (gen + embed) + OCR on a GPU shape
 │   │       ├── app/          # Spring Boot + Python services + OPA
 │   │       ├── front/        # both Angular frontends behind LB paths
 │   │       ├── ops/          # bastion + utilities
@@ -277,8 +277,9 @@ Four layers, all inspectable from the Backoffice UI:
 
 ## 11. Locked decisions
 
-- **Generative model**: **`qwen2.5:32b-instruct`** served by Ollama. In Ollama's official library; native tool-call support (the agent flow depends on reliable JSON/tool-call adherence); usable from Oracle Select AI profiles via `provider => 'ollama'` without code changes. Inference footprint ~20 GB (weights + KV cache; `bge-m3` adds ~1.5 GB), so it fits on a DGX Spark / single mid-range cloud GPU. Picked after testing the 7B variant which completes the 4-tool CHAT_WORKFLOW pipeline but produces internally inconsistent recommendations (the customer-facing reply and the structured `create_hitl_task` args drift apart) — 32B is the smallest size with reliable tool-following for a 4-step agent recipe. Swap to a bigger model (e.g. `llama3.3:70b-instruct-q4_K_M`) in cloud with no code change by editing `OLLAMA_LLM_MODEL` in `.env` and re-registering it in PAF's LLM Management.
-- **Embedding model**: **`bge-m3`** at **1024 dimensions** served by Ollama. In Ollama's official library; multilingual (fits the bank-agnostic story); strong retrieval scores on MTEB; usable as the embedding model in Select AI RAG profiles and Oracle AI Vector Search. Locked at deploy time; any change requires re-ingestion of `policy_corpus` and `case_history`. (Per [PAF §6.6](PAF.md#66-embedding-models).)
+- **Inference engine**: **vLLM** in a container on a self-hosted GPU host (NVIDIA DGX Spark / GB10 in the PoC). Picked after Ollama proved unworkable on the Spark — Ollama's runner subprocess intermittently lost CUDA access (Docker cgroup-revocation class of bug) and even when GPU-resident produced ~0.86 tok/s on qwen2.5:32B vs vLLM's ~30+ tok/s on the same hardware. NVIDIA's official Spark playbook recommends vLLM (`nvcr.io/nvidia/vllm:26.02-py3` is the Spark-tuned image); both NIM and vLLM-from-source are supported alternatives. vLLM exposes an **OpenAI-compatible** API on `/v1`, and PAF's LLM Management has a first-class **vLLM** provider (separate Host + Port fields, no need to pick OpenAI-compatible).
+- **Generative model**: **`Qwen/Qwen2.5-32B-Instruct-AWQ`** served by vLLM. AWQ 4-bit quant (~17 GB resident), native tool-call support via `--tool-call-parser=hermes`, reliable for the 4-tool `CHAT_WORKFLOW` pipeline. The unquantised FP16 (~64 GB) fits the GB10's unified memory but leaves no headroom for the embedding container; the FP8 dynamic variant (`RedHatAI/Qwen2.5-32B-Instruct-FP8-dynamic`, ~32 GB) is the next step up for quality. Swap by editing `VLLM_GEN_MODEL` in `.env` and `docker compose down && up -d` on the vLLM stack — no code change needed.
+- **Embedding model**: **`BAAI/bge-m3`** at **1024 dimensions** served by vLLM (`--task` is auto-detected from the HF config). Multilingual (fits the bank-agnostic story); strong retrieval scores on MTEB; usable as the embedding model in Select AI RAG profiles and Oracle AI Vector Search. Locked at deploy time; any change requires re-ingestion of `policy_corpus` and `case_history`. (Per [PAF §6.6](PAF.md#66-embedding-models).)
 - **Local database image**: full **Oracle Database Free 26ai** container (not the _-lite_ variant), to keep parity with ADB capabilities (Blockchain Tables, Vector, Select AI).
 - **Two agents in PAF, distinct tool scopes.** The platform configures `CHAT_WORKFLOW` (customer-facing, OPA + OCR + Select AI over the customer-safe view set + Company Registry HTTP datasource + `create_hitl_task`) and `RESEARCH_WORKFLOW` (backoffice-only, Select AI over a broader read-only view set + RAG, read-only). Same factory, two security envelopes.
 - **Company Registry as PAF HTTP datasource (employer verification).** A small FastAPI service in `src/api/registry/` exposes a synthetic company registry; PAF wires it in as an HTTP data source via its OpenAPI 3.1 spec (`/openapi.json`). One lookup per application during chat (`verify_employer(name)` → `{registered, trading_status, sector, registered_address, last_filed_year}`). Chosen specifically to demonstrate PAF's third data-source type (alongside Database and File); kept deliberately light so it doesn't compete with OPA-via-MCP for "extensively used by the LLM" mindshare. Synthetic JSON-backed data; no real bureau dependency.
@@ -286,13 +287,13 @@ Four layers, all inspectable from the Backoffice UI:
 - **`create_hitl_task` transport — same PL/SQL, two exposure mechanisms.** The function itself (`AGENT_TOOLS.PKG_AGENT_TOOLS.create_hitl_task` — insert into `APP.hitl_task` + enqueue `APP.HITL_REQUEST` atomically) is unchanged across environments. **Cloud (ADB)** exposes it as a **Select AI Tool** wrapping the PL/SQL function and calls it from PAF via the Select AI Bridge node — the canonical in-DB tool channel. **Local (Free 26ai)** can't use Select AI (`provider_endpoint` rejected by `DBMS_CLOUD_AI` pre-flight, see below), so we ship a thin Python MCP wrapper at `src/ai/hitl-mcp/` that calls the same PL/SQL function via `oracledb.callfunc`. Business logic stays in-DB either way; only the transport differs.
 - **Three-tier recommendation.** The agent's output is one of `APPROVE` (high confidence, no inconsistencies), `REVIEW` (minor flags, needs human attention), or `DECLINE` (inconsistencies, missing data, compliance hits), accompanied by mandatory `reasoning` (LLM-composed, grounded in OPA outputs and cited policy chunks) and — for `REVIEW` only — `explore_hints` listing areas the reviewer should examine or follow-up data to request from the customer.
 - **Final decision on Blockchain, written by the Application Service at HITL close.** When the reviewer submits their decision, the Application Service writes one row to `decision` (Blockchain Table) carrying both the human's outcome and the original agent recommendation packet. One row = one bank decision.
-- **`CHAT_WORKFLOW` and `RESEARCH_WORKFLOW` shape**: both are explicit Agent Builder **DAGs** (directed acyclic graphs of nodes — Prompt, Agent, Parser, Condition, Tool, Chat Output — wired together with no cycles, so each run has a well-defined path through the flow). `CHAT_WORKFLOW` is Prompt → Agent → Parser → Condition → `create_hitl_task` (observability over determinism). `RESEARCH_WORKFLOW` is intentionally smaller: Prompt → Agent → Chat Output, no side-effect nodes.
+- **`CHAT_WORKFLOW` and `RESEARCH_WORKFLOW` shape**: both are explicit Agent Builder **DAGs** (directed acyclic graphs of nodes — Prompt, Agent, Parser, Condition, Tool, Chat Output — wired together with no cycles, so each run has a well-defined path through the flow). `CHAT_WORKFLOW` is a **two-agent pipeline**: SQL Query + Chat Input → Prompt (Evaluation) → `EvaluationAgent` (gathers evidence, no side effects) → Prompt (Recommendation) → `RecommendationAgent` (one side-effect tool, `create_hitl_task`) → Chat Output. The split keeps each agent's tool surface small and isolates the side effect — see [`paf/flows/CHAT_WORKFLOW.md §Two-agent split`](../paf/flows/CHAT_WORKFLOW.md#two-agent-split). `RESEARCH_WORKFLOW` is intentionally smaller: Prompt → Agent → Chat Output, no side-effect nodes.
 - **SQL tooling**: queries against `REPORTING.*` views are exposed as **Select AI In-Database Tools** referenced from PAF flows via the Select AI Bridge node, not as plain SQL Query nodes. (Per [PAF §14.5](PAF.md#145-agent-builder-select-ai-nodes).)
 - **OPA bundle reload on parameter change**: planned for **v1**. Currently OPA loads its bundle once at boot; parameter edits in the Backoffice still write `policy_parameter_history` but require an OPA restart to take effect.
 - **PAF bootstrap automation**: `manage.py paf bootstrap` prints an ordered checklist of manual UI steps (LLM Management entries, data sources, Select AI profiles, MCP servers, Agent Builder flow imports — `CHAT_WORKFLOW` → `RESEARCH_WORKFLOW`). API automation is added later when the PAF admin endpoints are stable enough to drive headlessly. Playwright-driven UI automation is explicitly out of scope (too fragile across PAF versions).
 - **Auth — out of scope; mock login on both UIs.** The audience (host core-banking system) is assumed to provide auth in production, so no SSO/OAuth/JWT/API Gateway is wired into the PoC. The mobile UI shows a dropdown of demo customers (selection sets the active `customer_id`); the backoffice shows a dropdown of roles (HITL reviewer, admin, fair-lending reviewer, risk analyst — which gates visible sections). Both UIs offer logout to swap user or role mid-demo.
 - **Async messaging — Oracle Database TxEventQ.** All async/offline work (HITL claim, OCR pipeline, retries, future fan-out) runs through TxEventQ queues owned by `APP`. JSON payloads, single-consumer queues, idempotent DDL (catch `ORA-24006`/`ORA-24010`), per-schema `dbms_aqadm.grant_queue_privilege` rather than `aq_administrator_role`, and a dedicated exception queue for poison messages. Initial inventory: `HITL_REQUEST`, `OCR_REQUEST`, `OCR_EXCEPTION_Q`. Future queues (`NOTIFICATION`, `OPA_BUNDLE_RELOAD`, `FAIR_LENDING_SAMPLING`, `ARCHIVE`) follow the same pattern. See [DECISIONING-ENGINE-USE-CASE.md §Async messaging](DECISIONING-ENGINE-USE-CASE.md#async-messaging--txeventq-queues).
-- **Select AI is a cloud / ADB feature in this PoC, not local.** Oracle Database Free 26ai (23.26.x) rejects every variant of an Ollama-backed `DBMS_CLOUD_AI` profile we can construct: `provider: ollama` and `openai-compatible` fail validation (`ORA-20046`), `provider: openai` with an HTTP `provider_endpoint` fails (`ORA-20047`), and the same with an HTTPS `provider_endpoint` (via a Caddy TLS proxy in front of Ollama) fails pre-flight (`ORA-20401`) — the request never leaves the DB. Plain `UTL_HTTP` through the same wallet to the same Caddy endpoint works, so the constraint is purely in `DBMS_CLOUD_AI`'s validator. On ADB the same `CREATE_PROFILE` calls should succeed (different release stream; the Caddy TLS layer collapses since ADB endpoints are HTTPS-native). Locally, the `CHAT_WORKFLOW` flow uses a generic **SQL Query node** with LLM-generated SQL against `REPORTING.chat_v_*` (PAF's LLM Management config calls Ollama directly — no Select AI Bridge node in the loop). The Caddy proxy, Oracle SSL wallet, `DBMS_CLOUD` install, and network ACL stay in place because they're useful for any future HTTPS-from-DB work (OCI GenAI when sanctioned, RAG embedding calls, etc.). See [DEPLOYMENT.md §7](DEPLOYMENT.md#7-operational-notes) for the full error progression.
+- **Select AI is a cloud / ADB feature in this PoC, not local.** Oracle Database Free 26ai (23.26.x) rejects every variant of a custom-endpoint `DBMS_CLOUD_AI` profile we tested: `provider: ollama` and `openai-compatible` fail validation (`ORA-20046`), `provider: openai` with an HTTP `provider_endpoint` fails (`ORA-20047`), and the same with an HTTPS `provider_endpoint` (via a Caddy TLS proxy in front of the LLM) fails pre-flight (`ORA-20401`) — the request never leaves the DB. Plain `UTL_HTTP` through the same wallet to the same Caddy endpoint works, so the constraint is purely in `DBMS_CLOUD_AI`'s validator. On ADB the same `CREATE_PROFILE` calls should succeed (different release stream; the Caddy TLS layer collapses since ADB endpoints are HTTPS-native and PAF reaches the vLLM endpoint directly on `/v1` over a private VCN). Locally, the `CHAT_WORKFLOW` uses a generic **SQL Query node** with LLM-generated SQL against `REPORTING.chat_v_*` (PAF's LLM Management config calls the vLLM endpoint directly — no Select AI Bridge node in the loop). The Caddy proxy, Oracle SSL wallet, `DBMS_CLOUD` install, and network ACL stay in place because they're useful for any future HTTPS-from-DB work (OCI GenAI when sanctioned, RAG embedding calls, etc.); the compose service is still named `caddy-ollama-tls` as a historical detail — its upstream is whatever LLM you point it at. See [DEPLOYMENT.md §7](DEPLOYMENT.md#7-operational-notes) for the full error progression.
 
 ## 12. Decisions not yet locked
 
