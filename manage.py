@@ -194,13 +194,13 @@ def _paf_image_present(tag: str) -> bool:
     ).returncode == 0
 
 
-def _compute_ollama_hosts_entry() -> str | None:
-    """Resolve OLLAMA_HOST on the host (which can do mDNS) and return the
+def _compute_vllm_hosts_entry() -> str | None:
+    """Resolve VLLM_HOST on the host (which can do mDNS) and return the
     `hostname:ip` string for compose's extra_hosts. Returns None when the
     host already resolves inside the container (IP literal, localhost,
     host.containers.internal) or can't be resolved.
     """
-    host = os.getenv("OLLAMA_HOST", "").strip()
+    host = os.getenv("VLLM_HOST", "").strip()
     if not host or host in ("localhost", "127.0.0.1", "host.containers.internal"):
         return None
     if re.fullmatch(r"\d+\.\d+\.\d+\.\d+", host):
@@ -212,7 +212,7 @@ def _compute_ollama_hosts_entry() -> str | None:
     except OSError:
         console.print(
             f"[yellow]Could not resolve {host} on this host.[/yellow] "
-            "PAF will not be able to reach Ollama by name; "
+            "PAF will not be able to reach the vLLM endpoint by name; "
             "paste the IP into the PAF UI instead."
         )
         return None
@@ -501,7 +501,9 @@ def _drop_select_ai_artefacts(container: str = "paf-oracle-free-26ai") -> None:
     Called when local skips profile creation (DBMS_CLOUD_AI constraint —
     see `_bootstrap_select_ai_profiles`). Keeps the DB tidy: no half-wired
     artefacts to confuse demo viewers. Errors are ignored — the artefacts
-    may not exist on a fresh install.
+    may not exist on a fresh install. Both VLLM_CRED (current) and
+    OLLAMA_CRED (legacy) are dropped so a transition from the old Ollama
+    setup leaves nothing behind.
     """
     db_password = os.getenv("DB_PASSWORD")
     if not db_password:
@@ -510,6 +512,8 @@ def _drop_select_ai_artefacts(container: str = "paf-oracle-free-26ai") -> None:
         "BEGIN BEGIN DBMS_CLOUD_AI.DROP_PROFILE('chat_profile'); "
         "EXCEPTION WHEN OTHERS THEN NULL; END; END;\n/\n"
         "BEGIN BEGIN DBMS_CLOUD_AI.DROP_PROFILE('research_profile'); "
+        "EXCEPTION WHEN OTHERS THEN NULL; END; END;\n/\n"
+        "BEGIN BEGIN DBMS_CLOUD.DROP_CREDENTIAL('VLLM_CRED'); "
         "EXCEPTION WHEN OTHERS THEN NULL; END; END;\n/\n"
         "BEGIN BEGIN DBMS_CLOUD.DROP_CREDENTIAL('OLLAMA_CRED'); "
         "EXCEPTION WHEN OTHERS THEN NULL; END; END;\n/\n"
@@ -525,17 +529,19 @@ def _drop_select_ai_artefacts(container: str = "paf-oracle-free-26ai") -> None:
 def _bootstrap_select_ai_profiles(container: str = "paf-oracle-free-26ai") -> None:
     """Create / replace `chat_profile` and `research_profile` under AGENT_FACTORY.
 
-    Both profiles share the same Ollama backend (model from .env). Each
-    pins its own NL2SQL object list to a `REPORTING.*` view set:
+    Both profiles share the same vLLM generation backend (model from .env).
+    Each pins its own NL2SQL object list to a `REPORTING.*` view set:
       - chat_profile    → REPORTING.chat_v_*    (customer-safe)
       - research_profile → REPORTING.research_v_* (broader read-only)
 
     Uses the `openai` provider with a `provider_endpoint` pointed at the
     Caddy HTTPS proxy (`https://caddy-ollama-tls/v1`) rather than at
-    Ollama directly. Caddy bridges Oracle's TLS requirement.
+    the vLLM endpoint directly. Caddy bridges Oracle's TLS requirement.
+    (The Caddy compose service still carries the historical `-ollama-`
+    suffix in its name; the upstream is whatever LLM you point it at.)
 
     A `credential_name` is mandatory on every DBMS_CLOUD_AI profile;
-    Ollama doesn't enforce auth, so we create a dummy `OLLAMA_CRED`
+    vLLM doesn't enforce auth by default, so we create a dummy `VLLM_CRED`
     with placeholder username/password.
 
     Idempotent: credential and profiles are dropped (ignore-if-missing)
@@ -559,24 +565,24 @@ def _bootstrap_select_ai_profiles(container: str = "paf-oracle-free-26ai") -> No
         console.print(
             "[yellow]Select AI profile bootstrap skipped on local.[/yellow] "
             "Oracle Free 26ai's DBMS_CLOUD_AI rejects custom provider_endpoint "
-            "values pre-flight (ORA-20401). The CHAT_AGENT flow uses a generic "
+            "values pre-flight (ORA-20401). The CHAT_WORKFLOW flow uses a generic "
             "SQL Query node + LLM locally; full Select AI is the ADB path. "
             "See docs/DEPLOYMENT.md §7."
         )
         return
 
     db_password = os.getenv("DB_PASSWORD")
-    ollama_host = os.getenv("OLLAMA_HOST")
-    ollama_model = os.getenv("OLLAMA_LLM_MODEL")
-    if not all([db_password, ollama_host, ollama_model]):
+    vllm_host = os.getenv("VLLM_HOST")
+    vllm_model = os.getenv("VLLM_GEN_MODEL")
+    if not all([db_password, vllm_host, vllm_model]):
         console.print(
             "[yellow]Skipping Select AI profile bootstrap — "
-            "DB_PASSWORD / OLLAMA_HOST / OLLAMA_LLM_MODEL missing in .env.[/yellow]"
+            "DB_PASSWORD / VLLM_HOST / VLLM_GEN_MODEL missing in .env.[/yellow]"
         )
         return
 
     provider_endpoint = f"https://{CADDY_TLS_HOSTNAME}/v1"
-    credential_name = "OLLAMA_CRED"
+    credential_name = "VLLM_CRED"
 
     chat_views = [
         "chat_v_applicant_profile",
@@ -606,7 +612,7 @@ def _bootstrap_select_ai_profiles(container: str = "paf-oracle-free-26ai") -> No
             '"provider": "openai", '
             f'"credential_name": "{credential_name}", '
             f'"provider_endpoint": "{provider_endpoint}", '
-            f'"model": "{ollama_model}", '
+            f'"model": "{vllm_model}", '
             '"temperature": "0", '
             '"conversation": "true", '
             f'"object_list": [{_object_list_json(views)}]'
@@ -628,8 +634,9 @@ def _bootstrap_select_ai_profiles(container: str = "paf-oracle-free-26ai") -> No
 
     sql = (
         "WHENEVER SQLERROR EXIT SQL.SQLCODE\n"
-        # (Re)create the placeholder credential — Ollama doesn't enforce auth,
-        # but DBMS_CLOUD_AI requires `credential_name` to be set on the profile.
+        # (Re)create the placeholder credential — vLLM doesn't enforce auth
+        # by default, but DBMS_CLOUD_AI requires `credential_name` to be set
+        # on the profile.
         "BEGIN\n"
         "  BEGIN\n"
         f"    DBMS_CLOUD.DROP_CREDENTIAL(credential_name => '{credential_name}');\n"
@@ -637,7 +644,7 @@ def _bootstrap_select_ai_profiles(container: str = "paf-oracle-free-26ai") -> No
         "  END;\n"
         "  DBMS_CLOUD.CREATE_CREDENTIAL(\n"
         f"    credential_name => '{credential_name}',\n"
-        "    username        => 'ollama',\n"
+        "    username        => 'vllm',\n"
         "    password        => 'none'\n"
         "  );\n"
         "END;\n"
@@ -883,25 +890,29 @@ def setup_local() -> None:
         db_password = _generate_password()
         console.print(f"[green]✓[/green] Generated DB password (saved to .env)")
 
-    ollama_host = inquirer.text(
-        message="Ollama host:",
-        default=existing.get("OLLAMA_HOST", "host.containers.internal"),
+    vllm_host = inquirer.text(
+        message="vLLM host (e.g. spark-bc8a.local):",
+        default=existing.get("VLLM_HOST", ""),
     ).execute()
-    ollama_port = inquirer.text(
-        message="Ollama port:",
-        default=existing.get("OLLAMA_PORT", "11434"),
+    vllm_gen_port = inquirer.text(
+        message="vLLM generation port:",
+        default=existing.get("VLLM_GEN_PORT", "8000"),
     ).execute()
-    ollama_llm = inquirer.text(
-        message="Ollama LLM model:",
-        default="qwen2.5:32b-instruct",
+    vllm_embed_port = inquirer.text(
+        message="vLLM embedding port:",
+        default=existing.get("VLLM_EMBED_PORT", "8001"),
     ).execute()
-    ollama_embed = inquirer.text(
-        message="Ollama embedding model:",
-        default="bge-m3",
+    vllm_gen_model = inquirer.text(
+        message="vLLM generation model (HuggingFace handle):",
+        default=existing.get("VLLM_GEN_MODEL", "Qwen/Qwen2.5-32B-Instruct-AWQ"),
     ).execute()
-    ollama_embed_dim = inquirer.text(
+    vllm_embed_model = inquirer.text(
+        message="vLLM embedding model (HuggingFace handle):",
+        default=existing.get("VLLM_EMBED_MODEL", "BAAI/bge-m3"),
+    ).execute()
+    vllm_embed_dim = inquirer.text(
         message="Embedding dimension:",
-        default="1024",
+        default=existing.get("VLLM_EMBED_DIM", "1024"),
     ).execute()
     ocr_host = inquirer.text(
         message="OCR host:",
@@ -924,12 +935,13 @@ def setup_local() -> None:
         "DB_ADMIN_USER=SYSTEM\n"
         f"DB_PASSWORD={db_password}\n"
         "\n"
-        "# Models (Ollama)\n"
-        f"OLLAMA_HOST={ollama_host}\n"
-        f"OLLAMA_PORT={ollama_port}\n"
-        f"OLLAMA_LLM_MODEL={ollama_llm}\n"
-        f"OLLAMA_EMBED_MODEL={ollama_embed}\n"
-        f"OLLAMA_EMBED_DIM={ollama_embed_dim}\n"
+        "# Models (vLLM — OpenAI-compatible endpoints on the GPU host)\n"
+        f"VLLM_HOST={vllm_host}\n"
+        f"VLLM_GEN_PORT={vllm_gen_port}\n"
+        f"VLLM_EMBED_PORT={vllm_embed_port}\n"
+        f"VLLM_GEN_MODEL={vllm_gen_model}\n"
+        f"VLLM_EMBED_MODEL={vllm_embed_model}\n"
+        f"VLLM_EMBED_DIM={vllm_embed_dim}\n"
         "\n"
         "# OCR\n"
         f"OCR_HOST={ocr_host}\n"
@@ -969,7 +981,14 @@ def local_up() -> None:
     # Always export so compose substitution succeeds even when paf isn't started.
     os.environ["PAF_APP_VERSION"] = _paf_app_version() or "unset"
     os.environ.setdefault("HOST_OS", platform.system())
-    hosts_entry = _compute_ollama_hosts_entry()
+    # Compat shim: `deploy/podman/compose.local.yml` still substitutes
+    # `${OLLAMA_HOST}` / `${OLLAMA_PORT}` for the Caddy upstream. Mirror
+    # the new VLLM_* values into the legacy names so the compose file
+    # doesn't need to change in lockstep with this rename. Drop the
+    # shim once compose is migrated.
+    os.environ["OLLAMA_HOST"] = os.environ.get("VLLM_HOST", "")
+    os.environ["OLLAMA_PORT"] = os.environ.get("VLLM_GEN_PORT", "8000")
+    hosts_entry = _compute_vllm_hosts_entry()
     if hosts_entry:
         os.environ["OLLAMA_HOSTS_ENTRY"] = hosts_entry
         console.print(f"[dim]Injecting extra_hosts: {hosts_entry}[/dim]")
@@ -1080,7 +1099,8 @@ def info() -> None:
         )
         console.print(f"Admin user:     {os.getenv('DB_ADMIN_USER')}")
         console.print(f"App schemas:    APP, REPORTING, AGENT_TOOLS, AGENT_FACTORY")
-        console.print(f"Ollama:         http://{os.getenv('OLLAMA_HOST')}:{os.getenv('OLLAMA_PORT')}")
+        console.print(f"vLLM (gen):     http://{os.getenv('VLLM_HOST')}:{os.getenv('VLLM_GEN_PORT')}/v1   model={os.getenv('VLLM_GEN_MODEL')}")
+        console.print(f"vLLM (embed):   http://{os.getenv('VLLM_HOST')}:{os.getenv('VLLM_EMBED_PORT')}/v1   model={os.getenv('VLLM_EMBED_MODEL')}")
         console.print(f"OCR:            http://{os.getenv('OCR_HOST')}:{os.getenv('OCR_PORT')}")
         console.print(f"OPA:            http://opa:8181 (compose-internal)")
         console.print(f"OPA MCP:        http://opa-mcp:8500/mcp/ (compose-internal — wire as PAF MCP server)")
@@ -1153,13 +1173,13 @@ def paf_build() -> None:
     _run(["bash", str(PAF_BUILD_SCRIPT), "aai"], cwd=str(PAF_KIT_DIR))
 
 
-def _resolve_ollama_host() -> tuple[str, str | None]:
-    """Return (host-to-paste, advisory). If .env's OLLAMA_HOST is a `.local`
+def _resolve_vllm_host() -> tuple[str, str | None]:
+    """Return (host-to-paste, advisory). If .env's VLLM_HOST is a `.local`
     mDNS name, resolve it to an IPv4 and return that — containers can't do
     mDNS, so pasting the .local hostname into the PAF form leads to
     `ConnectError: Name or service not known`.
     """
-    host = os.getenv("OLLAMA_HOST", "")
+    host = os.getenv("VLLM_HOST", "")
     if not host.endswith(".local"):
         return host, None
     try:
@@ -1203,22 +1223,22 @@ def paf_bootstrap() -> None:
     console.print("  Click Install. PAF creates its metadata tables under AGENT_FACTORY")
     console.print("  and a read-only user AAI_RO_AGENT_FACTORY.\n")
 
-    ollama_host, advisory = _resolve_ollama_host()
+    vllm_host, advisory = _resolve_vllm_host()
     console.print("[bold]Step 4 — LLM configuration[/bold]")
     if advisory:
         console.print(f"  [yellow]Note:[/yellow] {advisory}")
-    console.print(f"  [bold]Generative model[/bold]")
-    console.print(f"    Provider:       [cyan]Ollama[/cyan]")
-    console.print(f"    Configuration:  [cyan]ollama-llm[/cyan]   (any name; this is just a label)")
-    console.print(f"    Model ID:       [cyan]{os.getenv('OLLAMA_LLM_MODEL')}[/cyan]")
-    console.print(f"    URL:            [cyan]{ollama_host}[/cyan]")
-    console.print(f"    Port:           [cyan]{os.getenv('OLLAMA_PORT')}[/cyan]")
-    console.print(f"  [bold]Embedding model[/bold]")
-    console.print(f"    Provider:       [cyan]Ollama[/cyan]")
-    console.print(f"    Configuration:  [cyan]ollama-embedding[/cyan]")
-    console.print(f"    Model ID:       [cyan]{os.getenv('OLLAMA_EMBED_MODEL')}[/cyan]")
-    console.print(f"    URL:            [cyan]{ollama_host}[/cyan]")
-    console.print(f"    Port:           [cyan]{os.getenv('OLLAMA_PORT')}[/cyan]\n")
+    console.print(f"  [bold]Generative model[/bold]   (Model type radio: [cyan]Generative model[/cyan])")
+    console.print(f"    LLM provider:        [cyan]vLLM[/cyan]")
+    console.print(f"    Configuration name:  [cyan]vllm-gen-qwen2.5-32B[/cyan]   (any label)")
+    console.print(f"    Model ID:            [cyan]{os.getenv('VLLM_GEN_MODEL')}[/cyan]")
+    console.print(f"    Host:                [cyan]http://{vllm_host}[/cyan]   (scheme required)")
+    console.print(f"    Port:                [cyan]{os.getenv('VLLM_GEN_PORT')}[/cyan]")
+    console.print(f"  [bold]Embedding model[/bold]   (Model type radio: [cyan]Embedding model[/cyan])")
+    console.print(f"    LLM provider:        [cyan]vLLM[/cyan]")
+    console.print(f"    Configuration name:  [cyan]vllm-embed-bge-m3[/cyan]")
+    console.print(f"    Model ID:            [cyan]{os.getenv('VLLM_EMBED_MODEL')}[/cyan]")
+    console.print(f"    Host:                [cyan]http://{vllm_host}[/cyan]")
+    console.print(f"    Port:                [cyan]{os.getenv('VLLM_EMBED_PORT')}[/cyan]\n")
 
     console.print("[bold]After install[/bold] — sign in as the admin user and:")
     console.print("  - Verify LLM Management shows both configurations.")

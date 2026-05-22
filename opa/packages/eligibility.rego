@@ -1,13 +1,13 @@
 # Eligibility — age, DTI, PTI, credit score.
 #
 # Returns three collections of human-readable messages that the
-# CHAT_AGENT folds into the recommendation packet's reasoning:
+# CHAT_WORKFLOW folds into the recommendation packet's reasoning:
 #   - deny : hard fail signals; weight toward DECLINE tier
 #   - warn : caution signals;   weight toward REVIEW tier
 #   - allow: true iff no deny and no warn fired
 #
 # These are signals, not decisions. Per the design (DESIGN.md §11),
-# the human reviewer is always the decision-maker; CHAT_AGENT writes
+# the human reviewer is always the decision-maker; CHAT_WORKFLOW writes
 # a recommendation packet to hitl_task carrying these messages as
 # evidence.
 package decisioning.eligibility

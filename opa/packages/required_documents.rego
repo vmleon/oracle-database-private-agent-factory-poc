@@ -3,7 +3,7 @@
 # Looks up the required doc_type list for an applicant against the
 # matrix in `data.decisioning.config.required_documents_matrix`,
 # keyed by (product_type, employment_type, residency, amount_band).
-# The CHAT_AGENT calls this once per application and asks the
+# The CHAT_WORKFLOW calls this once per application and asks the
 # customer for exactly those documents — not a fixed bundle.
 #
 # Input shape:

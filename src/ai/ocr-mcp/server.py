@@ -19,7 +19,7 @@ gets a synchronous extraction result. Real OCR (YOLO classifier +
 PaddleOCR/Tesseract, async via OCR_REQUEST → worker → write-back to
 APP.loan_application_document) is a separate workstream.
 
-Wires into `CHAT_AGENT` only, same as opa-mcp. `RESEARCH_AGENT` is
+Wires into `CHAT_WORKFLOW` only, same as opa-mcp. `RESEARCH_WORKFLOW` is
 read-only and has no MCP tools.
 """
 

@@ -1,7 +1,7 @@
 # Pricing — risk-band → rate from the configured rate card.
 #
 # Risk band is derived from credit score (configurable cutoffs in
-# `data.decisioning.config`). The CHAT_AGENT calls this last as
+# `data.decisioning.config`). The CHAT_WORKFLOW calls this last as
 # indicative pricing for the recommendation packet; the final priced
 # offer is only quoted to the customer after the human reviewer
 # approves the HITL task.

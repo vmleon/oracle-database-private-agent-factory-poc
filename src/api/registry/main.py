@@ -1,6 +1,6 @@
 """Company Registry — synthetic employer / company lookup service.
 
-Registered with PAF as an HTTP datasource for CHAT_AGENT. One operation:
+Registered with PAF as an HTTP datasource for CHAT_WORKFLOW. One operation:
 verify_employer(name) → CompanyRecord. Data is loaded from data.json on
 startup; no real bureau dependency.
 
@@ -40,7 +40,7 @@ app = FastAPI(
     title="Company Registry",
     description=(
         "Synthetic employer / company registry. PAF HTTP datasource for "
-        "CHAT_AGENT. One lookup per loan application."
+        "CHAT_WORKFLOW. One lookup per loan application."
     ),
     version="0.1.0",
     # PAF's OpenAPI importer rejects specs without a `servers` block ("Missing

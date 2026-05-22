@@ -1,5 +1,5 @@
 """HITL MCP server — exposes the in-DB create_hitl_task PL/SQL function as
-an MCP tool so PAF's CHAT_AGENT can write its recommendation packet.
+an MCP tool so PAF's CHAT_WORKFLOW can write its recommendation packet.
 
 Why an MCP server instead of a PAF SQL Query node:
 PAF's SQL Query node is read-only by design (only SELECT-like queries are
@@ -18,13 +18,14 @@ Security boundary:
 - This wrapper does NOT bypass any of those grants — it just gives PAF a
   side-effect-capable tool surface to call the function.
 
-Wired into CHAT_AGENT only. RESEARCH_AGENT is read-only by design (no
+Wired into CHAT_WORKFLOW only. RESEARCH_WORKFLOW is read-only by design (no
 side-effect tools).
 """
 
 from __future__ import annotations
 
 import os
+import uuid
 from typing import Literal
 
 import oracledb
@@ -48,14 +49,14 @@ def create_hitl_task(
     application_id: int,
     recommendation: Recommendation,
     reasoning: str,
-    agent_run_id: str,
     explore_hints: str | None = None,
     evidence: str | None = None,
 ) -> dict:
-    """Write the CHAT_AGENT recommendation packet to APP.hitl_task and
-    enqueue HITL_REQUEST in the same transaction. Returns the new task_id.
+    """Write the CHAT_WORKFLOW recommendation packet to APP.hitl_task and
+    enqueue HITL_REQUEST in the same transaction. Returns the new task_id
+    and the server-generated `agent_run_id`.
 
-    This is CHAT_AGENT's ONLY side-effect tool: every successful run ends
+    This is CHAT_WORKFLOW's ONLY side-effect tool: every successful run ends
     with exactly one call. The human reviewer (not the agent) closes the
     task; that close is what writes the Blockchain `decision` row.
 
@@ -71,17 +72,19 @@ def create_hitl_task(
                          the tool outputs (e.g. "OPA eligibility allow=true,
                          OCR PAYSLIP MARGINAL on first upload, employer
                          verified active").
-      - agent_run_id   — opaque correlation id for this agent run. The
-                         caller (PAF) should pass a unique value per
-                         conversation turn so the audit trail joins back
-                         to decision_audit rows.
       - explore_hints  — REVIEW-only: JSON string array of follow-up
                          questions/checks the reviewer should examine.
                          Pass null for APPROVE / DECLINE.
       - evidence       — JSON string of structured evidence captured
                          during the run (tool outputs, doc references).
                          Pass null if you have nothing to attach.
+
+    Note: `agent_run_id` is generated server-side as a UUID-4 and returned
+    in the response. The agent must NOT supply it — LLMs reliably
+    hallucinate non-hex strings (`a4b5c6d7-e8f9-g0h1-…`) when asked to
+    produce a UUID.
     """
+    agent_run_id = str(uuid.uuid4())
     with oracledb.connect(user=DB_USER, password=DB_PASSWORD, dsn=DB_DSN) as conn:
         with conn.cursor() as cur:
             task_id = cur.callfunc(
@@ -99,6 +102,7 @@ def create_hitl_task(
         conn.commit()
     return {
         "task_id": task_id,
+        "agent_run_id": agent_run_id,
         "state": "OPEN",
         "queue": "APP.HITL_REQUEST",
         "message": (

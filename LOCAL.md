@@ -8,20 +8,20 @@ You walk through five steps:
 2. [Boot the stack (`local up`).](#2-boot-the-stack)
 3. [Install PAF and register the LLM through its UI wizard.](#3-install-paf)
 4. [Register the MCP servers and datasources in PAF.](#4-register-tools-and-datasources)
-5. [Build the `CHAT_AGENT` Agent Builder flow.](#5-build-chat_agent)
+5. [Build the `CHAT_WORKFLOW` Agent Builder flow.](#5-build-chat_agent)
 
 When you're done you have:
 
 - Oracle Database Free 26ai on `localhost:1521` (service `FREEPDB1`), `max_string_size=EXTENDED`, schema users `APP` / `REPORTING` / `AGENT_TOOLS` / `AGENT_FACTORY`, full banking + decisioning schema, and `DBMS_CLOUD` + `DBMS_CLOUD_AI` installed.
 - Private Agent Factory at `https://localhost:8080/`, installed against the local 26ai database under `AGENT_FACTORY`.
-- An `opa` container (Open Policy Agent in server mode loading every `.rego` under `opa/packages/`) and a sibling `opa-mcp` container — a FastMCP wrapper exposing each Rego rule as a typed MCP tool at `http://opa-mcp:8500/mcp/`. PAF reaches it as an **MCP Server node** wired to `CHAT_AGENT` only.
+- An `opa` container (Open Policy Agent in server mode loading every `.rego` under `opa/packages/`) and a sibling `opa-mcp` container — a FastMCP wrapper exposing each Rego rule as a typed MCP tool at `http://opa-mcp:8500/mcp/`. PAF reaches it as an **MCP Server node** wired to `CHAT_WORKFLOW` only.
 - A stub `ocr-mcp` container — FastMCP wrapper with one `extract_document` tool at `http://ocr-mcp:8501/mcp/`. Returns canned classification + extraction results keyed on the document filename (placeholder for the real YOLO + PaddleOCR/Tesseract pipeline).
-- A `registry-api` container — synthetic FastAPI Company Registry with a single `verify_employer(name)` route. OpenAPI 3.1 spec at `http://registry-api:8600/openapi.json`. Registered with PAF as an **HTTP datasource** wired to `CHAT_AGENT` only.
-- A `caddy-ollama-tls` container terminating TLS in front of Ollama, plus an Oracle SSL wallet trusting Caddy's CA (registered via the `SSL_WALLET` database property — kept for future HTTPS-from-DB work).
-- LLM Configuration in PAF registered against your Ollama host (laptop or LAN GPU).
-- The customer-facing `CHAT_AGENT` flow built in PAF Agent Builder from a versioned blueprint, exercising all four tool channels against the seed data.
+- A `registry-api` container — synthetic FastAPI Company Registry with a single `verify_employer(name)` route. OpenAPI 3.1 spec at `http://registry-api:8600/openapi.json`. Registered with PAF as an **HTTP datasource** wired to `CHAT_WORKFLOW` only.
+- A `caddy-ollama-tls` container terminating TLS in front of the LAN LLM endpoint, plus an Oracle SSL wallet trusting Caddy's CA (registered via the `SSL_WALLET` database property — kept for future HTTPS-from-DB work). The compose service name retains the `-ollama-` suffix as a legacy detail; the upstream is whatever LLM you point it at.
+- LLM Configuration in PAF registered against your vLLM endpoint on the GPU host (generation on `:8000`, embeddings on `:8001`).
+- The customer-facing `CHAT_WORKFLOW` flow built in PAF Agent Builder from a versioned blueprint, exercising all four tool channels against the seed data.
 
-**Not wired locally**: Select AI profiles (`chat_profile` / `research_profile`). Oracle Database Free 26ai (23.26.x) rejects custom `provider_endpoint` values in `DBMS_CLOUD_AI` pre-flight (`ORA-20401`) — see [`docs/DEPLOYMENT.md §7`](docs/DEPLOYMENT.md). The `CHAT_AGENT` flow uses a SQL Query node + LLM locally; full Select AI Bridge is the ADB demo path.
+**Not wired locally**: Select AI profiles (`chat_profile` / `research_profile`). Oracle Database Free 26ai (23.26.x) rejects custom `provider_endpoint` values in `DBMS_CLOUD_AI` pre-flight (`ORA-20401`) — see [`docs/DEPLOYMENT.md §7`](docs/DEPLOYMENT.md). The `CHAT_WORKFLOW` flow uses a SQL Query node + LLM locally; full Select AI Bridge is the ADB demo path.
 
 The Spring Boot backend and the Angular UIs are not in the compose yet, and the OCR service is a stub (real YOLO/Tesseract pipeline is a separate workstream). The next-steps list in [`README.md`](README.md#current-state) shows the order they land in.
 
@@ -55,7 +55,7 @@ pip install -r requirements.txt
 python manage.py setup local
 ```
 
-`setup local` checks the prereqs in the table above and writes a `.env` with your Oracle password and Ollama host/port choices.
+`setup local` checks the prereqs in the table above and writes a `.env` with your Oracle password and vLLM host / port / model choices.
 
 Download the ARM64 PAF tarball from Oracle (e.g. `oracle_agent_factory_25.3.9_arm.tar.gz`, ~2.3 GB), then:
 
@@ -107,13 +107,13 @@ PAF terminates TLS itself with a self-signed cert — your browser will warn; ac
 - **Step 1 — admin user.** Pick a name and password; you'll sign in as this user.
 - **Step 2 — database.** DB host: `oracle-free-26ai` (compose service name — **not** `localhost`, which would point at the PAF container itself). Port `1521`, service `FREEPDB1`, user `AGENT_FACTORY`, password = `DB_PASSWORD` from `.env`.
 - **Step 3 — install.** Click Install. PAF creates its metadata tables under `AGENT_FACTORY` and a read-only worker user `AAI_RO_AGENT_FACTORY`.
-- **Step 4 — LLM Management.** Register the generative model (`qwen2.5:32b-instruct` — native tool-calling, reliably consistent on the 4-step CHAT_AGENT recipe) and the embedding model (`bge-m3`) against your Ollama endpoint. `paf bootstrap` resolves `.local` mDNS names to an IPv4 address for you, since the PAF container can't do mDNS. The 7B variant works for tool-call smoke tests but produces internally inconsistent recommendations across a 4-tool pipeline — see `paf/flows/CHAT_AGENT.md §Lessons`.
+- **Step 4 — LLM Management.** Register the generative model (`Qwen/Qwen2.5-32B-Instruct-AWQ` — native tool-calling, reliably consistent on the 4-step CHAT_WORKFLOW recipe) and the embedding model (`BAAI/bge-m3`) against your vLLM endpoint. Pick **LLM provider: vLLM** (a first-class radio option in PAF's form, alongside OCI GenAI / OpenAI / Ollama / Gemini). The two models run as separate vLLM containers on separate ports (defaults `:8000` for generation, `:8001` for embeddings) — see [Setting up vLLM on a GPU host](#setting-up-vllm-on-a-gpu-host-eg-nvidia-dgx-spark). Paste the host with its scheme into the **Host** field (`http://<gpu_host>`) and the port (`8000` or `8001`) into the separate **Port** field — PAF appends `/v1/…` itself when the provider is vLLM. `paf bootstrap` resolves `.local` mDNS names to an IPv4 address for you, since the PAF container can't do mDNS. Smaller quantisations / 7B variants work for tool-call smoke tests but produce internally inconsistent recommendations across a 4-tool pipeline — see `paf/flows/CHAT_WORKFLOW.md §Lessons`.
 
 After install completes, sign in as the admin user.
 
 ## 4. Register tools and datasources
 
-Four post-install registrations in the PAF admin area — three MCP servers, one Database datasource, and one HTTP datasource. All target the `CHAT_AGENT` flow; the `RESEARCH_AGENT` flow has no external tools by design.
+Four post-install registrations in the PAF admin area — three MCP servers, one Database datasource, and one HTTP datasource. All target the `CHAT_WORKFLOW` flow; the `RESEARCH_WORKFLOW` flow has no external tools by design.
 
 ### 4a. MCP servers
 
@@ -129,7 +129,7 @@ Admin → **MCP Servers** → **Add MCP server**, three times. The form has thre
 
 After saving, each server should report a connected status. The discovered tools surface inside the **Agent node** in Agent Builder once you wire each MCP Server node to it (§5) — there isn't a separate global tool-list view.
 
-**Note on `hitl-mcp`.** This is the agent's only side-effect tool — it writes a `hitl_task` row and enqueues `HITL_REQUEST` atomically. The `CHAT_AGENT` flow you build in §5 calls it as the terminal action, sourcing `application_id` from the in-flow SQL Query node (never from the user). The cloud-path equivalent — exposing the same PL/SQL function as a Select AI Tool through the Select AI Bridge node — is documented in `docs/DESIGN.md §11` ("`create_hitl_task` transport").
+**Note on `hitl-mcp`.** This is the agent's only side-effect tool — it writes a `hitl_task` row and enqueues `HITL_REQUEST` atomically. The `CHAT_WORKFLOW` flow you build in §5 calls it as the terminal action, sourcing `application_id` from the in-flow SQL Query node (never from the user). The cloud-path equivalent — exposing the same PL/SQL function as a Select AI Tool through the Select AI Bridge node — is documented in `docs/DESIGN.md §11` ("`create_hitl_task` transport").
 
 `opa-mcp` exposes:
 
@@ -149,7 +149,7 @@ Each tool's input schema is auto-derived from the FastMCP type hints in `src/ai/
 
 ### 4b. Database datasource (Banking Application DB)
 
-The `CHAT_AGENT` flow has a **SQL Query node** that joins `REPORTING.chat_v_loan_application` + `chat_v_applicant_profile` + `chat_v_credit_bureau` + `chat_v_existing_facilities` to resolve `customer_id → application_id` and pull DTI inputs into the prompt. SQL Query nodes only see databases registered as **Database data sources** — they don't reuse PAF's own metadata connection.
+The `CHAT_WORKFLOW` flow has a **SQL Query node** that joins `REPORTING.chat_v_loan_application` + `chat_v_applicant_profile` + `chat_v_credit_bureau` + `chat_v_existing_facilities` to resolve `customer_id → application_id` and pull DTI inputs into the prompt. SQL Query nodes only see databases registered as **Database data sources** — they don't reuse PAF's own metadata connection.
 
 In PAF: **Data Sources** → **Add new data source** → **Source type: Database**. Fill in:
 
@@ -218,11 +218,11 @@ podman logs paf-opa               # OPA bundle load + per-request log
 
 If OPA returns a 404 on `/v1/data/decisioning/...`, the `.rego` files didn't load — check `podman logs paf-opa` for a parse error and run `podman restart paf-opa` after fixing.
 
-## 5. Build `CHAT_AGENT`
+## 5. Build `CHAT_WORKFLOW`
 
-`CHAT_AGENT` is the customer-facing Agent Builder flow that combines OPA, OCR, Company Registry, and the in-DB HITL tool into the three-tier recommendation contract documented in `docs/DECISIONING-ENGINE-USE-CASE.md`. It is the only Agent Builder flow you need to build in this runbook.
+`CHAT_WORKFLOW` is the customer-facing Agent Builder flow that combines OPA, OCR, Company Registry, and the in-DB HITL tool into the three-tier recommendation contract documented in `docs/DECISIONING-ENGINE-USE-CASE.md`. It is the only Agent Builder flow you need to build in this runbook.
 
-The full blueprint is at [`paf/flows/CHAT_AGENT.md`](paf/flows/CHAT_AGENT.md). It gives you, in one place:
+The full blueprint is at [`paf/flows/CHAT_WORKFLOW.md`](paf/flows/CHAT_WORKFLOW.md). It gives you, in one place:
 
 - The node graph (Chat input + Prompt + SQL Query for application context + two MCP server nodes — `opa-mcp` and `hitl-mcp` — + one REST API datasource node + Agent + Chat output). `ocr-mcp` is intentionally NOT wired by default; re-add it only when testing OCR scenarios.
 - The SQL Query that resolves `customer_id → application_id`, joining `chat_v_loan_application` + `chat_v_applicant_profile` + `chat_v_credit_bureau` and aggregating monthly facility payments.
@@ -241,7 +241,7 @@ SELECT task_id, application_id, agent_recommendation, agent_run_id
 SELECT COUNT(*) FROM "APP"."HITL_REQUEST";
 ```
 
-When the flow is green across all five scenarios, export the JSON from Agent Builder (top-right menu → Export) and save to `paf/flows/chat_agent.flow.json` so a clean redeploy can re-import it.
+When the flow is green across all five scenarios, export the JSON from Agent Builder (top-right menu → Export) and save to `paf/flows/chat_workflow.flow.json` so a clean redeploy can re-import it.
 
 If anything hangs or errors, `python manage.py local logs paf` shows the backend trace.
 
@@ -266,75 +266,140 @@ podman compose -f deploy/podman/compose.local.yml up -d <service>
 
 (No `-p <name>` flag — `manage.py local up` uses the default project name derived from the compose dir, so all containers share network `podman_default`. Passing `-p paf` here would put the rebuilt container on a separate `paf_default` network and break DNS to its siblings.)
 
-## Optional: bigger model on a LAN GPU host (e.g. NVIDIA DGX Spark)
+## Setting up vLLM on a GPU host (e.g. NVIDIA DGX Spark)
 
-`qwen2.5:32b-instruct` (~20 GB resident with `bge-m3`) needs more memory than most laptops can spare while doing other work — that's why the local default points at an Ollama on a LAN GPU host. The same instructions apply if you want to step further up to `llama3.3:70b-instruct-q4_K_M` (~55–60 GB resident with `bge-m3`) for a closer-to-production demo, or step down to `qwen2.5:7b-instruct` (~5 GB) for cheap smoke tests where recommendation quality doesn't matter. Steps below target a DGX Spark but apply to any NVIDIA host with a container runtime.
+PAF talks to the LLM over the network. On Blackwell / GB10 hardware vLLM substantially outperforms Ollama — NVIDIA's own playbook ships a Spark-tuned vLLM image — so the local default points at **two vLLM containers** on the GPU host: one for generation, one for embeddings, both exposing OpenAI-compatible APIs.
+
+References:
+
+- [NVIDIA vLLM playbook for DGX Spark](https://github.com/NVIDIA/dgx-spark-playbooks/tree/main/nvidia/vllm)
+- [vLLM official Docker deployment](https://docs.vllm.ai/en/latest/deployment/docker.html)
+- [eugr/spark-vllm-docker](https://github.com/eugr/spark-vllm-docker) — community Spark reference
 
 ### On the GPU host
 
 Prereqs:
 
-- NVIDIA driver installed (`nvidia-smi` works).
-- `podman` (or `docker`) with the NVIDIA Container Toolkit configured.
+- NVIDIA driver installed (`nvidia-smi` works). On Spark, **driver 580.x** is recommended; 590.x has a CUDAGraph deadlock on unified memory.
+- `docker` with the NVIDIA Container Toolkit configured. `docker run --rm --gpus all nvidia/cuda:12.6.0-base-ubuntu22.04 nvidia-smi` should print your GPU.
+- (Spark only) Disable the pre-installed Snap Ollama so it doesn't fight your containers: `sudo snap stop ollama && sudo snap disable ollama`.
 
-Start Ollama as a container, bound to all interfaces so the laptop can reach it:
+Create `~/vllm-stack/.env`:
 
 ```bash
-podman run -d --name ollama \
-  --device nvidia.com/gpu=all \
-  -p 11434:11434 \
-  -v ollama:/root/.ollama \
-  --restart unless-stopped \
-  docker.io/ollama/ollama:latest
+GEN_MODEL=Qwen/Qwen2.5-32B-Instruct-AWQ
+GEN_PORT=8000
+GEN_MAX_LEN=8192
+GEN_GPU_MEM=0.55                # leave headroom for the embed container
+
+EMB_MODEL=BAAI/bge-m3
+EMB_PORT=8001
+EMB_GPU_MEM=0.10
+
+HF_TOKEN=                        # only needed for gated models (Llama, etc.)
+VLLM_IMAGE=nvcr.io/nvidia/vllm:26.02-py3
 ```
 
-(For `docker`, swap `--device nvidia.com/gpu=all` for `--gpus all`.)
+Create `~/vllm-stack/docker-compose.yml` with two services pointing at `${VLLM_IMAGE}`:
 
-Pull both models inside the running container:
+- **`vllm-generate`** — runs `vllm serve ${GEN_MODEL} --port=8000 --gpu-memory-utilization=${GEN_GPU_MEM} --enable-auto-tool-choice --tool-call-parser=hermes --max-model-len=${GEN_MAX_LEN}`, published on `:${GEN_PORT}`. The `--enable-auto-tool-choice` + `--tool-call-parser=hermes` flags are what makes Qwen2.5 emit proper OpenAI tool calls, which PAF needs.
+- **`vllm-embed`** — runs `vllm serve ${EMB_MODEL} --port=8000 --gpu-memory-utilization=${EMB_GPU_MEM}`, published on `:${EMB_PORT}`. vLLM 0.10+ auto-detects pooling models like `BAAI/bge-m3` from their HF config — the old `--task=embed` flag was removed and the explicit form is now `--runner=pooling`, but bge-m3 doesn't need it.
+
+Both services need `--gpus all`, `ipc: host`, and a bind mount of `~/.cache/huggingface` for model caching. `--gpu-memory-utilization` fractions sum across containers (unified memory pool), so keep `0.55 + 0.10` under ~0.70 to leave room for kernel scratch.
+
+Start:
 
 ```bash
-podman exec -it ollama ollama pull qwen2.5:32b-instruct
-podman exec -it ollama ollama pull bge-m3
+cd ~/vllm-stack
+docker compose up -d
+# First start downloads weights (~17 GB for Qwen2.5-32B-AWQ + ~1.2 GB for bge-m3)
+# and compiles FlashInfer kernels (~5 min, cached after). Subsequent starts are seconds.
+docker compose logs -f vllm-generate
+# wait for "Application startup complete"
 ```
 
-Pull is ~20 GB (qwen2.5:32b) + ~1.2 GB (bge-m3). Swap `qwen2.5:32b-instruct` for `qwen2.5:7b-instruct` (~4.7 GB) for cheap smoke tests, or for `llama3.3:70b-instruct-q4_K_M` (~40 GB pull) for a stronger production-like model.
-
-Open port `11434` only to the laptop's IP — Ollama has no auth:
+Smoke-test both endpoints:
 
 ```bash
-# Oracle Linux 8 example
-firewall-cmd --add-rich-rule="rule family=ipv4 source address=<LAPTOP_IP> port port=11434 protocol=tcp accept" --permanent
+curl -s http://localhost:8000/v1/chat/completions \
+  -H 'content-type: application/json' \
+  -d '{"model":"Qwen/Qwen2.5-32B-Instruct-AWQ","messages":[{"role":"user","content":"hi"}]}' | jq
+
+curl -s http://localhost:8001/v1/embeddings \
+  -H 'content-type: application/json' \
+  -d '{"model":"BAAI/bge-m3","input":["hello"]}' | jq '.data[0].embedding | length'
+# Expect: 1024
+```
+
+Open `:8000` and `:8001` only to the laptop's IP — vLLM has no auth by default:
+
+```bash
+# firewalld example
+firewall-cmd --add-rich-rule="rule family=ipv4 source address=<LAPTOP_IP> port port=8000 protocol=tcp accept" --permanent
+firewall-cmd --add-rich-rule="rule family=ipv4 source address=<LAPTOP_IP> port port=8001 protocol=tcp accept" --permanent
 firewall-cmd --reload
 ```
+
+### Model management
+
+vLLM doesn't have an `ollama pull`-style command. Models are HuggingFace handles and are downloaded automatically on the first container start. To switch the generation model, edit `GEN_MODEL` in `.env` and `docker compose down && docker compose up -d` — the new weights download on first run; previous weights stay cached under `~/.cache/huggingface/hub/`.
+
+| Operation                     | Command                                                                                |
+| ----------------------------- | -------------------------------------------------------------------------------------- |
+| What's loaded right now       | `curl -s http://localhost:8000/v1/models \| jq '.data[].id'`                           |
+| List cached HF models         | `du -sh ~/.cache/huggingface/hub/models--* \| sort -h`                                 |
+| Remove a single model         | `rm -rf ~/.cache/huggingface/hub/models--<org>--<repo>`                                |
+| Pull a newer vLLM image       | `docker compose pull && docker compose up -d`                                          |
+| Wipe everything (start fresh) | `docker compose down; rm -rf ~/.cache/huggingface/hub/models--* ~/.cache/flashinfer/*` |
+| Stop / start                  | `docker compose down` / `docker compose up -d`                                         |
+| Tail one service              | `docker compose logs -f vllm-generate`                                                 |
+
+### Memory budget (Spark has 121 GB unified)
+
+At `GEN_GPU_MEM=0.55` (~67 GB) the generation container can host:
+
+| HF handle                                   | Quant     | Approx. size | Notes                           |
+| ------------------------------------------- | --------- | ------------ | ------------------------------- |
+| `Qwen/Qwen2.5-32B-Instruct-AWQ`             | AWQ 4-bit | ~17 GB       | recommended default             |
+| `RedHatAI/Qwen2.5-32B-Instruct-FP8-dynamic` | FP8       | ~32 GB       | best quality at this size class |
+| `meta-llama/Llama-3.3-70B-Instruct` (AWQ)   | AWQ 4-bit | ~35 GB       | requires `HF_TOKEN` (gated)     |
+| `nvidia/Llama-3.3-70B-Instruct-FP4`         | NVFP4     | ~18 GB       | NVIDIA's Spark-tuned variant    |
+
+Wrong tool-call parser = the agent sees text instead of structured tool calls. Match `--tool-call-parser` to the model family: Qwen2.5 → `hermes`, Llama 3 → `llama3_json`.
 
 ### From the laptop
 
 Verify reachability:
 
 ```bash
-curl http://<GPU_HOST>:11434/api/tags
+curl http://<GPU_HOST>:8000/v1/models | jq '.data[].id'
+curl http://<GPU_HOST>:8001/v1/models | jq '.data[].id'
 ```
 
-Should list both `qwen2.5:32b-instruct` (or whichever model you pulled) and `bge-m3`.
-
-Re-run setup and pick the LAN host when prompted:
+Re-run setup and pick the GPU host when prompted:
 
 ```bash
 python manage.py setup local
-# Ollama host: <GPU_HOST>
-# Ollama port: 11434
+# vLLM host (e.g. spark-bc8a.local): <GPU_HOST>
+# vLLM generation port:               8000
+# vLLM embedding port:                8001
+# vLLM generation model:              Qwen/Qwen2.5-32B-Instruct-AWQ
+# vLLM embedding model:               BAAI/bge-m3
 ```
 
 Or edit `.env` directly:
 
 ```
-OLLAMA_HOST=<GPU_HOST>
-OLLAMA_PORT=11434
+VLLM_HOST=<GPU_HOST>
+VLLM_GEN_PORT=8000
+VLLM_EMBED_PORT=8001
+VLLM_GEN_MODEL=Qwen/Qwen2.5-32B-Instruct-AWQ
+VLLM_EMBED_MODEL=BAAI/bge-m3
 ```
 
-Then `python manage.py local up` as usual — PAF and Select AI will resolve `OLLAMA_HOST` to the GPU box.
+Then `python manage.py local up` as usual — PAF will resolve `VLLM_HOST` to the GPU box. (`manage.py` re-exports `OLLAMA_HOST` / `OLLAMA_PORT` from these for the Caddy upstream in `compose.local.yml`, so the existing compose works without changes; a follow-up will rename the compose-side variables.)
 
-If `OLLAMA_HOST` is a Bonjour/mDNS name (e.g. ends in `.local`), `manage.py local up` resolves it on the host (which can do mDNS) and injects a static `hostname → ip` mapping into the PAF container's `/etc/hosts` via compose's `extra_hosts`. You can then paste the friendly hostname into PAF's LLM Configuration form instead of the raw IP. The mapping is refreshed on every `local up`, so a DHCP change is fixed by `python manage.py local up`.
+If `VLLM_HOST` is a Bonjour/mDNS name (e.g. ends in `.local`), `manage.py local up` resolves it on the host (which can do mDNS) and injects a static `hostname → ip` mapping into the PAF container's `/etc/hosts` via compose's `extra_hosts`. You can then paste the friendly hostname into PAF's LLM Configuration form instead of the raw IP. The mapping refreshes on every `local up`, so a DHCP change is fixed by `python manage.py local up`.
 
 ## Verifying
 

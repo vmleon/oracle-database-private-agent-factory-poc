@@ -1,7 +1,7 @@
 """OPA MCP server — exposes the decisioning Rego rules as typed MCP tools.
 
-Wires into `CHAT_AGENT` only (per the design's two-agent security model
-in DESIGN.md §10). `RESEARCH_AGENT` is read-only and has no MCP tools
+Wires into `CHAT_WORKFLOW` only (per the design's two-agent security model
+in DESIGN.md §10). `RESEARCH_WORKFLOW` is read-only and has no MCP tools
 attached.
 
 Tool surface (one per Rego rule the agent consumes):

@@ -71,7 +71,7 @@ services:
 
   # MCP wrapper around OPA — exposes each Rego rule as a typed MCP
   # tool over streamable-http. PAF's MCP Server node connects to
-  # http://opa-mcp:8500/mcp/. Wired to CHAT_AGENT only per the
+  # http://opa-mcp:8500/mcp/. Wired to CHAT_WORKFLOW only per the
   # two-agent security model.
   opa-mcp:
     build:
@@ -90,7 +90,7 @@ services:
   # design, so anything with side effects (insert + enqueue) has to go
   # through MCP/REST per docs/PAF.md §10. Connects to Oracle as
   # AGENT_FACTORY (granted EXECUTE on the package in changeset 007).
-  # PAF reaches it at http://hitl-mcp:8502/mcp/. Wired to CHAT_AGENT only.
+  # PAF reaches it at http://hitl-mcp:8502/mcp/. Wired to CHAT_WORKFLOW only.
   hitl-mcp:
     build:
       context: ../../src/ai/hitl-mcp
@@ -112,7 +112,7 @@ services:
   # keyed on filename, aligned with the documents seeded by
   # 010-seed-synthetic.yaml so the test-bench scenarios resolve end-to-end
   # without a real ML stack. PAF reaches it at http://ocr-mcp:8501/mcp/.
-  # Wired to CHAT_AGENT only per the two-agent security model.
+  # Wired to CHAT_WORKFLOW only per the two-agent security model.
   ocr-mcp:
     build:
       context: ../../src/ai/ocr-mcp
@@ -123,7 +123,7 @@ services:
 
   # Synthetic Company Registry — FastAPI service with JSON-backed data,
   # OpenAPI 3.1 spec at /openapi.json. Registered with PAF as an HTTP
-  # datasource for CHAT_AGENT (the third PAF datasource type, alongside
+  # datasource for CHAT_WORKFLOW (the third PAF datasource type, alongside
   # Database and File). No host port published — only the compose
   # network reaches it as http://registry-api:8600.
   registry-api:

@@ -28,8 +28,8 @@ The narrative above tells the story; the diagrams below are abstract visual anch
 flowchart LR
     lina(["Lina"])
     pafui["PAF Builder UI"]
-    chat[["CHAT_AGENT"]]
-    research[["RESEARCH_AGENT"]]
+    chat[["CHAT_WORKFLOW"]]
+    research[["RESEARCH_WORKFLOW"]]
     lina --> pafui
     pafui -->|"author + publish"| chat
     pafui -->|"author + publish"| research
@@ -41,7 +41,7 @@ flowchart LR
 sequenceDiagram
     actor Customer
     participant Chat as Chat UI
-    participant Agent as CHAT_AGENT
+    participant Agent as CHAT_WORKFLOW
     participant HITL as HITL queue
     Customer->>Chat: chats, uploads docs
     Chat->>Agent: each turn
@@ -70,7 +70,7 @@ flowchart LR
 sequenceDiagram
     actor Sam
     participant BO as Backoffice
-    participant Research as RESEARCH_AGENT
+    participant Research as RESEARCH_WORKFLOW
     participant Decision as Blockchain decision
     Sam->>BO: claim HITL task
     BO-->>Sam: recommendation + evidence
@@ -127,12 +127,12 @@ What works today on the local stack:
 - Stub `ocr-mcp` at `http://ocr-mcp:8501/mcp/` — one `extract_document` tool returning canned classification + OCR responses keyed on filename (placeholder for the YOLO + PaddleOCR/Tesseract pipeline).
 - `hitl-mcp` at `http://hitl-mcp:8502/mcp/` — thin Python wrapper over `oracledb.callfunc` that exposes the in-DB `AGENT_TOOLS.PKG_AGENT_TOOLS.create_hitl_task` PL/SQL function as an MCP tool (PAF's only path to in-DB side-effects locally; in cloud the same function is exposed as a Select AI Tool — see [`docs/DESIGN.md §11`](docs/DESIGN.md)).
 - `registry-api` at `http://registry-api:8600/` — synthetic Company Registry FastAPI with one `verify_employer(name)` route. OpenAPI 3.1 spec, registered with PAF as an HTTP datasource. Records align with the 010 seed employers (e.g. `Phoenix Holdings Ltd` → dormant, `Atlantis Innovations Ltd` → not registered).
-- All four `CHAT_AGENT` tool channels are validated end-to-end through a PAF Agent Builder flow against qwen2.5:7b: OPA MCP (`required_documents`, `verify_employer`-style rules), OCR MCP stub (`extract_document` for MARGINAL/UNUSABLE), Company Registry HTTP datasource (`verify_employer` for active/dormant/unknown), and HITL MCP (`create_hitl_task` writing a row to `APP.hitl_task` + enqueueing `HITL_REQUEST`). The 7B model completes the 4-step pipeline but produces internally inconsistent recommendations; the default is now `qwen2.5:32b-instruct` (set in `manage.py setup local`, documented in [`docs/DESIGN.md §11`](docs/DESIGN.md)) — testing on 32B is the next gate. Full flow blueprint, including a lessons-learned section, lives at [`paf/flows/CHAT_AGENT.md`](paf/flows/CHAT_AGENT.md).
+- All four `CHAT_WORKFLOW` tool channels are validated end-to-end through a PAF Agent Builder flow against qwen2.5:7b: OPA MCP (`required_documents`, `verify_employer`-style rules), OCR MCP stub (`extract_document` for MARGINAL/UNUSABLE), Company Registry HTTP datasource (`verify_employer` for active/dormant/unknown), and HITL MCP (`create_hitl_task` writing a row to `APP.hitl_task` + enqueueing `HITL_REQUEST`). The 7B model completes the 4-step pipeline but produces internally inconsistent recommendations; the default is now `qwen2.5:32b-instruct` (set in `manage.py setup local`, documented in [`docs/DESIGN.md §11`](docs/DESIGN.md)) — testing on 32B is the next gate. Full flow blueprint, including a lessons-learned section, lives at [`paf/flows/CHAT_WORKFLOW.md`](paf/flows/CHAT_WORKFLOW.md).
 
 What's next, in order:
 
-1. **Verify `CHAT_AGENT` against `qwen2.5:32b-instruct`**, then **parameterize `customer_id`** in the flow's SQL Query (currently hardcoded — every scenario test requires editing the SQL). Two paths: a PAF flow-input variable wired to the SQL Query's `:customer_id` bind, or threading it from the (future) Application Service. Details + open question in [`paf/flows/CHAT_AGENT.md §Open follow-ups`](paf/flows/CHAT_AGENT.md).
-2. **`RESEARCH_AGENT` flow** — backoffice-only, broader read-only scope (full transactions, `decision_audit`, `policy_parameter_history`, RAG over `policy_corpus`). No side-effect tools. Reuses the build pattern proven by `CHAT_AGENT`.
+1. **Verify `CHAT_WORKFLOW` against `qwen2.5:32b-instruct`**, then **parameterize `customer_id`** in the flow's SQL Query (currently hardcoded — every scenario test requires editing the SQL). Two paths: a PAF flow-input variable wired to the SQL Query's `:customer_id` bind, or threading it from the (future) Application Service. Details + open question in [`paf/flows/CHAT_WORKFLOW.md §Open follow-ups`](paf/flows/CHAT_WORKFLOW.md).
+2. **`RESEARCH_WORKFLOW` flow** — backoffice-only, broader read-only scope (full transactions, `decision_audit`, `policy_parameter_history`, RAG over `policy_corpus`). No side-effect tools. Reuses the build pattern proven by `CHAT_WORKFLOW`.
 3. **Spring Boot Application Service** — threads `customer_id` into PAF invocations (closing out item 1), handles document uploads (enqueues `OCR_REQUEST`), writes the Blockchain `decision` row at HITL close. Plus the two Angular UIs (customer chat, backoffice with Case Research Agent panel).
 4. **Cloud deployment** (OCI Terraform + Ansible, ADB + LB).
 
@@ -140,5 +140,5 @@ Schema-side follow-ups deferred until a consumer needs them: vector index on `po
 
 Two known constraints not in the "next" list because they're decided:
 
-- **Select AI profiles are ADB-only.** Oracle Free 26ai (23.26.x) rejects custom `provider_endpoint` values in `DBMS_CLOUD_AI` pre-flight. The local `CHAT_AGENT` flow uses a SQL Query node + LLM; full Select AI Bridge is the cloud path. See [`docs/DEPLOYMENT.md §7`](docs/DEPLOYMENT.md).
+- **Select AI profiles are ADB-only.** Oracle Free 26ai (23.26.x) rejects custom `provider_endpoint` values in `DBMS_CLOUD_AI` pre-flight. The local `CHAT_WORKFLOW` flow uses a SQL Query node + LLM; full Select AI Bridge is the cloud path. See [`docs/DEPLOYMENT.md §7`](docs/DEPLOYMENT.md).
 - **Auth is out of scope.** Both UIs use a mock login (customer dropdown / role dropdown). The audience system is assumed to provide SSO in production.
