@@ -95,6 +95,7 @@ Two deployment options, same source tree:
 - [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — deployment plan, `manage.py` command surface, Liquibase strategy, current scope.
 - [`docs/PAF.md`](docs/PAF.md) — Oracle PAF practical study guide (in-repo reference).
 - [`docs/DECISIONING-ENGINE-USE-CASE.md`](docs/DECISIONING-ENGINE-USE-CASE.md) — the credit-decisioning use case the PoC implements.
+- [`ENHANCEMENTS.md`](ENHANCEMENTS.md) — planned features beyond the current loan-decisioning flow: Customer 360 view, XGBoost credit-scoring tool, product-recommendation workflow, TOON spike.
 - [`docs/GLOSSARY.md`](docs/GLOSSARY.md) — plain-English glossary of the banking and compliance terms used across the docs (DTI, PTI, KYC, AML, fair lending, etc.).
 
 ## Quickstart (local)
@@ -133,12 +134,16 @@ What works today on the local stack:
 
 What's next, in order:
 
-1. **Parameterise `customer_id` in `CHAT_WORKFLOW`'s SQL Query** (currently hardcoded — every scenario test requires editing the SQL). Two paths: a PAF flow-input variable wired to the SQL Query's `:customer_id` bind, or threading it from the (future) Application Service. Details + open question in [`paf/flows/CHAT_WORKFLOW.md §Open follow-ups`](paf/flows/CHAT_WORKFLOW.md).
+1. **Parameterise `customer_id` in `CHAT_WORKFLOW`'s SQL Query** — wired via a WayFlow bind variable (`WHERE customer_id = :customer_id`) fed by a Text Input node. Doc + wiring in [`paf/flows/CHAT_WORKFLOW.md §Wiring the customer_id flow input`](paf/flows/CHAT_WORKFLOW.md#wiring-the-customer_id-flow-input). Pending end-to-end test in Playground across the five scenarios.
 2. **Add `OcrAgent` between `EvaluationAgent` and `RecommendationAgent`** when the real OCR pipeline lands. `EvaluationAgent` already emits the required-document list; `OcrAgent` extracts each via `ocr-mcp.extract_document` and appends quality findings to the evidence block.
 3. **Export the workflow JSON** to `paf/flows/chat_workflow.flow.json` so a clean redeploy can re-import without rebuilding the canvas by hand.
 4. **`RESEARCH_WORKFLOW` flow** — backoffice-only, broader read-only scope (full transactions, `decision_audit`, `policy_parameter_history`, RAG over `policy_corpus`). No side-effect tools. Reuses the build pattern proven by `CHAT_WORKFLOW`.
-5. **Spring Boot Application Service** — threads `customer_id` into PAF invocations (closing out item 1), handles document uploads (enqueues `OCR_REQUEST`), writes the Blockchain `decision` row at HITL close. Plus the two Angular UIs (customer chat, backoffice with Case Research Agent panel).
-6. **Cloud deployment** (OCI Terraform + Ansible, ADB + LB).
+5. **Spring Boot Application Service** — threads `customer_id` (from the mock-login session) into PAF invocations through the same flow input, handles document uploads (enqueues `OCR_REQUEST`), writes the Blockchain `decision` row at HITL close. Plus the two Angular UIs (customer chat, backoffice with Case Research Agent panel).
+6. **Customer 360 view** — finish `REPORTING.cust_360` joining demographics, balances, products held, recent transactions, bureau snapshot, employer-verification. Feature source for item 7. See [`ENHANCEMENTS.md §2`](ENHANCEMENTS.md#2-customer-360-curated-view).
+7. **XGBoost credit-scoring tool** — new `src/ml/credit-score/` Python component trains an XGBoost model in OML4Py on `REPORTING.cust_360`, registers it in OML, and exposes `AGENT_TOOLS.predict_credit_score` to the agent (Select AI Tool on cloud / MCP wrapper on local). Wires into `RecommendationAgent` evidence + `system_config` tier weights. See [`ENHANCEMENTS.md §3`](ENHANCEMENTS.md#3-xgboost-credit-scoring-tool).
+8. **Product-recommendation workflow** — second PAF Agent Builder flow over `REPORTING.cust_360`, mirroring the `CHAT_WORKFLOW` pattern; consumes the credit-score tool from item 7 as one of its signals. See [`ENHANCEMENTS.md §1`](ENHANCEMENTS.md#1-proactive-product-recommendation-as-a-second-workflow).
+9. **TOON feasibility spike** — confirm whether a PAF Function node can run a `toon` library to transform tool output, or whether encoding has to happen in the prompt-builder outside PAF. Independent — can happen in parallel. See [`ENHANCEMENTS.md §4`](ENHANCEMENTS.md#4-toon-feasibility-spike).
+10. **Cloud deployment** (OCI Terraform + Ansible, ADB + LB).
 
 Schema-side follow-ups deferred until a consumer needs them: vector index on `policy_corpus` / `case_history` (waits for the embedding pipeline that populates the `VECTOR(1024, FLOAT32)` columns via bge-m3), `OCR_REQUEST` / `OCR_EXCEPTION_Q` per-schema enqueue/dequeue grants (land with the OCR worker), and the `policy_corpus` / sanctions seed data.
 

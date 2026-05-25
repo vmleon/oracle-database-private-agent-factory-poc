@@ -47,14 +47,17 @@ Two one-time refreshes before building (or rebuilding) the workflow in the canva
 
 ## Flow input
 
-- `customer_id` — integer. **Currently hardcoded in the SQL Query** below. Parameterising this via a PAF flow-input variable is the next priority — see [Open follow-ups](#open-follow-ups).
+- `customer_id` — integer. Provided at flow start; bound into the SQL Query node via `:customer_id`. See [Wiring the `customer_id` flow input](#wiring-the-customer_id-flow-input).
+
+  The runtime mechanism is WayFlow's `DatastoreQueryStep` bind-variables — `:name` placeholders only, string templating is forbidden for security. Source: [WayFlow 26.1.1 API — DatastoreQueryStep](https://oracle.github.io/wayflow/26.1.1/core/api/flows.html).
 
 ## Node graph
 
 ```mermaid
 flowchart LR
+    CID(["Text Input<br/>customer_id : integer"]) -->|Message| CTX
     CI["Chat input"] --> EP["Prompt (Evaluation)<br/>app_ctx + message"]
-    CTX["SQL Query<br/>application + applicant + bureau<br/>(REPORTING.chat_v_*)"] -->|Message| EP
+    CTX["SQL Query<br/>application + applicant + bureau<br/>(REPORTING.chat_v_*)<br/>WHERE customer_id = :customer_id"] -->|Message| EP
     EP --> EA["EvaluationAgent<br/>qwen2.5:32B-AWQ • temp 0.0"]
     OPA["MCP: opa-mcp"] -->|Tools| EA
     REG["REST: Company Registry"] -->|Tools| EA
@@ -105,13 +108,33 @@ SELECT la.application_id,
   FROM REPORTING.chat_v_loan_application la
   JOIN REPORTING.chat_v_applicant_profile p ON p.customer_id = la.customer_id
   LEFT JOIN REPORTING.chat_v_credit_bureau b ON b.customer_id = la.customer_id
- WHERE la.customer_id = 4
+ WHERE la.customer_id = :customer_id
    AND la.status IN ('SUBMITTED', 'DRAFT', 'IN_REVIEW')
  ORDER BY la.submitted_at DESC NULLS LAST
  FETCH FIRST 1 ROW ONLY
 ```
 
-Swap `customer_id = 4` for whichever scenario you're testing. See [Test prompts](#test-prompts).
+`:customer_id` is a WayFlow bind variable. The node auto-exposes a `customer_id` input port (parallel to how Prompt nodes auto-expose `{{placeholder}}` ports). See [Wiring the `customer_id` flow input](#wiring-the-customer_id-flow-input) for the canvas wiring; [Test prompts](#test-prompts) for the scenario IDs.
+
+### Wiring the `customer_id` flow input
+
+The cleanest UI shape — a **Text Input** node (Inputs → Text Input in the node catalog) that produces the integer at flow start. The operator types the value in Playground; the published REST endpoint accepts it as a JSON field. No code change in the App Service contract — when the App Service exists, it sends `customer_id` from the authenticated session through the same input.
+
+1. Drag a **Text Input** node onto the canvas. Name it `customer_id`. Set its expected type to integer.
+2. Wire `customer_id.Message` → `SQL Query.customer_id` (the input port the `:customer_id` bind exposes).
+3. Save the flow. Playground now shows a `customer_id` field next to the chat input. The published agent's REST schema gains a `customer_id` JSON field at run start.
+
+If the SQL Query node does **not** auto-expose a `customer_id` input port for the bind, the fallback is the flow-level Variables panel (look near `Save` / `Publish`) — declare `customer_id` there and the SQL Query node resolves the bind by name. Either UI path produces the same runtime call: `flow.start_conversation(inputs={"customer_id": <int>})`.
+
+When the Application Service lands, the chain is:
+
+```
+mock login → session.customer_id
+           → chat_room { room_id, customer_id, application_id }   ← already in APP.chat_message (changelog 004)
+           → POST /v1/agents/CHAT_WORKFLOW/runs { customer_id, message }
+```
+
+`room_id` stays App-Service-side. PAF only ever sees `customer_id`.
 
 ### Prompt (Evaluation)
 
@@ -281,6 +304,7 @@ Default. Wire from RecommendationAgent.`Message`.
 
 | Source port                              | Target port                        |
 | ---------------------------------------- | ---------------------------------- |
+| Text Input (`customer_id`).`Message`     | SQL Query.`customer_id` (bind)     |
 | Chat input.`Message`                     | Prompt (Evaluation).`message`      |
 | SQL Query.`Message` (Include columns ON) | Prompt (Evaluation).`app_ctx`      |
 | Prompt (Evaluation).`Prompt message`     | EvaluationAgent.`Prompt`           |
@@ -304,7 +328,7 @@ SELECT c.customer_id, c.full_name,
  ORDER BY c.customer_id;
 ```
 
-Then change the SQL Query `WHERE customer_id = N` to match the scenario, save, and ask in Playground:
+Then in Playground, set the `customer_id` input field to the scenario ID and ask:
 
 ```
 Please review my loan application and submit it for processing.
@@ -347,15 +371,12 @@ Once the workflow runs all five scenarios cleanly, export the workflow JSON from
 
 In priority order:
 
-1. **Parameterise `customer_id` in the SQL Query.** Hardcoded today; every scenario test requires editing the SQL.
-   - **Flow input variable** — PAF may support flow-level input variables. Look for a flow-settings panel near `Save` / `Publish`, or a "Variables" tab. Wire the variable to the SQL Query's `:customer_id` bind.
-   - **Application Service threads it** — once the customer's `customer_id` comes from the authenticated session, the SQL Query bind resolves from that.
-2. **`OcrAgent` between EvaluationAgent and RecommendationAgent.** When the real OCR pipeline lands:
+1. **`OcrAgent` between EvaluationAgent and RecommendationAgent.** When the real OCR pipeline lands:
    - `EvaluationAgent` already emits `required_documents`.
    - `OcrAgent` (new) reads the list, calls `ocr-mcp.extract_document` for each, appends OCR-quality findings (`USABLE` / `MARGINAL` / `UNUSABLE`) to the evidence block.
    - `RecommendationAgent` reads the augmented evidence; OCR-quality feeds the tier decision via the existing OPA `kyc` rule.
-3. **JSON-schema-constrained output for `EvaluationAgent`.** vLLM supports `response_format` / guided generation. If the PAF Agent node exposes this, swap the markdown Evidence block for a strict JSON object — RecommendationAgent's parsing becomes bulletproof.
-4. **Export the workflow JSON** to `paf/flows/chat_workflow.flow.json` for re-import on clean redeploys.
+2. **JSON-schema-constrained output for `EvaluationAgent`.** vLLM supports `response_format` / guided generation. If the PAF Agent node exposes this, swap the markdown Evidence block for a strict JSON object — RecommendationAgent's parsing becomes bulletproof.
+3. **Export the workflow JSON** to `paf/flows/chat_workflow.flow.json` for re-import on clean redeploys.
 
 ## Operating constraints
 
