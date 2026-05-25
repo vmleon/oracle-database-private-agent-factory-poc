@@ -45,19 +45,25 @@ Two one-time refreshes before building (or rebuilding) the workflow in the canva
    # expect: "operationId":"verify_employer"
    ```
 
-## Flow input
+## Flow inputs
 
-- `customer_id` — integer. Provided at flow start; bound into the SQL Query node via `:customer_id`. See [Wiring the `customer_id` flow input](#wiring-the-customer_id-flow-input).
+Provided at flow start (Playground form fields; published REST endpoint accepts both as JSON):
 
-  The runtime mechanism is WayFlow's `DatastoreQueryStep` bind-variables — `:name` placeholders only, string templating is forbidden for security. Source: [WayFlow 26.1.1 API — DatastoreQueryStep](https://oracle.github.io/wayflow/26.1.1/core/api/flows.html).
+- `customer_id` — integer. The authenticated customer.
+- `application_id` — integer. The specific application being decisioned (one customer can have multiple over time; `chat_message` keys by `(room_id, customer_id, application_id)` per changelog 004).
+
+Both are bound into the SQL Query node via `:customer_id` and `:application_id`. The combined filter is the production-correct authorization shape: an `application_id` that does not belong to the authenticated `customer_id` returns zero rows. See [Wiring the flow inputs](#wiring-the-flow-inputs).
+
+Runtime mechanism: WayFlow's `DatastoreQueryStep` bind-variables — `:name` placeholders only, string templating is forbidden for security. Source: [WayFlow 26.1.1 API — DatastoreQueryStep](https://oracle.github.io/wayflow/26.1.1/core/api/flows.html).
 
 ## Node graph
 
 ```mermaid
 flowchart LR
     CID(["Text Input<br/>customer_id : integer"]) -->|Message| CTX
+    AID(["Text Input<br/>application_id : integer"]) -->|Message| CTX
     CI["Chat input"] --> EP["Prompt (Evaluation)<br/>app_ctx + message"]
-    CTX["SQL Query<br/>application + applicant + bureau<br/>(REPORTING.chat_v_*)<br/>WHERE customer_id = :customer_id"] -->|Message| EP
+    CTX["SQL Query<br/>application + applicant + bureau<br/>(REPORTING.chat_v_*)<br/>WHERE customer_id = :customer_id<br/>AND application_id = :application_id"] -->|Message| EP
     EP --> EA["EvaluationAgent<br/>qwen2.5:32B-AWQ • temp 0.0"]
     OPA["MCP: opa-mcp"] -->|Tools| EA
     REG["REST: Company Registry"] -->|Tools| EA
@@ -108,33 +114,35 @@ SELECT la.application_id,
   FROM REPORTING.chat_v_loan_application la
   JOIN REPORTING.chat_v_applicant_profile p ON p.customer_id = la.customer_id
   LEFT JOIN REPORTING.chat_v_credit_bureau b ON b.customer_id = la.customer_id
- WHERE la.customer_id = :customer_id
+ WHERE la.customer_id    = :customer_id
+   AND la.application_id = :application_id
    AND la.status IN ('SUBMITTED', 'DRAFT', 'IN_REVIEW')
- ORDER BY la.submitted_at DESC NULLS LAST
  FETCH FIRST 1 ROW ONLY
 ```
 
-`:customer_id` is a WayFlow bind variable. The node auto-exposes a `customer_id` input port (parallel to how Prompt nodes auto-expose `{{placeholder}}` ports). See [Wiring the `customer_id` flow input](#wiring-the-customer_id-flow-input) for the canvas wiring; [Test prompts](#test-prompts) for the scenario IDs.
+`:customer_id` and `:application_id` are WayFlow bind variables. The node auto-exposes one input port per bind (parallel to how Prompt nodes auto-expose `{{placeholder}}` ports). The status filter is kept as a guard against re-deciding closed applications. See [Wiring the flow inputs](#wiring-the-flow-inputs) for the canvas wiring; [Test prompts](#test-prompts) for the per-scenario IDs.
 
-### Wiring the `customer_id` flow input
+### Wiring the flow inputs
 
-The cleanest UI shape — a **Text Input** node (Inputs → Text Input in the node catalog) that produces the integer at flow start. The operator types the value in Playground; the published REST endpoint accepts it as a JSON field. No code change in the App Service contract — when the App Service exists, it sends `customer_id` from the authenticated session through the same input.
+The cleanest UI shape — two **Text Input** nodes (Inputs → Text Input in the node catalog), one per bind, each producing an integer at flow start. The operator types the values in Playground; the published REST endpoint accepts them as JSON fields. No code change in the App Service contract — when the App Service exists, it sends both from the authenticated session + URL through the same inputs.
 
 1. Drag a **Text Input** node onto the canvas. Name it `customer_id`. Set its expected type to integer.
-2. Wire `customer_id.Message` → `SQL Query.customer_id` (the input port the `:customer_id` bind exposes).
-3. Save the flow. Playground now shows a `customer_id` field next to the chat input. The published agent's REST schema gains a `customer_id` JSON field at run start.
+2. Drag a second **Text Input** node. Name it `application_id`. Set its expected type to integer.
+3. Wire `customer_id.Message` → `SQL Query.customer_id` (the input port the `:customer_id` bind exposes).
+4. Wire `application_id.Message` → `SQL Query.application_id` (the input port the `:application_id` bind exposes).
+5. Save the flow. Playground now shows two integer fields next to the chat input. The published agent's REST schema gains `customer_id` and `application_id` JSON fields at run start.
 
-If the SQL Query node does **not** auto-expose a `customer_id` input port for the bind, the fallback is the flow-level Variables panel (look near `Save` / `Publish`) — declare `customer_id` there and the SQL Query node resolves the bind by name. Either UI path produces the same runtime call: `flow.start_conversation(inputs={"customer_id": <int>})`.
+If the SQL Query node does **not** auto-expose the bind input ports, the fallback is the flow-level Variables panel (look near `Save` / `Publish`) — declare `customer_id` and `application_id` there and the SQL Query node resolves both binds by name. Either UI path produces the same runtime call: `flow.start_conversation(inputs={"customer_id": <int>, "application_id": <int>})`.
 
 When the Application Service lands, the chain is:
 
 ```
 mock login → session.customer_id
            → chat_room { room_id, customer_id, application_id }   ← already in APP.chat_message (changelog 004)
-           → POST /v1/agents/CHAT_WORKFLOW/runs { customer_id, message }
+           → POST /v1/agents/CHAT_WORKFLOW/runs { customer_id, application_id, message }
 ```
 
-`room_id` stays App-Service-side. PAF only ever sees `customer_id`.
+`room_id` stays App-Service-side. PAF only ever sees `customer_id` and `application_id`.
 
 ### Prompt (Evaluation)
 
@@ -305,6 +313,7 @@ Default. Wire from RecommendationAgent.`Message`.
 | Source port                              | Target port                        |
 | ---------------------------------------- | ---------------------------------- |
 | Text Input (`customer_id`).`Message`     | SQL Query.`customer_id` (bind)     |
+| Text Input (`application_id`).`Message`  | SQL Query.`application_id` (bind)  |
 | Chat input.`Message`                     | Prompt (Evaluation).`message`      |
 | SQL Query.`Message` (Include columns ON) | Prompt (Evaluation).`app_ctx`      |
 | Prompt (Evaluation).`Prompt message`     | EvaluationAgent.`Prompt`           |
@@ -328,21 +337,23 @@ SELECT c.customer_id, c.full_name,
  ORDER BY c.customer_id;
 ```
 
-Then in Playground, set the `customer_id` input field to the scenario ID and ask:
+Then in Playground, set both input fields (`customer_id` and `application_id`) to the scenario values and ask:
 
 ```
 Please review my loan application and submit it for processing.
 ```
 
-Expected outcomes (qwen2.5:32B-AWQ on vLLM, OPA defaults in `005-system-config.yaml`):
+Expected outcomes (qwen2.5:32B-AWQ on vLLM, OPA defaults in `005-system-config.yaml`). `application_id` values assume a fresh `local down --purge && local up` — changelog insertion order in `002-banking-core.yaml` (Alice, Bob) and `010-seed-synthetic.yaml` (David, Eva, Frank, Grace, Henry, Iris, Jane, Kyle) sets them deterministically. If unsure, run the lookup SQL above to confirm.
 
-| customer_id                 | Scenario                 | Expected `recommendation`                                             |
-| --------------------------- | ------------------------ | --------------------------------------------------------------------- |
-| `1` (Alice Salaried, smoke) | Clean profile            | `APPROVE`                                                             |
-| `4` (David HighDti)         | DTI above hard cap       | `DECLINE`                                                             |
-| `5` (Eva LowScore)          | Score below floor        | `DECLINE`                                                             |
-| `6` (Frank MidBand)         | Mid-band score / warn    | `REVIEW`                                                              |
-| `10` (Jane UnknownEmployer) | Employer not in registry | `DECLINE` (registered=false triggers DECLINE per Custom Instructions) |
+| customer_id                 | application_id | Scenario                 | Expected `recommendation`                                             |
+| --------------------------- | -------------- | ------------------------ | --------------------------------------------------------------------- |
+| `1` (Alice Salaried, smoke) | `1`            | Clean profile            | `APPROVE`                                                             |
+| `4` (David HighDti)         | `3`            | DTI above hard cap       | `DECLINE`                                                             |
+| `5` (Eva LowScore)          | `4`            | Score below floor        | `DECLINE`                                                             |
+| `6` (Frank MidBand)         | `5`            | Mid-band score / warn    | `REVIEW`                                                              |
+| `10` (Jane UnknownEmployer) | `9`            | Employer not in registry | `DECLINE` (registered=false triggers DECLINE per Custom Instructions) |
+
+Mismatch check: deliberately pair `customer_id = 1` with `application_id = 3` — SQL returns zero rows (authorization guard), workflow output should reflect "no application found" rather than decisioning someone else's loan.
 
 Verify each run with:
 

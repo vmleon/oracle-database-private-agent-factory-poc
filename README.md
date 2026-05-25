@@ -134,7 +134,7 @@ What works today on the local stack:
 
 What's next, in order:
 
-1. **Parameterise `customer_id` in `CHAT_WORKFLOW`'s SQL Query** — wired via a WayFlow bind variable (`WHERE customer_id = :customer_id`) fed by a Text Input node. Doc + wiring in [`paf/flows/CHAT_WORKFLOW.md §Wiring the customer_id flow input`](paf/flows/CHAT_WORKFLOW.md#wiring-the-customer_id-flow-input). Pending end-to-end test in Playground across the five scenarios.
+1. **Parameterise `customer_id` and `application_id` in `CHAT_WORKFLOW`'s SQL Query** — wired via WayFlow bind variables (`WHERE customer_id = :customer_id AND application_id = :application_id`) fed by two Text Input nodes. The combined filter is the production-correct authorization shape and matches `chat_message`'s `(room_id, customer_id, application_id)` key. Doc + wiring in [`paf/flows/CHAT_WORKFLOW.md §Wiring the flow inputs`](paf/flows/CHAT_WORKFLOW.md#wiring-the-flow-inputs). Pending end-to-end test in Playground across the five scenarios.
 2. **Add `OcrAgent` between `EvaluationAgent` and `RecommendationAgent`** when the real OCR pipeline lands. `EvaluationAgent` already emits the required-document list; `OcrAgent` extracts each via `ocr-mcp.extract_document` and appends quality findings to the evidence block.
 3. **Export the workflow JSON** to `paf/flows/chat_workflow.flow.json` so a clean redeploy can re-import without rebuilding the canvas by hand.
 4. **`RESEARCH_WORKFLOW` flow** — backoffice-only, broader read-only scope (full transactions, `decision_audit`, `policy_parameter_history`, RAG over `policy_corpus`). No side-effect tools. Reuses the build pattern proven by `CHAT_WORKFLOW`.
