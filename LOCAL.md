@@ -228,7 +228,7 @@ The full blueprint is at [`paf/flows/CHAT_WORKFLOW.md`](paf/flows/CHAT_WORKFLOW.
 - The SQL Query that resolves `customer_id → application_id`, joining `chat_v_loan_application` + `chat_v_applicant_profile` + `chat_v_credit_bureau` and aggregating monthly facility payments.
 - The full **Custom instructions** block to paste into the Agent node — encodes a 4-step recipe (`required_documents` → `verify_employer` → DTI/PTI + `evaluate_eligibility` → `create_hitl_task`), the three-tier recommendation contract, and strict rules against tool loops and customer-facing disclosure of internal numbers.
 - The wiring table (port → port).
-- Playground test prompts mapped to scenario customers (`1` Alice / `4` David / `5` Eva / `6` Frank / `10` Jane). Each should leave one row in `APP.hitl_task` and one message on `APP.HITL_REQUEST`.
+- Playground test prompts mapped to scenario customers (`1` Alice / `4` David / `5` Eva / `6` Frank / `10` Jane / `11` Kyle), plus a mismatch check that exercises the no-row guard. Each scenario leaves one row in `APP.hitl_task` and one message on `APP.HITL_REQUEST`; the mismatch case emits an `application not found` evidence block instead.
 - An **Operating constraints** section listing the non-obvious behaviours that shape the build (port-type compatibility rules, per-agent tool-surface discipline, model-size requirements, customer-id numbering on fresh deploys, etc.) — read it before iterating on the flow.
 
 Verify each run with:

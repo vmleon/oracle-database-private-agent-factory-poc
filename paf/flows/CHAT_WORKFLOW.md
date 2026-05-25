@@ -388,7 +388,7 @@ Total: four tool calls per turn, split cleanly between the two agents. More than
 
 ## Export
 
-Once the workflow runs all five scenarios cleanly, export the workflow JSON from PAF Agent Builder (top-right menu → Export) and save to `paf/flows/chat_workflow.flow.json`.
+Once the workflow runs all six scenarios cleanly, export the workflow JSON from PAF Agent Builder (top-right menu → Export) and save to `paf/flows/chat_workflow.flow.json`.
 
 ## Open follow-ups
 
