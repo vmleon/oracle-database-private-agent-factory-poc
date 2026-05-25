@@ -183,6 +183,15 @@ fields: application_id, amount_requested, term_months, product_type,
 employment_type, residency, employer_name, monthly_salary,
 existing_monthly_debt, age_years, credit_score.
 
+No-row guard. Before calling any tool, check the Application context
+block. If it is empty, missing, or has no application_id (the SQL
+Query returned zero rows because customer_id and application_id do
+not match), STOP. Do not call any tool. Emit ONLY this block and
+nothing else:
+
+## Evidence
+- error: application not found
+
 Step 1. required_documents(
           product_type     = product_type,
           employment_type  = employment_type,
@@ -345,15 +354,18 @@ Please review my loan application and submit it for processing.
 
 Expected outcomes (qwen2.5:32B-AWQ on vLLM, OPA defaults in `005-system-config.yaml`). `application_id` values assume a fresh `local down --purge && local up` — changelog insertion order in `002-banking-core.yaml` (Alice, Bob) and `010-seed-synthetic.yaml` (David, Eva, Frank, Grace, Henry, Iris, Jane, Kyle) sets them deterministically. If unsure, run the lookup SQL above to confirm.
 
-| customer_id                 | application_id | Scenario                 | Expected `recommendation`                                             |
-| --------------------------- | -------------- | ------------------------ | --------------------------------------------------------------------- |
-| `1` (Alice Salaried, smoke) | `1`            | Clean profile            | `APPROVE`                                                             |
-| `4` (David HighDti)         | `3`            | DTI above hard cap       | `DECLINE`                                                             |
-| `5` (Eva LowScore)          | `4`            | Score below floor        | `DECLINE`                                                             |
-| `6` (Frank MidBand)         | `5`            | Mid-band score / warn    | `REVIEW`                                                              |
-| `10` (Jane UnknownEmployer) | `9`            | Employer not in registry | `DECLINE` (registered=false triggers DECLINE per Custom Instructions) |
+| customer_id                 | application_id | Scenario                     | Expected `recommendation`                                                   |
+| --------------------------- | -------------- | ---------------------------- | --------------------------------------------------------------------------- |
+| `1` (Alice Salaried, smoke) | `1`            | Clean profile                | `APPROVE`                                                                   |
+| `4` (David HighDti)         | `3`            | DTI above hard cap           | `DECLINE`                                                                   |
+| `5` (Eva LowScore)          | `4`            | Score below floor            | `DECLINE`                                                                   |
+| `6` (Frank MidBand)         | `5`            | Mid-band score / warn        | `REVIEW`                                                                    |
+| `10` (Jane UnknownEmployer) | `9`            | Employer not in registry     | `DECLINE` (registered=false triggers DECLINE per Custom Instructions)       |
+| `11` (Kyle DormantEmployer) | `10`           | Employer dormant in registry | `REVIEW` (trading_status="dormant" triggers REVIEW per Custom Instructions) |
 
-Mismatch check: deliberately pair `customer_id = 1` with `application_id = 3` — SQL returns zero rows (authorization guard), workflow output should reflect "no application found" rather than decisioning someone else's loan.
+The two REVIEW scenarios exercise different branches of `RecommendationAgent`'s decision logic: Frank (`5`/`5`) reaches REVIEW via a non-empty `evaluate_eligibility.warn[]`; Kyle (`11`/`10`) reaches REVIEW via `verify_employer.trading_status = "dormant"`. Run both to cover the OR.
+
+Mismatch check: deliberately pair `customer_id = 1` with `application_id = 3` — SQL returns zero rows (authorization guard). With the no-row guard in `EvaluationAgent`'s Custom Instructions (below), the workflow should emit `application not found` rather than hallucinated decisioning.
 
 Verify each run with:
 
