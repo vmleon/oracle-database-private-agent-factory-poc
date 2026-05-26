@@ -1,0 +1,91 @@
+databaseChangeLog:
+  # APP.auth_session — opaque session-token table. The trust boundary between
+  # untrusted user input (chat messages, etc.) and the authoritative
+  # (customer_id, application_id) the workflow acts on. Named `auth_session`
+  # rather than `session` because SESSION is an Oracle reserved word in DDL
+  # contexts (ORA-00903 on CREATE TABLE APP.session).
+  #
+  # Why it exists:
+  # PAF's flow inputs are limited to the Chat input message; an operator
+  # cannot pass structured fields at flow start (see issues/no-flow-start-inputs.md).
+  # Extracting IDs from the chat message is unacceptable — any user could
+  # type customer_id=4 application_id=3 and impersonate another customer
+  # (IDOR / OWASP API1). Instead, login mints an opaque session token row
+  # here; the token is what crosses the untrusted boundary (hardcoded in a
+  # PAF Text Input node for POC; minted by the App Service in production).
+  # The banking-mcp wrapper validates the token against this table and
+  # returns the joined application context using cx_Oracle bind variables.
+  #
+  # Fail-secure: an invalid or expired token returns zero rows; the agent's
+  # no-row guard then fires and emits "application not found". There is no
+  # "first matching row" fallback.
+
+  - changeSet:
+      id: 011-create-session
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              CREATE TABLE APP.auth_session (
+                session_token   VARCHAR2(64) PRIMARY KEY,
+                customer_id     NUMBER NOT NULL
+                  REFERENCES APP.customer(customer_id),
+                application_id  NUMBER NOT NULL
+                  REFERENCES APP.loan_application(application_id),
+                scenario_label  VARCHAR2(60),
+                created_at      TIMESTAMP DEFAULT SYSTIMESTAMP NOT NULL,
+                expires_at      TIMESTAMP
+              )
+        - sql:
+            sql: |-
+              CREATE INDEX APP.ix_auth_session_customer
+                ON APP.auth_session(customer_id, application_id)
+
+  - changeSet:
+      id: 011-grant-session-readonly-to-reporting
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              GRANT SELECT ON APP.auth_session TO REPORTING
+
+  # Seed test tokens — one per CHAT_WORKFLOW scenario, plus a mismatch
+  # case for the no-row guard test. Tokens are deterministic + readable
+  # for POC ergonomics (operator pastes the token from the test-prompts
+  # table in paf/flows/CHAT_WORKFLOW.md into the PAF canvas Text Input).
+  # In production these are opaque random strings minted at login.
+  #
+  # customer_id / application_id values mirror the test-prompts table
+  # in paf/flows/CHAT_WORKFLOW.md — keep them in sync if either changes.
+  - changeSet:
+      id: 011-seed-test-sessions
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              INSERT INTO APP.auth_session (session_token, customer_id, application_id, scenario_label)
+                VALUES ('paf-test-alice-1',   1,  1, 'Alice — clean APPROVE')
+        - sql:
+            sql: |-
+              INSERT INTO APP.auth_session (session_token, customer_id, application_id, scenario_label)
+                VALUES ('paf-test-david-3',   4,  3, 'David — DTI hard cap → DECLINE')
+        - sql:
+            sql: |-
+              INSERT INTO APP.auth_session (session_token, customer_id, application_id, scenario_label)
+                VALUES ('paf-test-eva-4',     5,  4, 'Eva — score below floor → DECLINE')
+        - sql:
+            sql: |-
+              INSERT INTO APP.auth_session (session_token, customer_id, application_id, scenario_label)
+                VALUES ('paf-test-frank-5',   6,  5, 'Frank — mid-band → REVIEW')
+        - sql:
+            sql: |-
+              INSERT INTO APP.auth_session (session_token, customer_id, application_id, scenario_label)
+                VALUES ('paf-test-jane-9',   10,  9, 'Jane — unknown employer → DECLINE')
+        - sql:
+            sql: |-
+              INSERT INTO APP.auth_session (session_token, customer_id, application_id, scenario_label)
+                VALUES ('paf-test-kyle-10',  11, 10, 'Kyle — dormant employer → REVIEW')
+        - sql:
+            sql: |-
+              INSERT INTO APP.auth_session (session_token, customer_id, application_id, scenario_label)
+                VALUES ('paf-test-mismatch',  1,  3, 'Mismatch — valid session, app belongs to another customer')

@@ -107,6 +107,31 @@ services:
       DB_USER: "AGENT_FACTORY"
       DB_PASSWORD: "${DB_PASSWORD}"
 
+  # Banking MCP — opaque-session lookup. Resolves a token (set by login,
+  # held by the operator in a PAF Text Input node for POC) to the customer's
+  # current loan-application context, using cx_Oracle bind variables. This
+  # is CHAT_WORKFLOW's trust boundary: the token is the only thing that
+  # crosses from untrusted input to the authoritative (customer_id,
+  # application_id) the workflow acts on. Connects as REPORTING (same user
+  # as the existing Banking Application DB datasource); REPORTING is granted
+  # SELECT on APP.session by Liquibase changeset 011. PAF reaches it at
+  # http://banking-mcp:8503/mcp/. Wired to CHAT_WORKFLOW only.
+  banking-mcp:
+    build:
+      context: ../../src/ai/banking-mcp
+    container_name: paf-banking-mcp
+    restart: unless-stopped
+    depends_on:
+      oracle-free-26ai:
+        condition: service_healthy
+    environment:
+      PORT: "8503"
+      DB_HOST: "oracle-free-26ai"
+      DB_PORT: "1521"
+      DB_SERVICE: "FREEPDB1"
+      DB_USER: "REPORTING"
+      DB_PASSWORD: "${DB_PASSWORD}"
+
   # STUB OCR MCP — placeholder for the YOLO + PaddleOCR/Tesseract pipeline.
   # Exposes a single `extract_document` MCP tool whose canned responses are
   # keyed on filename, aligned with the documents seeded by

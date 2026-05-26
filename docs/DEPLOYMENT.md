@@ -296,7 +296,7 @@ What works today on the local stack:
 
 Next deliverables, in order:
 
-1. Parameterise `customer_id` in `CHAT_WORKFLOW`'s SQL Query (currently hardcoded — the highest-priority follow-up). Two paths: a PAF flow-input variable bound to the SQL Query's `:customer_id`, or threading it from the future Application Service. Build blueprint + open questions: [`paf/flows/CHAT_WORKFLOW.md`](../paf/flows/CHAT_WORKFLOW.md). Add `OcrAgent` between the existing two when the OCR pipeline becomes real; export the workflow JSON to `paf/flows/chat_workflow.flow.json` for re-import on clean redeploys.
+1. End-to-end test `CHAT_WORKFLOW`'s parameterised SQL Query. `customer_id` + `application_id` are wired via a Prompt (SQL Builder) node that inlines them into the SQL string — PAF's SQL Query node ignores `:name` bind variables ([`issues/sql-query-no-bind-variables.md`](../issues/sql-query-no-bind-variables.md)). Once the Application Service exists it threads both from the session through the same flow inputs. Build blueprint: [`paf/flows/CHAT_WORKFLOW.md`](../paf/flows/CHAT_WORKFLOW.md). Add `OcrAgent` between the existing two when the OCR pipeline becomes real; export the workflow JSON to `paf/flows/chat_workflow.flow.json` for re-import on clean redeploys.
 2. `RESEARCH_WORKFLOW` flow — broader read-only Select AI profile + RAG. No side-effect tools.
 3. Spring Boot Application Service — threads `customer_id` into PAF invocations, handles document uploads (enqueues `OCR_REQUEST`), writes the Blockchain `decision` row at HITL close. Plus the two Angular UIs (customer chat + backoffice with the Case Research Agent panel on the HITL detail screen).
 4. Cloud deployment (Terraform + Ansible) — designed in §4, not implemented.
