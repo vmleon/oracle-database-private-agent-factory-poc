@@ -84,6 +84,7 @@ def create_hitl_task(
     hallucinate non-hex strings (`a4b5c6d7-e8f9-g0h1-…`) when asked to
     produce a UUID.
     """
+    print(f"[create_hitl_task] called application_id={application_id} recommendation={recommendation!r} reasoning={reasoning!r:.120s}", flush=True)
     agent_run_id = str(uuid.uuid4())
     with oracledb.connect(user=DB_USER, password=DB_PASSWORD, dsn=DB_DSN) as conn:
         with conn.cursor() as cur:
@@ -100,6 +101,7 @@ def create_hitl_task(
                 ],
             )
         conn.commit()
+    print(f"[create_hitl_task] -> success task_id={task_id} agent_run_id={agent_run_id}", flush=True)
     return {
         "task_id": task_id,
         "agent_run_id": agent_run_id,

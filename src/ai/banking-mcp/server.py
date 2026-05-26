@@ -110,14 +110,17 @@ def lookup_application(session_token: str) -> dict:
           {"error": "application_not_found_or_closed",
            "customer_id": int, "application_id": int}
     """
+    print(f"[lookup_application] called session_token={session_token!r}", flush=True)
     with oracledb.connect(user=DB_USER, password=DB_PASSWORD, dsn=DB_DSN) as conn:
         with conn.cursor() as cur:
             cur.execute(_SESSION_LOOKUP_SQL, token=session_token)
             session_row = cur.fetchone()
             if session_row is None:
+                print("[lookup_application] -> invalid_or_expired_session", flush=True)
                 return {"error": "invalid_or_expired_session"}
 
             customer_id, application_id = session_row
+            print(f"[lookup_application] session resolved customer_id={customer_id} application_id={application_id}", flush=True)
 
             cur.execute(
                 _APPLICATION_CONTEXT_SQL,
@@ -126,13 +129,16 @@ def lookup_application(session_token: str) -> dict:
             )
             app_row = cur.fetchone()
             if app_row is None:
+                print(f"[lookup_application] -> application_not_found_or_closed (customer_id={customer_id} application_id={application_id})", flush=True)
                 return {
                     "error": "application_not_found_or_closed",
                     "customer_id": int(customer_id),
                     "application_id": int(application_id),
                 }
             column_names = [d[0].lower() for d in cur.description]
-            return dict(zip(column_names, app_row))
+            result = dict(zip(column_names, app_row))
+            print(f"[lookup_application] -> success application_id={result.get('application_id')} amount={result.get('amount_requested')} employer={result.get('employer_name')!r}", flush=True)
+            return result
 
 
 if __name__ == "__main__":
