@@ -78,12 +78,12 @@ flowchart LR
 
     EA -->|Message| GATE["Condition (Evidence gate)<br/>regex_match: '## Evidence' +<br/>'- application_id: <int>'"]
     GATE -->|True output<br/>passes Evidence through| RP["Prompt (Recommendation)<br/>evidence"]
-    GATE -.->|False output<br/>fixed error sentence| CO["Chat output"]
+    GATE -.->|False output<br/>fixed error sentence| COE["Chat output (error)"]
 
     RP -->|Prompt message| RA["RecommendationAgent<br/>qwen2.5:32B-AWQ • temp 0.0"]
     HITL["MCP: hitl-mcp"] -->|Tool: create_hitl_task| RA
 
-    RA -->|Message| CO["Chat output"]
+    RA -->|Message| COS["Chat output (success)"]
 ```
 
 The **Condition (Evidence gate)** is the deterministic safety net between the two agents. EvaluationAgent's text emission is unreliable (Qwen sometimes ends after the tool calls without writing the final Evidence block — see [Operating constraints](#agent--llm-behaviour)). The Condition gate inspects EvaluationAgent's `Message` output and only forwards it to RecommendationAgent when it matches a well-formed Evidence shape. On any failure (empty, malformed, lookup-error variant) it short-circuits to Chat output with a fixed customer-facing error sentence, so RecommendationAgent is never invoked on bad input and cannot hallucinate a non-existent `application_id` into `create_hitl_task`.
@@ -238,7 +238,9 @@ Source: `paf-kit/applied-ai/kit/agent_factory/app/models/agentBuilder/steps/cust
 **Output wiring:**
 
 - `Condition.true_output` → `Prompt (Recommendation).evidence`
-- `Condition.false_output` → `Chat output.message`
+- `Condition.false_output` → `Chat output (error).message`
+
+The error path goes to its **own** Chat output node (`Chat output (error)`), not the success path's Chat output. See [Chat output](#chat-output) below for why two terminal nodes are required.
 
 **Why this regex.** It requires the literal heading `## Evidence` followed (anywhere later in the text, including across newlines via `[\s\S]*?`) by `- application_id: ` and at least one digit. This passes the success-variant Evidence (which always contains `- application_id: <integer>`) and rejects:
 
@@ -340,10 +342,12 @@ STRICT RULES:
 
 ### Chat output
 
-Default. Has TWO incoming wires; only one fires per run (Condition picks one branch):
+**Two separate Chat output nodes, one per Condition branch.** PAF's Chat output rejects a second inbound wire on its `message` port, and Wayflow rejects two upstream branches converging on a single step (each step must have at most one control-flow predecessor per branch — see [`issues/non-descriptive-flow-validator-error.md`](../../issues/non-descriptive-flow-validator-error.md) for the cryptic validator error that surfaces when you try the converged shape). The fix is two terminal nodes:
 
-- `RecommendationAgent.Message` (success path)
-- `Condition (Evidence gate).false_output` (error path — `"Sorry — we couldn't load your application details right now. Please try again in a moment."`)
+- **`Chat output (success)`** — wired from `RecommendationAgent.Message`. Fires on the Condition.true path. Emits the success closing sentence (`"Thanks — your application is now with our review team. They will follow up shortly."`) that RecommendationAgent produces after `create_hitl_task` returns.
+- **`Chat output (error)`** — wired from `Condition (Evidence gate).false_output`. Fires on the Condition.false path. Emits the inline `False Message` (`"Sorry — we couldn't load your application details right now. Please try again in a moment."`).
+
+Only one of the two terminals runs per workflow execution (BranchingStep semantics), so the customer sees exactly one chat reply per turn. Do **not** try to use a `Text Combiner` or any other merge node to fan back into a single Chat output — Wayflow will accept the wires but the resulting graph fails validation at run time with the orphan-Chat-output error noted above.
 
 ## Wiring summary
 
@@ -358,10 +362,10 @@ Default. Has TWO incoming wires; only one fires per run (Condition picks one bra
 | EvaluationAgent.`Message`                | Condition (Evidence gate).`Text Input`   |
 | EvaluationAgent.`Message`                | Condition (Evidence gate).`True Message` |
 | Condition (Evidence gate).`True`         | Prompt (Recommendation).`evidence`       |
-| Condition (Evidence gate).`False`        | Chat output.`Message` (error path)       |
+| Condition (Evidence gate).`False`        | Chat output (error).`Message`            |
 | Prompt (Recommendation).`Prompt message` | RecommendationAgent.`Prompt`             |
 | MCP server (hitl-mcp).`Tools`            | RecommendationAgent.`Tools`              |
-| RecommendationAgent.`Message`            | Chat output.`Message` (success path)     |
+| RecommendationAgent.`Message`            | Chat output (success).`Message`          |
 
 ## Test prompts
 
@@ -476,6 +480,7 @@ Non-obvious rules and limits that shape how this workflow has to be built. Skim 
 - **The Condition (Evidence gate) is the deterministic safety net between agents.** It does NOT decide a recommendation tier; it only decides whether RecommendationAgent runs at all. Without it, a flaky EvaluationAgent emission (empty, malformed, or error-variant) reaches RecommendationAgent unchanged, the model lacks an `application_id` to extract, and Qwen will reliably hallucinate one — `create_hitl_task` then errors on the `APP.hitl_task → APP.loan_application` foreign-key constraint with `ORA-02291`, but only after wasting an LLM round-trip and emitting customer-facing apology text. The gate prevents all of that.
 - **Only one Condition output fires per evaluation.** `BranchingStep` semantics (see `paf-kit/applied-ai/kit/agent_factory/app/models/agentBuilder/steps/customSteps/Condition.py`). The Chat output node consequently receives exactly one inbound message per workflow run, even though two wires arrive at it.
 - **Inline values are defaults; wired values override.** `True Message` is wired from `EvaluationAgent.Message` so the agent's actual Evidence text passes through to RecommendationAgent. `False Message` is inline (the fixed customer-facing error sentence) so the error reply needs no upstream input.
+- **Each Condition branch needs its own terminal Chat output.** PAF's Chat output rejects a second inbound wire on `message`, and Wayflow rejects two upstream branches converging on any single step (each step has at most one control-flow predecessor per branch). Adding a Text Combiner to merge the branches doesn't help — it just relocates the same convergence problem one node downstream. The workable shape is two Chat output nodes: `Chat output (success)` on the True branch, `Chat output (error)` on the False branch. The customer sees exactly one reply per turn since exactly one branch fires. See [`issues/non-descriptive-flow-validator-error.md`](../../issues/non-descriptive-flow-validator-error.md) for the cryptic validator output that surfaces when you try the merged shape.
 
 ### Agent / LLM behaviour
 
