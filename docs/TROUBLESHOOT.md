@@ -109,6 +109,14 @@ touch paf-kit/applied-ai/volume/.config_complete.marker
 
 ## PAF runtime / MCP
 
+### Newly added MCP service shows "Unable to reach the MCP server URL" in PAF after `local up`
+
+`manage.py local_up()` passes an **explicit list** of services to `podman compose up -d --build` (see the `services = [...]` array in the function). If a new service is added to `deploy/podman/compose.local.yml` but not to that list, `local up` silently skips building / starting it — PAF can't reach the URL because the container doesn't exist. Add the new service name to the array and re-run `local up`. Quick one-off fix without re-running the whole `local up`:
+
+```bash
+podman compose -f deploy/podman/compose.local.yml up -d --build <service>
+```
+
 ### PAF MCP discovery for `opa-mcp` or `ocr-mcp` returns 0 tools, or "connection refused"
 
 Most common cause is using `localhost` instead of `opa-mcp` / `ocr-mcp` in the URL — PAF must reach the wrapper over the compose network, not the host. Confirm with:
