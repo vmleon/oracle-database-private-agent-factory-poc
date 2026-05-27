@@ -13,7 +13,7 @@ unguessable — the agent gets no authority by holding it; it only resolves
 to a row in APP.auth_session that was minted at login.
 
 Why an MCP wrapper instead of the PAF SQL Query node:
-PAF's SQL Query node ignores `:name` bind variables (issues/sql-query-no-bind-variables.md):
+PAF's SQL Query node ignores `:name` bind variables (issues/01-sql-query-no-bind-variables.md):
 unsubstituted placeholders become column-resolved identifiers and the query
 silently returns an arbitrary row. This wrapper uses cx_Oracle bind
 variables directly — typed parameters, no string interpolation, fail-secure
@@ -107,8 +107,8 @@ def lookup_application(session_token: str) -> dict:
           existing_monthly_debt, monthly_payment, dti, pti.
         monthly_payment / dti / pti are computed server-side so the agent
         passes them straight to evaluate_eligibility without float math
-        (LLMs at temp 0.0 are unreliable on float division — server-side
-        arithmetic removes the failure class regardless of model).
+        (LLMs at near-zero temperature are unreliable on float division —
+        server-side arithmetic removes the failure class regardless of model).
         On failure, one of:
           {"error": "invalid_or_expired_session"}
           {"error": "application_not_found_or_closed",

@@ -12,7 +12,7 @@ Source-of-truth references:
 - Decision contract + tool inventory: [`docs/DECISIONING-ENGINE-USE-CASE.md`](../../docs/DECISIONING-ENGINE-USE-CASE.md)
 - Two-agent security model: [`docs/DESIGN.md §8 / §10`](../../docs/DESIGN.md)
 - Locked decisions (model, transport split): [`docs/DESIGN.md §11`](../../docs/DESIGN.md)
-- PAF product gaps that shape this design: [`issues/sql-query-no-bind-variables.md`](../../issues/sql-query-no-bind-variables.md), [`issues/no-flow-start-inputs.md`](../../issues/no-flow-start-inputs.md)
+- PAF product gaps that shape this design: [`issues/01-sql-query-no-bind-variables.md`](../../issues/01-sql-query-no-bind-variables.md), [`issues/02-no-flow-start-inputs.md`](../../issues/02-no-flow-start-inputs.md)
 
 ## Purpose
 
@@ -33,8 +33,8 @@ The flow accepts **one** operator-provided runtime input — the **chat message*
 
 Two compounding PAF product gaps make this shape mandatory:
 
-- **SQL Query node ignores `:name` bind variables and silently fails open** ([`issues/sql-query-no-bind-variables.md`](../../issues/sql-query-no-bind-variables.md)). Substituting IDs into the SQL string with Prompt-template injection produces a tautology when the values are wrong/missing, returning another customer's row. Unacceptable.
-- **No per-invocation flow inputs other than the chat message** ([`issues/no-flow-start-inputs.md`](../../issues/no-flow-start-inputs.md)). PAF's `Text Input` node is a static value emitter; Playground does not prompt for it. So the token has to be hardcoded per-scenario for testing.
+- **SQL Query node ignores `:name` bind variables and silently fails open** ([`issues/01-sql-query-no-bind-variables.md`](../../issues/01-sql-query-no-bind-variables.md)). Substituting IDs into the SQL string with Prompt-template injection produces a tautology when the values are wrong/missing, returning another customer's row. Unacceptable.
+- **No per-invocation flow inputs other than the chat message** ([`issues/02-no-flow-start-inputs.md`](../../issues/02-no-flow-start-inputs.md)). PAF's `Text Input` node is a static value emitter; Playground does not prompt for it. So the token has to be hardcoded per-scenario for testing.
 
 The trust-boundary design: the lookup goes through `banking-mcp.lookup_application(session_token)`, which uses `cx_Oracle` bind variables (no string interpolation, fail-secure on missing token). Only the opaque token crosses the operator/agent boundary; the agent never sees `customer_id` / `application_id` in input.
 
@@ -46,14 +46,14 @@ flowchart LR
     CI["Chat input"] -->|Message| EP
     EP["Prompt (Evaluation)<br/>session_token + input"] -->|Prompt message| EA
     BNK["MCP: banking-mcp"] -->|Tool: lookup_application| EA
-    OPA["MCP: opa-mcp"] -->|Tools| EA["EvaluationAgent<br/>qwen2.5:72B-AWQ • temp 0.0"]
+    OPA["MCP: opa-mcp"] -->|Tools| EA["EvaluationAgent<br/>qwen2.5:72B-AWQ • temp 0.01"]
     REG["REST: Company Registry"] -->|Tool: verify_employer| EA
 
     EA -->|Message| GATE["Condition (Evidence gate)<br/>regex_match: '## Evidence' +<br/>'- application_id: <int>'"]
     GATE -->|True output<br/>passes Evidence through| RP["Prompt (Recommendation)<br/>evidence"]
     GATE -.->|False output<br/>fixed error sentence| COE["Chat output (error)"]
 
-    RP -->|Prompt message| RA["RecommendationAgent<br/>qwen2.5:72B-AWQ • temp 0.0"]
+    RP -->|Prompt message| RA["RecommendationAgent<br/>qwen2.5:72B-AWQ • temp 0.01"]
     HITL["MCP: hitl-mcp"] -->|Tool: create_hitl_task| RA
 
     RA -->|Message| COS["Chat output (success)"]
@@ -77,7 +77,7 @@ Default. The customer message is informational context for the evaluation — th
 
 - **Name**: `session_token` (the node label; this is also the placeholder name the Prompt template binds to).
 - **Type**: string.
-- **Value**: paste the scenario's seeded token here (e.g. `paf-test-alice-1`). Static — Playground does **not** prompt for it ([`issues/no-flow-start-inputs.md`](../../issues/no-flow-start-inputs.md)).
+- **Value**: paste the scenario's seeded token here (e.g. `paf-test-alice-1`). Static — Playground does **not** prompt for it ([`issues/02-no-flow-start-inputs.md`](../../issues/02-no-flow-start-inputs.md)).
 - **In production**: the App Service mints a token at login and writes a row to `APP.auth_session`; the same node carries it. The substitution mechanism stays the same.
 
 ### Prompt (Evaluation)
@@ -114,7 +114,7 @@ flowchart LR
 ```
 
 - **Select LLM to use**: `vllm-gen-qwen2.5-72B` — the LLM Configuration name registered in PAF at install (see [LOCAL.md §3](../../LOCAL.md#3-install-paf)). Backed by `Qwen/Qwen2.5-72B-Instruct-AWQ` on vLLM. PAF's Agent node lists registered LLM Configurations, not raw model IDs.
-- **Temperature**: `0.0` (deterministic).
+- **Temperature**: `0.01` (PAF Agent node default; the slider's `step` is `0.01` so this is the lowest snap point. Functionally indistinguishable from `0.0` for tool-following and the structured Evidence emission — kept at the default to avoid drift between canvas state and doc).
 - **Agent description**: `Loan application evidence-gatherer`.
 - **Tools**: every wired MCP server and REST datasource exposes **all** of its tools to the agent — PAF has no per-tool filter UI on the MCP server node or on the Agent node. `banking-mcp` exposes `lookup_application`; `opa-mcp` exposes all seven Rego tools (`required_documents`, `evaluate_eligibility`, `evaluate_aml`, `evaluate_kyc`, `evaluate_fair_lending_flags`, `lookup_pricing`, `list_policy_versions`); Company Registry REST exposes `GET_v1_companies_verify`.
 
@@ -177,7 +177,7 @@ Step 3. GET_v1_companies_verify(name = employer_name)
         That funky name is what PAF actually exposes the Company
         Registry REST tool as — its OpenAPI importer ignores
         `operationId` and auto-names every HTTP tool from method+path
-        (see `issues/openapi-importer-ignores-operationid.md`). Call
+        (see `issues/04-openapi-importer-ignores-operationid.md`). Call
         the exact name above; PAF's tool list does not include
         `verify_employer`.
 
@@ -273,7 +273,7 @@ flowchart LR
 ```
 
 - **Select LLM to use**: `vllm-gen-qwen2.5-72B` (same LLM Configuration as EvaluationAgent).
-- **Temperature**: `0.0`.
+- **Temperature**: `0.01` (same as EvaluationAgent — PAF Agent node default).
 - **Agent description**: `Loan recommendation drafter`.
 - **Tools**: `hitl-mcp` only — single tool, single side effect.
 
@@ -348,7 +348,7 @@ STRICT RULES:
 
 ### Chat output
 
-**Two separate Chat output nodes, one per Condition branch.** PAF's Chat output rejects a second inbound wire on its `message` port, and Wayflow rejects two upstream branches converging on a single step (each step must have at most one control-flow predecessor per branch — see [`issues/non-descriptive-flow-validator-error.md`](../../issues/non-descriptive-flow-validator-error.md) for the cryptic validator error that surfaces when you try the converged shape). The fix is two terminal nodes:
+**Two separate Chat output nodes, one per Condition branch.** PAF's Chat output rejects a second inbound wire on its `message` port, and Wayflow rejects two upstream branches converging on a single step (each step must have at most one control-flow predecessor per branch — see [`issues/05-non-descriptive-flow-validator-error.md`](../../issues/05-non-descriptive-flow-validator-error.md) for the cryptic validator error that surfaces when you try the converged shape). The fix is two terminal nodes:
 
 - **`Chat output (success)`** — wired from `RecommendationAgent.Message`. Fires on the Condition.true path. Emits the success closing sentence (`"Thanks — your application is now with our review team. They will follow up shortly."`) that RecommendationAgent produces after `create_hitl_task` returns.
 - **`Chat output (error)`** — wired from `Condition (Evidence gate).false_output`. Fires on the Condition.false path. Emits the inline `False Message` (`"Sorry — we couldn't load your application details right now. Please try again in a moment."`).
@@ -447,19 +447,26 @@ Total: five tool calls per successful turn, one per error turn. More than that =
 
 ## Export
 
-Once the workflow runs all eight scenarios (six success + two fail-secure) plus the prompt-injection test cleanly, export the workflow JSON from PAF Agent Builder (top-right menu → Export) and save to `paf/flows/chat_workflow.flow.json`.
+Once the workflow runs all eight scenarios (six success + two fail-secure) plus the prompt-injection test cleanly, save the flow JSON to [`paf/flows/chat_workflow.flow.json`](chat_workflow.flow.json) so a clean redeploy can re-import without rebuilding the canvas by hand.
+
+**PAF has no UI Export button.** The Agent Builder canvas top bar (`Save / New Flow / Playground / Publish`) does not include one, and the PAF kit blueprint (`agent_builder_blueprint.py`) only exposes `importAgentIrFlow` — there's no symmetric export endpoint. The reliable way to capture the JSON is from the browser's Network tab:
+
+1. Open DevTools → **Network** → filter **Fetch/XHR**.
+2. Open the flow in Agent Builder (or reload it). The SPA fetches the flow definition; one of the responses contains the full graph (`edges`, `nodes`, custom instructions, wires, etc.).
+3. Look for a response whose body starts with `{"data":{"agentId":"...","createdAt":...,"data":{"edges":[...]`. The `agentId` (a 32-char hex string — Oracle's `RAW(16)` identifier) is in the URL path; the SPA route itself is hash-only (`/agentFactory/#/home/agentBuilder`) and does not carry the ID.
+4. Right-click → **Copy → Copy response**. Paste into `paf/flows/chat_workflow.flow.json` verbatim.
+
+To re-import on a clean redeploy: POST the file body back to `/agentFactory/v1/agentBuilder/importAgentIrFlow` (the symmetric endpoint registered in the kit's blueprint). The full round-trip isn't yet scripted in `manage.py`; doing so is a small follow-up.
 
 ## Open follow-ups
 
 In priority order:
 
-1. **`OcrAgent` between EvaluationAgent and RecommendationAgent.** When the real OCR pipeline lands:
-   - `EvaluationAgent` already emits `required_documents`.
-   - `OcrAgent` (new) reads the list, calls `ocr-mcp.extract_document` for each, appends OCR-quality findings (`USABLE` / `MARGINAL` / `UNUSABLE`) to the evidence block.
-   - `RecommendationAgent` reads the augmented evidence; OCR-quality feeds the tier decision via the existing OPA `kyc` rule.
-2. **Drop the hardcoded session token in the canvas** once PAF accepts per-invocation inputs ([`issues/no-flow-start-inputs.md`](../../issues/no-flow-start-inputs.md)) or once the App Service mints + threads the token via a published REST endpoint that PAF honours.
-3. **JSON-schema-constrained output for `EvaluationAgent`.** vLLM supports `response_format` / guided generation. If the PAF Agent node exposes this, swap the markdown Evidence block for a strict JSON object — `RecommendationAgent`'s parsing becomes bulletproof.
-4. **Export the workflow JSON** to `paf/flows/chat_workflow.flow.json` for re-import on clean redeploys.
+1. **Drop the hardcoded session token in the canvas** once PAF accepts per-invocation inputs ([`issues/02-no-flow-start-inputs.md`](../../issues/02-no-flow-start-inputs.md)) or once the App Service mints + threads the token via a published REST endpoint that PAF honours.
+2. **JSON-schema-constrained output for `EvaluationAgent`.** vLLM supports `response_format` / guided generation. If the PAF Agent node exposes this, swap the markdown Evidence block for a strict JSON object — `RecommendationAgent`'s parsing becomes bulletproof.
+3. **Script the re-import in `manage.py`** so a clean redeploy can POST `chat_workflow.flow.json` to `/agentFactory/v1/agentBuilder/importAgentIrFlow` instead of rebuilding the canvas by hand.
+
+**Postponed — `OcrAgent` between EvaluationAgent and RecommendationAgent.** Conceptually a third agent that reads `required_documents` from the Evidence block, calls `ocr-mcp.extract_document` for each, and appends OCR-quality findings (`USABLE` / `MARGINAL` / `UNUSABLE`) for `RecommendationAgent` to fold into the tier decision via the existing OPA `kyc` rule. **Not pursuing yet** — the current PAF limitations (no per-invocation inputs, hardcoded `max_iterations=5` per agent, OpenAPI importer ignoring `operationId`, no guided generation, fabricated tool responses on transient errors) make multi-agent fan-out fragile. Revisit once the issues in [`../../issues/`](../../issues/) are addressed upstream by PAF.
 
 ## Operating constraints
 
@@ -473,25 +480,25 @@ Non-obvious rules and limits that shape how this workflow has to be built. Skim 
 
 ### PAF Agent Builder
 
-- **SQL Query node is not used in this workflow.** It ignores `:name` bind variables and silently fails open ([`issues/sql-query-no-bind-variables.md`](../../issues/sql-query-no-bind-variables.md)); `banking-mcp` replaces it.
+- **SQL Query node is not used in this workflow.** It ignores `:name` bind variables and silently fails open ([`issues/01-sql-query-no-bind-variables.md`](../../issues/01-sql-query-no-bind-variables.md)); `banking-mcp` replaces it.
 - **Agent node has no max-iterations / max-tool-calls setting.** If a model loops or batches, the runtime does not break it out. Mitigations: tight recipe-style Custom Instructions, narrow per-agent tool surface, stronger model.
 - **Orphan nodes are rejected by the graph validator.** To remove a tool, delete the node from the canvas — disconnecting the wire alone does not work.
-- **PAF's OpenAPI importer ignores `operationId`** and always auto-names HTTP tools as `<METHOD>_<path>` (e.g. `GET_v1_companies_verify`). See [`issues/openapi-importer-ignores-operationid.md`](../../issues/openapi-importer-ignores-operationid.md). The CI must call the auto-name verbatim; setting `operation_id` on the FastAPI route has no effect on PAF's tool list.
-- **The Agent node hardcodes `max_iterations=5`, and the last iteration strips all wired tools.** Wayflow keeps only `[talk_to_user, submit, exit_conversation]` on the final iteration to force the model into reply mode. Effective ceiling: **4 successful tool calls** per agent turn — a single failed tool call (wrong name, transient MCP error) burns into the budget. See [`issues/agent-max-iterations-5-cap.md`](../../issues/agent-max-iterations-5-cap.md). This is the structural reason the two-agent split is mandatory, not stylistic.
+- **PAF's OpenAPI importer ignores `operationId`** and always auto-names HTTP tools as `<METHOD>_<path>` (e.g. `GET_v1_companies_verify`). See [`issues/04-openapi-importer-ignores-operationid.md`](../../issues/04-openapi-importer-ignores-operationid.md). The CI must call the auto-name verbatim; setting `operation_id` on the FastAPI route has no effect on PAF's tool list.
+- **The Agent node hardcodes `max_iterations=5`, and the last iteration strips all wired tools.** Wayflow keeps only `[talk_to_user, submit, exit_conversation]` on the final iteration to force the model into reply mode. Effective ceiling: **4 successful tool calls** per agent turn — a single failed tool call (wrong name, transient MCP error) burns into the budget. See [`issues/03-agent-max-iterations-5-cap.md`](../../issues/03-agent-max-iterations-5-cap.md). This is the structural reason the two-agent split is mandatory, not stylistic.
 - **`Agent.Message → Prompt.<var>` chains cleanly.** Same wire pattern as `EvaluationAgent.Message → Prompt (Recommendation).evidence` — no supervisor / sub-agents wiring required.
 
 ### Two-agent contract
 
 - **Tool surface is enforced per agent.** `EvaluationAgent` must not see `hitl-mcp`; `RecommendationAgent` must see only `hitl-mcp`. This is the lever that prevents batched tool calls with fabricated intermediate results — if a single tool is all that's available, that's all the model can call.
 - **Latency is the sum of the two agent turns plus the Condition.** On vLLM + GB10 with `qwen2.5:72B-AWQ` (AWQ 4-bit, ~40 GB resident), expect roughly 1.5–2× the 32B-AWQ baseline — `EvaluationAgent` ~25–50 s (four tool calls + final Evidence emission), Condition evaluation sub-millisecond, `RecommendationAgent` ~10–25 s (one tool call + decision); total ~40–90 s per successful workflow run. Error paths (Condition false) finish at ~25–50 s — no second agent turn. Measure on your stack via `state_manager.log` timestamps; numbers above are an order-of-magnitude guide.
-- **The Evidence block format is a contract between EvaluationAgent and the Condition gate.** The gate's regex (`## Evidence[\s\S]*?- application_id:\s*\d+`) is the enforcement point — drift in EvaluationAgent's emitted format breaks the gate. Temperature `0.0` + the explicit format-at-top-and-bottom of the EvaluationAgent CI keep it stable. The forward path — once PAF's Agent node exposes vLLM's `response_format` — is JSON-schema-constrained output instead of a markdown block (see [Open follow-ups](#open-follow-ups)), at which point the Condition gate can become a JSON-shape check via `Parser` + `Condition` chained.
+- **The Evidence block format is a contract between EvaluationAgent and the Condition gate.** The gate's regex (`## Evidence[\s\S]*?- application_id:\s*\d+`) is the enforcement point — drift in EvaluationAgent's emitted format breaks the gate. Temperature `0.01` (the slider's lowest snap) + the explicit format-at-top-and-bottom of the EvaluationAgent CI keep it stable. The forward path — once PAF's Agent node exposes vLLM's `response_format` — is JSON-schema-constrained output instead of a markdown block (see [Open follow-ups](#open-follow-ups)), at which point the Condition gate can become a JSON-shape check via `Parser` + `Condition` chained.
 
 ### Deterministic gates (Condition)
 
 - **The Condition (Evidence gate) is the deterministic safety net between agents.** It does NOT decide a recommendation tier; it only decides whether RecommendationAgent runs at all. Without it, a flaky EvaluationAgent emission (empty, malformed, or error-variant) reaches RecommendationAgent unchanged, the model lacks an `application_id` to extract, and Qwen will reliably hallucinate one — `create_hitl_task` then errors on the `APP.hitl_task → APP.loan_application` foreign-key constraint with `ORA-02291`, but only after wasting an LLM round-trip and emitting customer-facing apology text. The gate prevents all of that.
 - **Only one Condition output fires per evaluation.** `BranchingStep` semantics (see `paf-kit/applied-ai/kit/agent_factory/app/models/agentBuilder/steps/customSteps/Condition.py`). The Chat output node consequently receives exactly one inbound message per workflow run, even though two wires arrive at it.
 - **Inline values are defaults; wired values override.** `True Message` is wired from `EvaluationAgent.Message` so the agent's actual Evidence text passes through to RecommendationAgent. `False Message` is inline (the fixed customer-facing error sentence) so the error reply needs no upstream input.
-- **Each Condition branch needs its own terminal Chat output.** PAF's Chat output rejects a second inbound wire on `message`, and Wayflow rejects two upstream branches converging on any single step (each step has at most one control-flow predecessor per branch). Adding a Text Combiner to merge the branches doesn't help — it just relocates the same convergence problem one node downstream. The workable shape is two Chat output nodes: `Chat output (success)` on the True branch, `Chat output (error)` on the False branch. The customer sees exactly one reply per turn since exactly one branch fires. See [`issues/non-descriptive-flow-validator-error.md`](../../issues/non-descriptive-flow-validator-error.md) for the cryptic validator output that surfaces when you try the merged shape.
+- **Each Condition branch needs its own terminal Chat output.** PAF's Chat output rejects a second inbound wire on `message`, and Wayflow rejects two upstream branches converging on any single step (each step has at most one control-flow predecessor per branch). Adding a Text Combiner to merge the branches doesn't help — it just relocates the same convergence problem one node downstream. The workable shape is two Chat output nodes: `Chat output (success)` on the True branch, `Chat output (error)` on the False branch. The customer sees exactly one reply per turn since exactly one branch fires. See [`issues/05-non-descriptive-flow-validator-error.md`](../../issues/05-non-descriptive-flow-validator-error.md) for the cryptic validator output that surfaces when you try the merged shape.
 
 ### Agent / LLM behaviour
 

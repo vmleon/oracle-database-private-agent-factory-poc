@@ -11,7 +11,7 @@ This is confusing because:
 - The available-tools list shows `GET_v1_companies_verify` instead, with no indication that this came from the same spec.
 - Users have no way to influence the tool name short of restructuring the URL path.
 
-In our `CHAT_WORKFLOW`, this caused the model to waste an iteration calling the spec's `operationId` name, then retry with the auto-name. The wasted iteration combined with the [[agent-max-iterations-5-cap]] to push the next tool call into the "tools stripped" last iteration, producing a misleading "tool not available" error for a tool that was actually wired correctly.
+In our `CHAT_WORKFLOW`, this caused the model to waste an iteration calling the spec's `operationId` name, then retry with the auto-name. The wasted iteration combined with the [[03-agent-max-iterations-5-cap]] to push the next tool call into the "tools stripped" last iteration, producing a misleading "tool not available" error for a tool that was actually wired correctly.
 
 ## Reproduce
 
