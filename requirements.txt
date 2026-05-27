@@ -3,3 +3,8 @@ python-dotenv>=1.0
 InquirerPy>=0.3
 jinja2>=3.1
 rich>=13.0
+
+# Test harness — pytest drives PAF via REST + verifies state in Oracle.
+pytest>=8.0
+requests>=2.31
+oracledb>=2.0
