@@ -159,6 +159,7 @@ In PAF: **Data Sources** → **Add new data source** → **Source type: Database
 | Field        | Value                                               |
 | ------------ | --------------------------------------------------- |
 | Name         | `Banking Application DB`                            |
+| Protocol     | `TCP`                                               |
 | Host         | `oracle-free-26ai` (compose service name)           |
 | Port         | `1521`                                              |
 | Service name | `FREEPDB1`                                          |
@@ -173,16 +174,16 @@ After saving, the datasource should report a connected status. It surfaces insid
 
 ### 4c. HTTP datasource (Company Registry)
 
-PAF's **Add new data source** dialog expects a file upload, not a URL — and FastAPI generates the spec at runtime, so there's no static file in the repo. Pull the spec from the running container and save it to the host:
+PAF's **Add new data source** dialog expects a file upload, not a URL — and FastAPI generates the spec at runtime, so there's no static file in the repo. Pull the spec from the running container and save it to the host (`~/Downloads/` is just a convenient scratch location — anywhere outside the repo works):
 
 ```bash
 podman exec paf-oracle-free-26ai curl -s \
-  http://registry-api:8600/openapi.json > registry-api-openapi.json
+  http://registry-api:8600/openapi.json > ~/Downloads/registry-api-openapi.json
 ```
 
 The file should start with `{"openapi":"3.1.0",...`.
 
-In PAF: **Data Sources** → **Add new data source** → **Source type: Rest API → OpenAPI specification** → drag-and-drop `registry-api-openapi.json` into the upload area.
+In PAF: **Data Sources** → **Add new data source** → **Source type: Rest API → OpenAPI specification** → drag-and-drop `~/Downloads/registry-api-openapi.json` into the upload area.
 
 The `registry-api` service ships eight synthetic company records that align with the employer names seeded by `010-seed-synthetic.yaml`, including `Phoenix Holdings Ltd` (`dormant`, scenario 28) and `Atlantis Innovations Ltd` (deliberately absent → `registered=false`, scenario 27). Source: `src/api/registry/`.
 
