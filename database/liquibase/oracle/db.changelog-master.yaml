@@ -32,6 +32,3 @@ databaseChangeLog:
   - include:
       file: 011-session-table.yaml
       relativeToChangelogFile: true
-  - include:
-      file: 012-fixup-david-dti.yaml
-      relativeToChangelogFile: true

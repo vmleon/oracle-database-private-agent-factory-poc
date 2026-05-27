@@ -107,7 +107,8 @@ def lookup_application(session_token: str) -> dict:
           existing_monthly_debt, monthly_payment, dti, pti.
         monthly_payment / dti / pti are computed server-side so the agent
         passes them straight to evaluate_eligibility without float math
-        (Qwen-32B-AWQ at temp 0.0 is unreliable on division).
+        (LLMs at temp 0.0 are unreliable on float division — server-side
+        arithmetic removes the failure class regardless of model).
         On failure, one of:
           {"error": "invalid_or_expired_session"}
           {"error": "application_not_found_or_closed",

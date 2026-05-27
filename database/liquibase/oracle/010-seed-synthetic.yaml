@@ -276,7 +276,7 @@ databaseChangeLog:
             sql: |-
               INSERT INTO APP.existing_facility
                 (customer_id, lender_name, facility_type, balance, monthly_payment, opened_at)
-              SELECT customer_id, 'First Bank', 'CREDIT_CARD', 9000, 450, ADD_MONTHS(SYSDATE,-18)
+              SELECT customer_id, 'First Bank', 'CREDIT_CARD', 9000, 600, ADD_MONTHS(SYSDATE,-18)
                 FROM APP.customer WHERE full_name='David HighDti'
         - sql:
             sql: |-

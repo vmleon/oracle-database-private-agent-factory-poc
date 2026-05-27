@@ -902,7 +902,7 @@ def setup_local() -> None:
     ).execute()
     vllm_gen_model = inquirer.text(
         message="vLLM generation model (HuggingFace handle):",
-        default=existing.get("VLLM_GEN_MODEL", "Qwen/Qwen2.5-32B-Instruct-AWQ"),
+        default=existing.get("VLLM_GEN_MODEL", "Qwen/Qwen2.5-72B-Instruct-AWQ"),
     ).execute()
     vllm_embed_model = inquirer.text(
         message="vLLM embedding model (HuggingFace handle):",
@@ -1231,7 +1231,7 @@ def paf_bootstrap() -> None:
         console.print(f"  [yellow]Note:[/yellow] {advisory}")
     console.print(f"  [bold]Generative model[/bold]   (Model type radio: [cyan]Generative model[/cyan])")
     console.print(f"    LLM provider:        [cyan]vLLM[/cyan]")
-    console.print(f"    Configuration name:  [cyan]vllm-gen-qwen2.5-32B[/cyan]   (any label)")
+    console.print(f"    Configuration name:  [cyan]vllm-gen-qwen2.5-72B[/cyan]   (any label)")
     console.print(f"    Model ID:            [cyan]{os.getenv('VLLM_GEN_MODEL')}[/cyan]")
     console.print(f"    Host:                [cyan]http://{vllm_host}[/cyan]   (scheme required)")
     console.print(f"    Port:                [cyan]{os.getenv('VLLM_GEN_PORT')}[/cyan]")

@@ -168,11 +168,13 @@ databaseChangeLog:
             sql: |-
               GRANT SELECT ON APP.hitl_task TO AGENT_TOOLS
 
-  # Update PKG_AGENT_TOOLS.create_hitl_task to enqueue HITL_REQUEST in the
-  # same transaction as the hitl_task insert (the second half deferred from
-  # 007). Spec is unchanged — only the body changes.
+  # PKG_AGENT_TOOLS body — defined here (not in 007 alongside the spec) so
+  # it can reference the HITL_REQUEST queue created above and rely on the
+  # SELECT / INSERT / ENQUEUE grants applied above. create_hitl_task inserts
+  # the recommendation packet into APP.hitl_task and enqueues a notification
+  # on APP.HITL_REQUEST in the same transaction.
   - changeSet:
-      id: 009-update-pkg-agent-tools-body-add-enqueue
+      id: 009-create-pkg-agent-tools-body
       author: paf-poc
       runOnChange: true
       changes:
@@ -234,15 +236,3 @@ databaseChangeLog:
                 END create_hitl_task;
 
               END PKG_AGENT_TOOLS;
-
-  # Force a recompile so the body picks up the SELECT grant added above
-  # (without this, the body stays INVALID after Liquibase finishes —
-  # Oracle would auto-recompile on first call, but explicit is cleaner).
-  - changeSet:
-      id: 009-recompile-pkg-agent-tools-body
-      author: paf-poc
-      runOnChange: true
-      changes:
-        - sql:
-            sql: |-
-              ALTER PACKAGE AGENT_TOOLS.PKG_AGENT_TOOLS COMPILE BODY

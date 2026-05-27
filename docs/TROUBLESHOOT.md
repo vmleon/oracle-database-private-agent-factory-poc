@@ -128,6 +128,30 @@ podman exec paf-agent-factory getent hosts ocr-mcp   # same
 
 If the address resolves but tool discovery still fails, run the [Sanity-check curls](#sanity-check-curls-paf--tools--datasources) above. The second most common cause is a network mismatch from rebuilding the container with `-p paf` — see the rebuild snippet in [`../LOCAL.md` §Day-2](../LOCAL.md#day-2).
 
+### Flow runs to a "Sorry — we couldn't load..." reply but no errors in any wrapper logs
+
+PAF's runtime traces for flow execution live inside the container at `/mount/log/app/latest/log/state_manager.log` (not in `podman logs paf-agent-factory`, which only shows install/startup). When a Condition gate, agent tool call, or any other step misbehaves and the symptom is only visible in the customer-facing chat output, that's the file to grep.
+
+The two highest-signal lines:
+
+```bash
+# What the Condition node actually evaluated and which branch it picked.
+podman exec paf-agent-factory grep -E "ConditionStep evaluation|ConditionStep selected branch" \
+  /mount/log/app/latest/log/state_manager.log | tail -10
+# Fields: text_input=<the regex's input>, match_text=<the regex>, operator=<...>, result=True|False
+
+# Tool-call rejections from the agent executor — exact tool name + the list the runtime saw.
+podman exec paf-agent-factory grep -E "Tool named .* is not in the list of available tools" \
+  /mount/log/app/latest/log/state_manager.log | tail -10
+```
+
+What each tells you:
+
+- **`ConditionStep evaluation: text_input=...`** — copy `text_input` verbatim and you have exactly what the regex evaluated against. If it's the expected Evidence block but the regex doesn't match, the regex is wrong. If it's an error string from the agent ("Tool named X is not in the list..."), the upstream agent failed — chase the second grep.
+- **`Tool named X is not in the list of available tools. Available tools: [...]`** — two distinct meanings depending on the listed count:
+  - **List length matches the wired tools** (e.g. 10 entries for opa-mcp's 7 + banking-mcp's 1 + registry's 1 + `talk_to_user`): the tool name in the agent's CI doesn't match what the runtime exposes. Common cause: PAF's OpenAPI importer auto-names HTTP tools `<METHOD>_<path>` regardless of `operationId` (see [`../issues/openapi-importer-ignores-operationid.md`](../issues/openapi-importer-ignores-operationid.md)). Fix the CI to use the auto-name PAF actually exposes.
+  - **List length collapses to 1** (`['talk_to_user']` only): the agent hit PAF's hardcoded `max_iterations=5` cap. Wayflow strips all wired tools on the last iteration (see [`../issues/agent-max-iterations-5-cap.md`](../issues/agent-max-iterations-5-cap.md)). Fix: trim the recipe to ≤4 tool calls, or split the work across multiple agents.
+
 ## OPA
 
 ### OPA returns `404` on `/v1/data/decisioning/...` rules

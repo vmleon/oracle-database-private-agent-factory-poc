@@ -46,14 +46,14 @@ flowchart LR
     CI["Chat input"] -->|Message| EP
     EP["Prompt (Evaluation)<br/>session_token + input"] -->|Prompt message| EA
     BNK["MCP: banking-mcp"] -->|Tool: lookup_application| EA
-    OPA["MCP: opa-mcp"] -->|Tools| EA["EvaluationAgent<br/>qwen2.5:32B-AWQ • temp 0.0"]
+    OPA["MCP: opa-mcp"] -->|Tools| EA["EvaluationAgent<br/>qwen2.5:72B-AWQ • temp 0.0"]
     REG["REST: Company Registry"] -->|Tool: verify_employer| EA
 
     EA -->|Message| GATE["Condition (Evidence gate)<br/>regex_match: '## Evidence' +<br/>'- application_id: <int>'"]
     GATE -->|True output<br/>passes Evidence through| RP["Prompt (Recommendation)<br/>evidence"]
     GATE -.->|False output<br/>fixed error sentence| COE["Chat output (error)"]
 
-    RP -->|Prompt message| RA["RecommendationAgent<br/>qwen2.5:32B-AWQ • temp 0.0"]
+    RP -->|Prompt message| RA["RecommendationAgent<br/>qwen2.5:72B-AWQ • temp 0.0"]
     HITL["MCP: hitl-mcp"] -->|Tool: create_hitl_task| RA
 
     RA -->|Message| COS["Chat output (success)"]
@@ -109,16 +109,16 @@ flowchart LR
     P["Prompt (Evaluation)"] -->|Prompt message| EA
     BNK["MCP: banking-mcp<br/>· lookup_application"] -->|Tools| EA
     OPA["MCP: opa-mcp<br/>· required_documents<br/>· evaluate_eligibility"] -->|Tools| EA
-    REG["REST: Company Registry<br/>· verify_employer"] -->|Tools| EA["EvaluationAgent"]
+    REG["REST: Company Registry<br/>· GET_v1_companies_verify"] -->|Tools| EA["EvaluationAgent"]
     EA -->|Message| GATE["Condition (Evidence gate)"]
 ```
 
-- **Select LLM to use**: `vllm-gen-qwen2.5-32B` — the LLM Configuration name registered in PAF at install (see [LOCAL.md §3](../../LOCAL.md#3-install-paf)). Backed by `Qwen/Qwen2.5-32B-Instruct-AWQ` on vLLM. PAF's Agent node lists registered LLM Configurations, not raw model IDs.
+- **Select LLM to use**: `vllm-gen-qwen2.5-72B` — the LLM Configuration name registered in PAF at install (see [LOCAL.md §3](../../LOCAL.md#3-install-paf)). Backed by `Qwen/Qwen2.5-72B-Instruct-AWQ` on vLLM. PAF's Agent node lists registered LLM Configurations, not raw model IDs.
 - **Temperature**: `0.0` (deterministic).
 - **Agent description**: `Loan application evidence-gatherer`.
-- **Tools**: filtered MCP surfaces as shown above. `banking-mcp` exposes only `lookup_application`; `opa-mcp` only `required_documents` + `evaluate_eligibility` (not the other five Rego tools); Company Registry REST only `verify_employer`.
+- **Tools**: every wired MCP server and REST datasource exposes **all** of its tools to the agent — PAF has no per-tool filter UI on the MCP server node or on the Agent node. `banking-mcp` exposes `lookup_application`; `opa-mcp` exposes all seven Rego tools (`required_documents`, `evaluate_eligibility`, `evaluate_aml`, `evaluate_kyc`, `evaluate_fair_lending_flags`, `lookup_pricing`, `list_policy_versions`); Company Registry REST exposes `GET_v1_companies_verify`.
 
-The tool surface is intentionally restricted: this agent must not see `hitl-mcp` and should not call `opa-mcp` tools other than the two listed. The narrower the surface, the less the model can drift.
+The tool surface is controlled by **which MCP servers you wire** (not by per-tool filtering) plus the Custom Instructions naming exactly which tools to call. The agent sees more than it should — the discipline lever is "do not see `hitl-mcp` at all" (no wire) combined with a tight CI recipe. This is a narrower lever than per-tool filtering would be, so the CI must be precise.
 
 **Custom instructions** — paste verbatim into the EvaluationAgent node:
 
@@ -173,7 +173,13 @@ Step 2. required_documents(
           residency        = residency,
           amount           = amount_requested)
 
-Step 3. verify_employer(name = employer_name)
+Step 3. GET_v1_companies_verify(name = employer_name)
+        That funky name is what PAF actually exposes the Company
+        Registry REST tool as — its OpenAPI importer ignores
+        `operationId` and auto-names every HTTP tool from method+path
+        (see `issues/openapi-importer-ignores-operationid.md`). Call
+        the exact name above; PAF's tool list does not include
+        `verify_employer`.
 
 Step 4. evaluate_eligibility(
           applicant   = {age: age_years, income: monthly_salary,
@@ -266,7 +272,7 @@ flowchart LR
     RA -->|Message| COS["Chat output (success)"]
 ```
 
-- **Select LLM to use**: `vllm-gen-qwen2.5-32B` (same LLM Configuration as EvaluationAgent).
+- **Select LLM to use**: `vllm-gen-qwen2.5-72B` (same LLM Configuration as EvaluationAgent).
 - **Temperature**: `0.0`.
 - **Agent description**: `Loan recommendation drafter`.
 - **Tools**: `hitl-mcp` only — single tool, single side effect.
@@ -387,7 +393,7 @@ For each scenario: edit the `Text Input(session_token)` node's Text field to the
 Please review my loan application and submit it for processing.
 ```
 
-Expected outcomes (qwen2.5:32B-AWQ on vLLM, OPA defaults in `005-system-config.yaml`):
+Expected outcomes (qwen2.5:72B-AWQ on vLLM, OPA defaults in `005-system-config.yaml`):
 
 | Session token (paste into Text Input) | Scenario                           | Expected `recommendation`                                                   |
 | ------------------------------------- | ---------------------------------- | --------------------------------------------------------------------------- |
@@ -470,13 +476,14 @@ Non-obvious rules and limits that shape how this workflow has to be built. Skim 
 - **SQL Query node is not used in this workflow.** It ignores `:name` bind variables and silently fails open ([`issues/sql-query-no-bind-variables.md`](../../issues/sql-query-no-bind-variables.md)); `banking-mcp` replaces it.
 - **Agent node has no max-iterations / max-tool-calls setting.** If a model loops or batches, the runtime does not break it out. Mitigations: tight recipe-style Custom Instructions, narrow per-agent tool surface, stronger model.
 - **Orphan nodes are rejected by the graph validator.** To remove a tool, delete the node from the canvas — disconnecting the wire alone does not work.
-- **PAF's OpenAPI importer caches the spec at import time.** Changing `operation_id` in `src/api/registry/main.py` requires deleting and re-adding the Company Registry datasource so the tool surfaces under the new name. Without the re-import the tool surfaces under PAF's method+path auto-name (e.g. `GET_v1_companies_verify`).
+- **PAF's OpenAPI importer ignores `operationId`** and always auto-names HTTP tools as `<METHOD>_<path>` (e.g. `GET_v1_companies_verify`). See [`issues/openapi-importer-ignores-operationid.md`](../../issues/openapi-importer-ignores-operationid.md). The CI must call the auto-name verbatim; setting `operation_id` on the FastAPI route has no effect on PAF's tool list.
+- **The Agent node hardcodes `max_iterations=5`, and the last iteration strips all wired tools.** Wayflow keeps only `[talk_to_user, submit, exit_conversation]` on the final iteration to force the model into reply mode. Effective ceiling: **4 successful tool calls** per agent turn — a single failed tool call (wrong name, transient MCP error) burns into the budget. See [`issues/agent-max-iterations-5-cap.md`](../../issues/agent-max-iterations-5-cap.md). This is the structural reason the two-agent split is mandatory, not stylistic.
 - **`Agent.Message → Prompt.<var>` chains cleanly.** Same wire pattern as `EvaluationAgent.Message → Prompt (Recommendation).evidence` — no supervisor / sub-agents wiring required.
 
 ### Two-agent contract
 
 - **Tool surface is enforced per agent.** `EvaluationAgent` must not see `hitl-mcp`; `RecommendationAgent` must see only `hitl-mcp`. This is the lever that prevents batched tool calls with fabricated intermediate results — if a single tool is all that's available, that's all the model can call.
-- **Latency is the sum of the two agent turns plus the Condition.** On vLLM + GB10 with `qwen2.5:32B-AWQ`, `EvaluationAgent` takes ~15–30 s (four tool calls + final Evidence emission), Condition evaluation is sub-millisecond, `RecommendationAgent` takes ~5–15 s (one tool call + decision); total ~35–65 s per successful workflow run. Error paths (Condition false) finish at ~15–30 s — no second agent turn.
+- **Latency is the sum of the two agent turns plus the Condition.** On vLLM + GB10 with `qwen2.5:72B-AWQ` (AWQ 4-bit, ~40 GB resident), expect roughly 1.5–2× the 32B-AWQ baseline — `EvaluationAgent` ~25–50 s (four tool calls + final Evidence emission), Condition evaluation sub-millisecond, `RecommendationAgent` ~10–25 s (one tool call + decision); total ~40–90 s per successful workflow run. Error paths (Condition false) finish at ~25–50 s — no second agent turn. Measure on your stack via `state_manager.log` timestamps; numbers above are an order-of-magnitude guide.
 - **The Evidence block format is a contract between EvaluationAgent and the Condition gate.** The gate's regex (`## Evidence[\s\S]*?- application_id:\s*\d+`) is the enforcement point — drift in EvaluationAgent's emitted format breaks the gate. Temperature `0.0` + the explicit format-at-top-and-bottom of the EvaluationAgent CI keep it stable. The forward path — once PAF's Agent node exposes vLLM's `response_format` — is JSON-schema-constrained output instead of a markdown block (see [Open follow-ups](#open-follow-ups)), at which point the Condition gate can become a JSON-shape check via `Parser` + `Condition` chained.
 
 ### Deterministic gates (Condition)
@@ -488,7 +495,7 @@ Non-obvious rules and limits that shape how this workflow has to be built. Skim 
 
 ### Agent / LLM behaviour
 
-- **`Qwen/Qwen2.5-32B-Instruct-AWQ` is the minimum for tool-following reliability.** Smaller models / smaller quantisations complete the pipeline but the customer-facing reply and the structured `create_hitl_task` args can drift apart. AWQ at 32B keeps the recommendation tier and reasoning in sync; it also reliably honours the SESSION TOKEN DISCIPLINE rule under prompt injection.
+- **`Qwen/Qwen2.5-72B-Instruct-AWQ` is the target model.** 32B-AWQ completed the pipeline end-to-end in earlier testing but proved fragile on this recipe — it occasionally leaked chat-template tokens (`<|im_start|>`, `<tool_response>`) into the assistant TextContent and fabricated inline tool responses that didn't match the real tool's schema. Both behaviors burn iterations against the `max_iterations=5` cap (see PAF Agent Builder constraints above) and can push a single recipe past the cliff. 72B-AWQ on a self-hosted GPU host has comfortable margin for the 4-tool recipe and reliably honours the SESSION TOKEN DISCIPLINE rule under prompt injection. Smaller models / smaller quantisations may complete some runs but are not recommended for this CI.
 - **Qwen's post-tool text emission is unreliable.** After the final tool call, the model sometimes ends the agent turn without writing a closing assistant message, leaving `EvaluationAgent.Message` empty. The EvaluationAgent CI pins the Evidence format at both top and bottom and labels the emission as "Step 5 — mandatory" specifically to push the model to comply. The Condition (Evidence gate) is the second line of defence: even when Qwen still drops the emission, the workflow fails cleanly instead of hallucinating.
 - **Qwen will call a wired tool even when the CI forbids it.** Diagnostic CIs that say "Do NOT call any tool" are not reliably honoured if the tool is wired to the agent. The narrow-tool-surface pattern (one MCP per agent, only the tools each agent needs) is therefore not optional — it is the _only_ enforceable boundary on what the model can call. Database constraints (FKs on `APP.hitl_task`) are the final safety net for hallucinated arguments.
 - **The agent must not supply `agent_run_id`.** `hitl-mcp.create_hitl_task` generates a UUID-4 server-side and returns it in the response. The input schema has no `agent_run_id` field; the Custom Instructions explicitly forbid passing one.
@@ -504,6 +511,6 @@ Non-obvious rules and limits that shape how this workflow has to be built. Skim 
 
 ### Tool surface hygiene
 
-- **Company Registry tool name comes from `operation_id` at OpenAPI import time.** Any change to `src/api/registry/main.py`'s `operation_id` requires refreshing `registry-api-openapi.json` from the running container AND re-importing the datasource in PAF.
+- **Company Registry tool name is `<METHOD>_<path>`** — PAF ignores `operation_id` (see Operating Constraints above). The current route `/v1/companies/verify` (GET) exposes as `GET_v1_companies_verify`. To change the tool name, change the FastAPI route path; setting / changing `operation_id` has no effect.
 - **`hitl-mcp.create_hitl_task` is the single side-effect tool of the workflow.** Any future caller (Spring backend, follow-on flow) must rely on the server-generated `agent_run_id` returned in the response rather than supplying its own.
 - **`banking-mcp.lookup_application` is the only path the workflow has to the customer's application context.** Do not add a parallel SQL Query node or a second lookup tool — the single path keeps the trust boundary auditable.
