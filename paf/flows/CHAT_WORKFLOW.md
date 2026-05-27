@@ -24,33 +24,6 @@ For the customer's current personal-loan application:
 
 Neither agent ever approves, rejects, or discloses the recommendation tier to the customer. They only write a HITL task. The closing sentence to the customer is fixed and contains no internal information.
 
-## Prerequisites
-
-Three one-time refreshes before building (or rebuilding) the workflow in the canvas:
-
-1. **`hitl-mcp` running the current code** for server-side UUID generation. `python manage.py local up` passes `--build` to compose so a fresh `local up` rebuilds wrapper images automatically when source has changed. Force-rebuild just this service:
-
-   ```bash
-   podman compose -f deploy/podman/compose.local.yml build hitl-mcp
-   podman compose -f deploy/podman/compose.local.yml up -d hitl-mcp
-   ```
-
-2. **`banking-mcp` running the current code** for the `lookup_application(session_token)` tool. Same rebuild pattern:
-
-   ```bash
-   podman compose -f deploy/podman/compose.local.yml build banking-mcp
-   podman compose -f deploy/podman/compose.local.yml up -d banking-mcp
-   ```
-
-3. **Company Registry HTTP datasource imported in PAF** so the tool surfaces under its `operationId` (`verify_employer`). PAF's OpenAPI importer caches the spec at import time, so each `src/api/registry/` source change requires deleting and re-adding the datasource. Refresh the local OpenAPI dump, then in PAF UI → Data Sources → Rest APIs → delete `Company Registry` (if present) → add via OpenAPI upload:
-
-   ```bash
-   podman exec paf-oracle-free-26ai curl -s \
-     http://registry-api:8600/openapi.json > registry-api-openapi.json
-   grep operationId registry-api-openapi.json
-   # expect: "operationId":"verify_employer"
-   ```
-
 ## Flow inputs
 
 The flow accepts **one** operator-provided runtime input — the **chat message** typed in PAF's Chat input field. Per-invocation `customer_id` / `application_id` are **never** received from the user. They are resolved server-side from an opaque session token.
@@ -179,8 +152,8 @@ Step 1. lookup_application(session_token = <System context token>)
   On success: bind the returned fields by name (application_id,
     amount_requested, term_months, product_type, purpose, status,
     employment_type, residency, employer_name, monthly_salary,
-    age_years, kyc_status, credit_score, existing_monthly_debt) and
-    continue to Step 2.
+    age_years, kyc_status, credit_score, existing_monthly_debt,
+    monthly_payment, dti, pti) and continue to Step 2.
   On error (response has an "error" field): skip Steps 2-5; your
     final message is the 2-line error variant of the Evidence block
     above. STOP.
@@ -193,17 +166,14 @@ Step 2. required_documents(
 
 Step 3. verify_employer(name = employer_name)
 
-Step 4. Compute first:
-          monthly_payment = amount_requested / term_months
-          dti = round((existing_monthly_debt + monthly_payment) / monthly_salary, 2)
-          pti = round(monthly_payment / monthly_salary, 2)
-        Then call:
-          evaluate_eligibility(
-            applicant   = {age: age_years, income: monthly_salary,
-                           credit_score: credit_score, dti: dti, pti: pti},
-            application = {amount_requested: amount_requested,
-                           term_months: term_months},
-            product     = {product_type: product_type})
+Step 4. evaluate_eligibility(
+          applicant   = {age: age_years, income: monthly_salary,
+                         credit_score: credit_score, dti: dti, pti: pti},
+          application = {amount_requested: amount_requested,
+                         term_months: term_months},
+          product     = {product_type: product_type})
+        Use dti and pti VERBATIM from the lookup_application result.
+        Do NOT recompute them; do NOT do any division yourself.
 
 Step 5. Write the Evidence block (success variant from the top of
   these instructions) as your final assistant message. This is

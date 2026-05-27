@@ -104,7 +104,10 @@ def lookup_application(session_token: str) -> dict:
           application_id, amount_requested, term_months, product_type,
           purpose, status, employment_type, residency, employer_name,
           monthly_salary, age_years, kyc_status, credit_score,
-          existing_monthly_debt.
+          existing_monthly_debt, monthly_payment, dti, pti.
+        monthly_payment / dti / pti are computed server-side so the agent
+        passes them straight to evaluate_eligibility without float math
+        (Qwen-32B-AWQ at temp 0.0 is unreliable on division).
         On failure, one of:
           {"error": "invalid_or_expired_session"}
           {"error": "application_not_found_or_closed",
@@ -137,7 +140,17 @@ def lookup_application(session_token: str) -> dict:
                 }
             column_names = [d[0].lower() for d in cur.description]
             result = dict(zip(column_names, app_row))
-            print(f"[lookup_application] -> success application_id={result.get('application_id')} amount={result.get('amount_requested')} employer={result.get('employer_name')!r}", flush=True)
+
+            monthly_salary = float(result["monthly_salary"])
+            amount_requested = float(result["amount_requested"])
+            term_months = int(result["term_months"])
+            existing_monthly_debt = float(result["existing_monthly_debt"])
+            monthly_payment = round(amount_requested / term_months, 2)
+            result["monthly_payment"] = monthly_payment
+            result["pti"] = round(monthly_payment / monthly_salary, 2)
+            result["dti"] = round((existing_monthly_debt + monthly_payment) / monthly_salary, 2)
+
+            print(f"[lookup_application] -> success application_id={result.get('application_id')} amount={result.get('amount_requested')} employer={result.get('employer_name')!r} dti={result['dti']} pti={result['pti']}", flush=True)
             return result
 
 
