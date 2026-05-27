@@ -61,13 +61,13 @@ flowchart LR
 
 The **Condition (Evidence gate)** is the deterministic safety net between the two agents. EvaluationAgent's text emission is unreliable (Qwen sometimes ends after the tool calls without writing the final Evidence block — see [Operating constraints](#agent--llm-behaviour)). The Condition gate inspects EvaluationAgent's `Message` output and only forwards it to RecommendationAgent when it matches a well-formed Evidence shape. On any failure (empty, malformed, lookup-error variant) it short-circuits to Chat output with a fixed customer-facing error sentence, so RecommendationAgent is never invoked on bad input and cannot hallucinate a non-existent `application_id` into `create_hitl_task`.
 
-The actual PAF Agent Builder canvas after the workflow is wired up:
-
-![CHAT_WORKFLOW in PAF Agent Builder](../../images/CHAT_WORKFLOW.png)
-
 `ocr-mcp` is intentionally not wired into this workflow. When the OCR pipeline becomes real, the slot is between the existing two agents: `EvaluationAgent` emits `required_documents`, a new `OcrAgent` extracts each, the augmented evidence flows into `RecommendationAgent`. See [Open follow-ups](#open-follow-ups).
 
-## Nodes
+## Part 1 — Evaluation phase
+
+![CHAT_WORKFLOW Part 1 — EvaluationAgent up to the Condition gate](../../images/CHAT_WORKFLOW_1_EVALUATION_AGENT.png)
+
+_This is what you are going to build in Part 1._
 
 ### Chat input
 
@@ -104,10 +104,19 @@ Wire: `Text Input(session_token).Message` → `session_token`, `Chat input.Messa
 
 ### EvaluationAgent
 
-- **LLM**: `Qwen/Qwen2.5-32B-Instruct-AWQ` (vLLM endpoint, provider `vLLM` in PAF).
+```mermaid
+flowchart LR
+    P["Prompt (Evaluation)"] -->|Prompt message| EA
+    BNK["MCP: banking-mcp<br/>· lookup_application"] -->|Tools| EA
+    OPA["MCP: opa-mcp<br/>· required_documents<br/>· evaluate_eligibility"] -->|Tools| EA
+    REG["REST: Company Registry<br/>· verify_employer"] -->|Tools| EA["EvaluationAgent"]
+    EA -->|Message| GATE["Condition (Evidence gate)"]
+```
+
+- **Select LLM to use**: `vllm-gen-qwen2.5-32B` — the LLM Configuration name registered in PAF at install (see [LOCAL.md §3](../../LOCAL.md#3-install-paf)). Backed by `Qwen/Qwen2.5-32B-Instruct-AWQ` on vLLM. PAF's Agent node lists registered LLM Configurations, not raw model IDs.
 - **Temperature**: `0.0` (deterministic).
 - **Agent description**: `Loan application evidence-gatherer`.
-- **Tools**: `banking-mcp` (filtered to `lookup_application`), `opa-mcp` (filtered to `required_documents` + `evaluate_eligibility`), Company Registry REST (`verify_employer`).
+- **Tools**: filtered MCP surfaces as shown above. `banking-mcp` exposes only `lookup_application`; `opa-mcp` only `required_documents` + `evaluate_eligibility` (not the other five Rego tools); Company Registry REST only `verify_employer`.
 
 The tool surface is intentionally restricted: this agent must not see `hitl-mcp` and should not call `opa-mcp` tools other than the two listed. The narrower the surface, the less the model can drift.
 
@@ -191,6 +200,14 @@ STRICT RULES:
 
 ### Condition (Evidence gate)
 
+```mermaid
+flowchart LR
+    EA1["EvaluationAgent.Message"] -->|Text Input| GATE
+    EA1 -->|True Message| GATE["Condition (Evidence gate)<br/>regex: ## Evidence + application_id"]
+    GATE -->|True| RP["Prompt (Recommendation).evidence"]
+    GATE -.->|False| COE["Chat output (error).Message"]
+```
+
 Deterministic safety net between the two agents. Inspects `EvaluationAgent.Message` and only forwards a well-formed success-shape Evidence block to RecommendationAgent. Empty, malformed, or error-variant evidence short-circuits to Chat output with a fixed customer-facing error sentence; RecommendationAgent is never invoked on bad input and therefore cannot hallucinate an `application_id`.
 
 Source: `paf-kit/applied-ai/kit/agent_factory/app/models/agentBuilder/steps/customSteps/Condition.py` (registered as node type `conditionComponent`, category `Processing`). Only one of `true_output` / `false_output` fires per evaluation (BranchingStep semantics).
@@ -221,6 +238,12 @@ The error path goes to its **own** Chat output node (`Chat output (error)`), not
 
 Adjust the regex if EvaluationAgent's emitted format drifts; keep `application_id` as the required marker since RecommendationAgent depends on it.
 
+## Part 2 — Recommendation phase
+
+![CHAT_WORKFLOW Part 2 — RecommendationAgent from the Condition gate onward](../../images/CHAT_WORKFLOW_2_RECOMMENDATION_AGENT.png)
+
+_This is what you are going to build in Part 2._
+
 ### Prompt (Recommendation)
 
 Template (exposes a single `evidence` input port):
@@ -236,10 +259,17 @@ Wire: `Condition.true_output` → `evidence`.
 
 ### RecommendationAgent
 
-- **LLM**: `Qwen/Qwen2.5-32B-Instruct-AWQ`.
+```mermaid
+flowchart LR
+    P["Prompt (Recommendation)"] -->|Prompt message| RA
+    HITL["MCP: hitl-mcp<br/>· create_hitl_task"] -->|Tools| RA["RecommendationAgent"]
+    RA -->|Message| COS["Chat output (success)"]
+```
+
+- **Select LLM to use**: `vllm-gen-qwen2.5-32B` (same LLM Configuration as EvaluationAgent).
 - **Temperature**: `0.0`.
 - **Agent description**: `Loan recommendation drafter`.
-- **Tools**: `hitl-mcp` only (single tool, single side effect).
+- **Tools**: `hitl-mcp` only — single tool, single side effect.
 
 **Custom instructions** — paste verbatim into the RecommendationAgent node:
 
@@ -336,6 +366,10 @@ Only one of the two terminals runs per workflow execution (BranchingStep semanti
 | Prompt (Recommendation).`Prompt message` | RecommendationAgent.`Prompt`             |
 | MCP server (hitl-mcp).`Tools`            | RecommendationAgent.`Tools`              |
 | RecommendationAgent.`Message`            | Chat output (success).`Message`          |
+
+The fully wired canvas, for reference:
+
+![CHAT_WORKFLOW in PAF Agent Builder](../../images/CHAT_WORKFLOW.png)
 
 ## Test prompts
 
