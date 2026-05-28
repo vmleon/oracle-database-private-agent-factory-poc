@@ -11,7 +11,9 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class SessionServiceTest {
@@ -30,6 +32,13 @@ class SessionServiceTest {
     @Test
     void resolveRejectsNullToken() {
         assertThatThrownBy(() -> service.resolve(null))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("401");
+    }
+
+    @Test
+    void resolveRejectsBlankToken() {
+        assertThatThrownBy(() -> service.resolve("   "))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("401");
     }
@@ -61,5 +70,6 @@ class SessionServiceTest {
         when(repo.save(any(AuthSession.class))).thenAnswer(i -> i.getArgument(0));
         String token = service.mint(5L, 9L);
         assertThat(token).startsWith("sess_");
+        verify(repo).save(argThat(s -> s.getSessionToken().equals(token)));
     }
 }
