@@ -81,7 +81,9 @@ def agent_id(paf) -> str:
     r = paf.get(f"{PAF_BASE}/agentFactory/v1/agents", timeout=30)
     r.raise_for_status()
     body = r.json()
-    agents = body.get("data") if isinstance(body, dict) else body
+    data = body.get("data") if isinstance(body, dict) else body
+    # PAF wraps the list as {"data": {"count": N, "items": [...]}}.
+    agents = data.get("items", []) if isinstance(data, dict) else data
     if not isinstance(agents, list):
         pytest.exit(f"Unexpected /v1/agents response shape: {body}")
     for a in agents:
