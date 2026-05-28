@@ -157,6 +157,34 @@ services:
     container_name: paf-registry-api
     restart: unless-stopped
 
+  # Spring Boot Application Service — the customer chat slice. Mints session
+  # tokens, persists chat_message, and bridges customer turns to PAF's
+  # CHAT_WORKFLOW (login cookie + run). Connects to Oracle as APP (owns
+  # auth_session + chat_message). Reaches PAF on the compose network at
+  # https://paf:8080 (self-signed cert; the client skips TLS verification).
+  backend:
+    build:
+      context: ../../src/backend
+    container_name: paf-backend
+    restart: unless-stopped
+    depends_on:
+      oracle-free-26ai:
+        condition: service_healthy
+      paf:
+        condition: service_started
+    ports:
+      - "8090:8090"
+    environment:
+      DB_HOST: "oracle-free-26ai"
+      DB_PORT: "1521"
+      DB_SERVICE: "FREEPDB1"
+      DB_USER: "APP"
+      DB_PASSWORD: "${DB_PASSWORD}"
+      PAF_BASE_URL: "https://paf:8080"
+      PAF_ADMIN_USER: "${PAF_ADMIN_USER}"
+      PAF_ADMIN_PASS: "${PAF_ADMIN_PASS}"
+      CHAT_WORKFLOW_AGENT_ID: "${CHAT_WORKFLOW_AGENT_ID:-}"
+
   # TLS terminator in front of Ollama. Exists because Oracle 26ai's
   # DBMS_CLOUD_AI rejects HTTP endpoints on-prem (ORA-20047). Caddy
   # serves a pre-generated self-signed cert; the matching CA root is
