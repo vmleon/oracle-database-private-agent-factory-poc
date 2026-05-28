@@ -13,7 +13,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
+import org.springframework.http.HttpStatus;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
 import static org.springframework.http.HttpMethod.GET;
 import static org.springframework.http.HttpMethod.POST;
 
@@ -59,5 +61,39 @@ class PafClientTest {
         assertThatThrownBy(() -> client.run("[[SESSION sess_x]]\nhi"))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("502");
+    }
+
+    @Test
+    void runDiscoversAgentIdWhenNotPinned() {
+        client = new PafClient(builder.build(), "admin@example.com", "secret", "");
+        server.expect(requestTo("https://paf:8080/agentFactory/v1/loginValidation"))
+                .andRespond(withSuccess().header(HttpHeaders.SET_COOKIE, "ahffi_session=abc"));
+        server.expect(requestTo("https://paf:8080/agentFactory/v1/agents"))
+                .andExpect(method(GET))
+                .andRespond(withSuccess(
+                        "{\"data\":{\"items\":[{\"name\":\"CHAT_WORKFLOW\",\"agentId\":\"found-9\"}]}}",
+                        MediaType.APPLICATION_JSON));
+        server.expect(requestTo("https://paf:8080/agentFactory/v1/agentBuilder/run/found-9"))
+                .andExpect(method(POST))
+                .andRespond(withSuccess("{\"data\":\"discovered reply\"}", MediaType.APPLICATION_JSON));
+
+        assertThat(client.run("[[SESSION s]]\nhi")).isEqualTo("discovered reply");
+        server.verify();
+    }
+
+    @Test
+    void runRelogsInAndRetriesOn401() {
+        server.expect(requestTo("https://paf:8080/agentFactory/v1/loginValidation"))
+                .andRespond(withSuccess().header(HttpHeaders.SET_COOKIE, "ahffi_session=stale"));
+        server.expect(requestTo("https://paf:8080/agentFactory/v1/agentBuilder/run/agent-123"))
+                .andRespond(withStatus(HttpStatus.UNAUTHORIZED));
+        server.expect(requestTo("https://paf:8080/agentFactory/v1/loginValidation"))
+                .andRespond(withSuccess().header(HttpHeaders.SET_COOKIE, "ahffi_session=fresh"));
+        server.expect(requestTo("https://paf:8080/agentFactory/v1/agentBuilder/run/agent-123"))
+                .andExpect(header(HttpHeaders.COOKIE, "ahffi_session=fresh"))
+                .andRespond(withSuccess("{\"data\":\"after relogin\"}", MediaType.APPLICATION_JSON));
+
+        assertThat(client.run("[[SESSION s]]\nhi")).isEqualTo("after relogin");
+        server.verify();
     }
 }

@@ -24,7 +24,6 @@ public class PafClient {
     private final RestClient http;
     private final String adminUser;
     private final String adminPass;
-    private final String configuredAgentId;
     private final ObjectMapper mapper = new ObjectMapper();
 
     private volatile String cookie;
@@ -37,7 +36,6 @@ public class PafClient {
         this.http = pafRestClient;
         this.adminUser = adminUser;
         this.adminPass = adminPass;
-        this.configuredAgentId = configuredAgentId;
         this.agentId = (configuredAgentId == null || configuredAgentId.isBlank()) ? null : configuredAgentId;
     }
 
@@ -45,19 +43,41 @@ public class PafClient {
     public String run(String envelopedMessage) {
         ensureCookie();
         String id = ensureAgentId();
-        String body = http.post()
-                .uri(RUN_PATH + id)
-                .header(HttpHeaders.COOKIE, cookie)
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(Map.of("message", envelopedMessage))
-                .retrieve()
-                .body(String.class);
+        String body;
+        try {
+            body = postRun(id, envelopedMessage);
+        } catch (org.springframework.web.client.RestClientResponseException e) {
+            if (e.getStatusCode().value() == 401) {
+                // Cached cookie likely expired — drop it, re-login, and retry once.
+                this.cookie = null;
+                ensureCookie();
+                try {
+                    body = postRun(id, envelopedMessage);
+                } catch (org.springframework.web.client.RestClientException retry) {
+                    throw new ResponseStatusException(BAD_GATEWAY, "PAF run failed after re-login", retry);
+                }
+            } else {
+                throw new ResponseStatusException(BAD_GATEWAY, "PAF run returned HTTP error", e);
+            }
+        } catch (org.springframework.web.client.RestClientException e) {
+            throw new ResponseStatusException(BAD_GATEWAY, "PAF run failed", e);
+        }
         JsonNode root = readTree(body);
         JsonNode errs = root.path("errorMessages");
         if (errs.isArray() && !errs.isEmpty()) {
             throw new ResponseStatusException(BAD_GATEWAY, "PAF returned errors: " + errs);
         }
         return Envelope.extractReply(root);
+    }
+
+    private String postRun(String id, String envelopedMessage) {
+        return http.post()
+                .uri(RUN_PATH + id)
+                .header(HttpHeaders.COOKIE, cookie)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("message", envelopedMessage))
+                .retrieve()
+                .body(String.class);
     }
 
     private void ensureCookie() {
