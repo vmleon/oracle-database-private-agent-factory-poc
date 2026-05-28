@@ -156,15 +156,16 @@ joined to `product_catalog` for the product label.
 ```
 POST /v1/login   { "customerId": 1 }
 200  { "sessionToken": "sess_<hex>", "customerId": 1, "applicationId": 1,
-       "roomId": "room_<hex>" }
+       "roomId": "room-app-1" }
 ```
 
 - Resolve the customer's open application (most recent if more than one). If the customer
   has no open application → `404`. This slice never creates an application (see §2, §15).
 - Mint a row in `APP.auth_session`: `session_token = "sess_" + 32 hex chars`,
   `scenario_label = 'backend-login'`, `expires_at = SYSTIMESTAMP + 8h`.
-- `roomId` is minted here (`"room_" + hex`), stored on the first `chat_message` and reused
-  for the conversation. It keys persistence; it is not PAF's room id (see §10).
+- `roomId` is derived deterministically as `"room-app-" + applicationId`, so it needs no
+  storage and is re-derivable from the token on every request. It keys persistence; it is
+  not PAF's room id (see §10).
 
 ### `POST /v1/chat`
 
@@ -244,11 +245,11 @@ application_id)` from `auth_session` server-side and never trusts IDs from a req
 
 1. **Exact reply field.** The pytest harness only asserts DB side-effects, so the precise
    JSON path to the agent's text inside `data` is unconfirmed. First coding step: capture
-   one real `run` response, then write `Envelope.parseReply` against it.
+   one real `run` response, then write `Envelope.extractReply` against it.
 2. **roomId / continuity.** Each PAF run is self-contained (context re-derived from the
-   token), so the POC does not thread PAF's `roomId`. Persistence is keyed by the local
-   `room_id` minted at login. If a later need arises, PAF's returned `roomId` can be echoed
-   on subsequent turns; not done in this slice.
+   token), so the POC does not thread PAF's `roomId`. Persistence is keyed by the
+   deterministic `room-app-<applicationId>` derived on each request. If a later need arises,
+   PAF's returned `roomId` can be echoed on subsequent turns; not done in this slice.
 
 ## 11. Configuration
 
@@ -277,7 +278,7 @@ TDD — write tests first for the pure, security-critical logic:
 
 - `Envelope.sanitize` strips an injected `[[SESSION ...]]` sentinel (single and repeated).
 - `Envelope.build` produces `[[SESSION <token>]]\n<sanitized message>`.
-- `Envelope.parseReply` extracts the reply text from a captured PAF response sample
+- `Envelope.extractReply` extracts the reply text from a captured PAF response sample
   (added once a real response is captured — see §10).
 - `SessionService` fail-secure: unknown/expired token resolves to empty → controller `401`.
 
