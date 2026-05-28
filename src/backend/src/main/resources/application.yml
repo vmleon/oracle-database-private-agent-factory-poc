@@ -1,0 +1,34 @@
+server:
+  port: 8090
+
+spring:
+  datasource:
+    url: jdbc:oracle:thin:@//${DB_HOST:localhost}:${DB_PORT:1521}/${DB_SERVICE:FREEPDB1}
+    username: ${DB_USER:APP}
+    password: ${DB_PASSWORD}
+    type: oracle.ucp.jdbc.PoolDataSource
+    oracleucp:
+      connection-factory-class-name: oracle.jdbc.pool.OracleDataSource
+      connection-pool-name: appPool
+      initial-pool-size: 2
+      min-pool-size: 2
+      max-pool-size: 10
+  jpa:
+    hibernate:
+      ddl-auto: none
+    open-in-view: false
+
+paf:
+  base-url: ${PAF_BASE_URL:https://paf:8080}
+  admin-user: ${PAF_ADMIN_USER:}
+  admin-pass: ${PAF_ADMIN_PASS:}
+  agent-id: ${CHAT_WORKFLOW_AGENT_ID:}
+
+session:
+  ttl-hours: ${SESSION_TTL_HOURS:8}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health

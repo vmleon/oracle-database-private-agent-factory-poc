@@ -57,3 +57,7 @@ deploy/podman/caddy/tls/
 # Logs
 *.log
 logs/
+
+# Spring Boot backend
+src/backend/.gradle/
+src/backend/build/
