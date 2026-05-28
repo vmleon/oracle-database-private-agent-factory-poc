@@ -1,16 +1,17 @@
-"""Pytest fixtures for the CHAT_WORKFLOW end-to-end test harness.
+r"""Pytest fixtures for the CHAT_WORKFLOW end-to-end test harness.
 
-Strategy: avoid the per-scenario canvas rebuild by using a single fixed
-session token (`paf-test-runner`) baked into the canvas's Text Input, and
-scaffolding APP.auth_session per test to point that token at the desired
-(customer_id, application_id). banking-mcp.lookup_application resolves the
-token via the DB row we just wrote — exactly what a production App Service
-would do at login. PAF issue 02 (no per-invocation inputs) is sidestepped.
+Strategy: each test mints a unique opaque session token (`sess_<hex>`) into
+APP.auth_session pointing at the desired (customer_id, application_id), then
+sends it in-band to the flow inside a `[[SESSION <token>]]` envelope. The
+flow's RegexExtractor splits the token from the customer message at flow
+start; banking-mcp.lookup_application resolves the token — exactly what a
+production App Service would do at login. Unique per-test tokens mean no
+shared-row contention.
 
-Required canvas setup (one-time, manual):
-  1. Set Text Input(session_token) value = "paf-test-runner"
-  2. Save the flow
-  3. Click Publish in the canvas top bar
+Required canvas setup (one-time, manual): the published CHAT_WORKFLOW must
+split the envelope — a RegexExtractor on `(?<=\[\[SESSION )[^\]]+` feeds the
+Evaluation prompt's session_token, and one on `(?<=\]\])[\s\S]+` feeds its
+input. See paf/flows/CHAT_WORKFLOW.md.
 
 Required env vars (.env, loaded automatically):
   - PAF_ADMIN_USER, PAF_ADMIN_PASS — programmatic login via /v1/loginValidation
@@ -21,6 +22,8 @@ Required env vars (.env, loaded automatically):
 from __future__ import annotations
 
 import os
+import re
+import secrets
 import warnings
 from pathlib import Path
 
@@ -35,7 +38,19 @@ warnings.simplefilter("ignore", InsecureRequestWarning)
 
 PROJECT_ROOT = Path(__file__).parent.parent
 PAF_BASE = "https://localhost:8080"
-RUNNER_TOKEN = "paf-test-runner"
+
+_SENTINEL_RE = re.compile(r"\[\[SESSION[^\]]*\]\]")
+
+
+def _sanitize(message: str) -> str:
+    """Strip any [[SESSION ...]] sentinel a customer might inject. MANDATORY
+    before enveloping — the security boundary depends on it."""
+    return _SENTINEL_RE.sub("", message)
+
+
+def _envelope(token: str, message: str, *, sanitize: bool = True) -> str:
+    body = _sanitize(message) if sanitize else message
+    return f"[[SESSION {token}]]\n{body}"
 
 
 @pytest.fixture(scope="session")
@@ -109,43 +124,50 @@ def db(env):
     conn.close()
 
 
-def _clear_runner_token(db) -> None:
-    with db.cursor() as cur:
-        cur.execute(
-            "DELETE FROM APP.auth_session WHERE session_token = :t",
-            t=RUNNER_TOKEN,
-        )
-    db.commit()
-
-
 @pytest.fixture
-def runner_token(db):
-    """Per-test: clear the runner token row, yield a setter for the desired
-    (customer_id, application_id), then clear again on teardown."""
-    _clear_runner_token(db)
+def mint_session(db):
+    """Per-test: mint unique opaque session tokens in APP.auth_session and clean
+    them up on teardown. Returns mint(customer_id, application_id) -> token.
 
-    def _set(customer_id: int, application_id: int) -> None:
+    Each call issues a fresh `sess_<hex>` token with a 15-minute expiry, so tests
+    never contend on a shared row (unlike the old fixed-token approach)."""
+    minted: list[str] = []
+
+    def _mint(customer_id: int, application_id: int) -> str:
+        token = "sess_" + secrets.token_hex(16)
         with db.cursor() as cur:
             cur.execute(
                 "INSERT INTO APP.auth_session "
-                "(session_token, customer_id, application_id, scenario_label) "
-                "VALUES (:t, :c, :a, 'pytest-runner')",
-                t=RUNNER_TOKEN, c=customer_id, a=application_id,
+                "(session_token, customer_id, application_id, scenario_label, "
+                " expires_at) "
+                "VALUES (:t, :c, :a, 'pytest-mint', "
+                "        SYSTIMESTAMP + INTERVAL '15' MINUTE)",
+                t=token, c=customer_id, a=application_id,
             )
         db.commit()
+        minted.append(token)
+        return token
 
-    yield _set
-    _clear_runner_token(db)
+    yield _mint
+
+    if minted:
+        with db.cursor() as cur:
+            for t in minted:
+                cur.execute(
+                    "DELETE FROM APP.auth_session WHERE session_token = :t", t=t
+                )
+        db.commit()
 
 
 @pytest.fixture
 def chat(paf, agent_id):
-    """POST a chat message through the published CHAT_WORKFLOW endpoint.
-    Returns the unwrapped response body (PAF wraps as {data, errorMessages, ...})."""
-    def _run(message: str) -> dict:
+    """POST a chat turn through the published CHAT_WORKFLOW endpoint, wrapping
+    token + message in the [[SESSION ...]] envelope the flow's RegexExtractor
+    splits. Returns the unwrapped response body (PAF wraps as {data, ...})."""
+    def _run(token: str, message: str, *, sanitize: bool = True) -> dict:
         r = paf.post(
             f"{PAF_BASE}/agentFactory/v1/agentBuilder/run/{agent_id}",
-            json={"message": message},
+            json={"message": _envelope(token, message, sanitize=sanitize)},
             timeout=300,  # vLLM 72B can take 60-90s for a full agent turn
         )
         r.raise_for_status()
