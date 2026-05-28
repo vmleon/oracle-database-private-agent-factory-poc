@@ -108,10 +108,10 @@ PAF terminates TLS itself with a self-signed cert — your browser will warn; ac
 - **Step 2 — database.** DB host: `oracle-free-26ai` (compose service name — **not** `localhost`, which would point at the PAF container itself). Port `1521`, service `FREEPDB1`, user `AGENT_FACTORY`, password = `DB_PASSWORD` from `.env`.
 - **Step 3 — install.** Click Install. PAF creates its metadata tables under `AGENT_FACTORY` and a read-only worker user `AAI_RO_AGENT_FACTORY`.
 - **Step 4 — LLM Management.** Register two **LLM Configurations** against your vLLM endpoint:
-  - **`vllm-gen-qwen2.5-72B`** — generative; model `Qwen/Qwen2.5-72B-Instruct-AWQ` (native tool-calling; 72B chosen over 32B-AWQ after the smaller variant proved borderline on the 4-tool recipe — see [`paf/flows/CHAT_WORKFLOW.md §Operating constraints`](paf/flows/CHAT_WORKFLOW.md)).
+  - **`vllm-gen-qwen2.5-72B`** — generative; model `Qwen/Qwen2.5-72B-Instruct-AWQ` (native tool-calling; the target model for the 4-tool recipe — see [`paf/flows/CHAT_WORKFLOW.md §Operating constraints`](paf/flows/CHAT_WORKFLOW.md)).
   - **`vllm-embed-bge-m3`** — embeddings; model `BAAI/bge-m3`.
 
-  PAF's Agent node lists registrations by **configuration name**, not by model ID — `paf/flows/CHAT_WORKFLOW.md` references these names verbatim, so use them exactly. Pick **LLM provider: vLLM** (a first-class radio option in PAF's form, alongside OCI GenAI / OpenAI / Ollama / Gemini). The two models run as separate vLLM containers on separate ports (defaults `:8000` for generation, `:8001` for embeddings). Paste the host with its scheme into the **Host** field (`http://<gpu_host>`) and the port (`8000` or `8001`) into the separate **Port** field — PAF appends `/v1/…` itself when the provider is vLLM. `paf bootstrap` resolves `.local` mDNS names to an IPv4 address for you, since the PAF container can't do mDNS. Smaller quantisations / 7B variants work for tool-call smoke tests but produce internally inconsistent recommendations across a 4-tool pipeline — see `paf/flows/CHAT_WORKFLOW.md §Operating constraints`.
+  PAF's Agent node lists registrations by **configuration name**, not by model ID — `paf/flows/CHAT_WORKFLOW.md` references these names verbatim, so use them exactly. Pick **LLM provider: vLLM** (a first-class radio option in PAF's form, alongside OCI GenAI / OpenAI / Ollama / Gemini). The two models run as separate vLLM containers on separate ports (defaults `:8000` for generation, `:8001` for embeddings). Paste the host with its scheme into the **Host** field (`http://<gpu_host>`) and the port (`8000` or `8001`) into the separate **Port** field — PAF appends `/v1/…` itself when the provider is vLLM. `paf bootstrap` resolves `.local` mDNS names to an IPv4 address for you, since the PAF container can't do mDNS. Smaller quantisations / 7B variants are not recommended for the 4-tool pipeline — see `paf/flows/CHAT_WORKFLOW.md §Operating constraints`.
 
 After install completes, sign in as the admin user.
 
@@ -220,7 +220,7 @@ SELECT task_id, application_id, agent_recommendation, agent_run_id
 SELECT COUNT(*) FROM "APP"."HITL_REQUEST";
 ```
 
-When the flow is green across all five scenarios, export the JSON from Agent Builder (top-right menu → Export) and save to `paf/flows/chat_workflow.flow.json` so a clean redeploy can re-import it.
+When the flow is green across the test scenarios, capture the JSON for version control. PAF has **no Export button** — grab it from the browser's Network tab (`GET /agentFactory/v1/agents/<agent_id>`) per [`paf/flows/CHAT_WORKFLOW.md §Export`](paf/flows/CHAT_WORKFLOW.md) and save to `paf/flows/chat_workflow.flow.json`. It's a reference snapshot, not a clean re-import — see [`issues/05-no-flow-export-endpoint.md`](issues/05-no-flow-export-endpoint.md).
 
 If anything hangs or errors, `python manage.py local logs paf` shows the backend trace.
 
