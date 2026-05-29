@@ -1037,6 +1037,15 @@ def local_up() -> None:
     if paf_ready:
         console.print("[bold]Configuring PAF container (post-start handshake)...[/bold]")
         _paf_post_start()
+    # `up --build` rebuilds the backend image when src/backend changed, but
+    # podman leaves the already-running container on the old image — so code
+    # changes were silently ignored. Force-recreate just the backend (DB is
+    # healthy by now) so it always lands on the freshly built image.
+    console.print("[bold]Recreating backend onto the latest image...[/bold]")
+    _run([
+        "podman", "compose", "-f", str(PODMAN_COMPOSE),
+        "up", "-d", "--force-recreate", "--no-deps", "backend",
+    ])
     console.print("\n[green]✓ Local stack up.[/green]")
     if paf_ready:
         console.print(

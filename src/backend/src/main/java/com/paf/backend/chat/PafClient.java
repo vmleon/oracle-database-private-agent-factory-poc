@@ -2,6 +2,8 @@ package com.paf.backend.chat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -17,6 +19,7 @@ import static org.springframework.http.HttpStatus.BAD_GATEWAY;
 @Component
 public class PafClient {
 
+    private static final Logger log = LoggerFactory.getLogger(PafClient.class);
     private static final String LOGIN_PATH = "/agentFactory/v1/loginValidation";
     private static final String AGENTS_PATH = "/agentFactory/v1/agents";
     private static final String RUN_PATH = "/agentFactory/v1/agentBuilder/run/";
@@ -54,20 +57,30 @@ public class PafClient {
                 try {
                     body = postRun(id, envelopedMessage);
                 } catch (org.springframework.web.client.RestClientException retry) {
+                    log.warn("PAF run failed after re-login (agentId={})", id, retry);
                     throw new ResponseStatusException(BAD_GATEWAY, "PAF run failed after re-login", retry);
                 }
             } else {
+                log.warn("PAF run returned HTTP {} (agentId={}): {}",
+                        e.getStatusCode().value(), id, e.getResponseBodyAsString(), e);
                 throw new ResponseStatusException(BAD_GATEWAY, "PAF run returned HTTP error", e);
             }
         } catch (org.springframework.web.client.RestClientException e) {
+            log.warn("PAF run failed (agentId={})", id, e);
             throw new ResponseStatusException(BAD_GATEWAY, "PAF run failed", e);
         }
         JsonNode root = readTree(body);
         JsonNode errs = root.path("errorMessages");
         if (errs.isArray() && !errs.isEmpty()) {
+            log.warn("PAF returned errorMessages (agentId={}): {}", id, errs);
             throw new ResponseStatusException(BAD_GATEWAY, "PAF returned errors: " + errs);
         }
-        return Envelope.extractReply(root);
+        try {
+            return Envelope.extractReply(root);
+        } catch (IllegalStateException e) {
+            log.warn("PAF reply shape not recognized (agentId={}): {}", id, body, e);
+            throw new ResponseStatusException(BAD_GATEWAY, "PAF reply shape not recognized", e);
+        }
     }
 
     private String postRun(String id, String envelopedMessage) {

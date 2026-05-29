@@ -17,6 +17,12 @@ spring:
     hibernate:
       ddl-auto: none
     open-in-view: false
+    properties:
+      # Map java.time.Instant to a plain TIMESTAMP read/write. The Hibernate 6
+      # default (TIMESTAMP_UTC) makes the Oracle driver read our TIMESTAMP
+      # columns as time-zone-aware values, which throws ORA-18716 ("not in any
+      # time zone") on Oracle. AUTH_SESSION/CHAT_MESSAGE columns are plain TIMESTAMP.
+      hibernate.type.preferred_instant_jdbc_type: TIMESTAMP
 
 paf:
   base-url: ${PAF_BASE_URL:https://paf:8080}

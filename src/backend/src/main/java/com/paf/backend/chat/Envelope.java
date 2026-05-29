@@ -28,8 +28,10 @@ public final class Envelope {
     }
 
     /**
-     * Extract the agent's reply text from a PAF run response tree. Tries data-as-string,
-     * then common nested fields, then the top level, then the data node serialized.
+     * Extract the agent's reply text from a PAF run response tree. Live PAF returns
+     * {"message": "<text>", "roomId": "..."}; we also accept data-as-string and the
+     * other common reply fields. Throws if none match, so an unexpected shape fails
+     * loudly (caller maps it to 502) instead of leaking a raw JSON blob into the chat.
      */
     public static String extractReply(JsonNode root) {
         JsonNode data = root.has("data") ? root.get("data") : root;
@@ -41,6 +43,8 @@ public final class Envelope {
                 return data.get(field).asText();
             }
         }
-        return data.toString();
+        throw new IllegalStateException(
+                "PAF reply shape not recognized; expected a string or one of "
+                        + REPLY_FIELDS + " but got: " + root);
     }
 }

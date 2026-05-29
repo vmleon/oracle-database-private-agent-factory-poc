@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class EnvelopeTest {
 
@@ -45,8 +46,16 @@ class EnvelopeTest {
     }
 
     @Test
-    void extractReplyFallsBackToTopLevelWhenNoDataKey() throws Exception {
-        var root = mapper.readTree("{\"message\":\"top reply\"}");
+    void extractReplyReadsLivePafShape() throws Exception {
+        // The shape live PAF actually returns from agentBuilder/run.
+        var root = mapper.readTree("{\"message\":\"top reply\",\"roomId\":\"r1\"}");
         assertThat(Envelope.extractReply(root)).isEqualTo("top reply");
+    }
+
+    @Test
+    void extractReplyThrowsWhenShapeUnrecognized() throws Exception {
+        var root = mapper.readTree("{\"roomId\":\"r1\",\"unexpected\":123}");
+        assertThatThrownBy(() -> Envelope.extractReply(root))
+                .isInstanceOf(IllegalStateException.class);
     }
 }

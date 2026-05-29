@@ -85,6 +85,24 @@ The identifier is an Oracle reserved word. Common offenders: `SESSION`, `USER`, 
 
 If the failing changeset was never applied (`Run: 0` in Liquibase's update summary), it's safe to edit the changeset in place and re-run `local up`. If it was applied and you need to rename, write a new changeset that drops + recreates rather than editing the original (Liquibase checksum validation will reject in-place edits of applied changesets).
 
+### Backend chat/history returns 500 with `ORA-18716: not in any time zone`
+
+The Spring Boot backend's `/v1/chat` and `/v1/chat/history` fail the moment they _read_ a `TIMESTAMP` column (the write at login succeeds, so the symptom only shows up on the first read). Hibernate 6 maps `java.time.Instant` to the `TIMESTAMP_UTC` JDBC type by default, which makes the Oracle driver read our plain `TIMESTAMP` columns (`AUTH_SESSION.created_at/expires_at`, `CHAT_MESSAGE.created_at`) as time-zone-aware values — and Oracle rejects that with ORA-18716. Fix: tell Hibernate to read/write `Instant` as a plain `TIMESTAMP` in `src/backend/src/main/resources/application.yml`:
+
+```yaml
+spring:
+  jpa:
+    properties:
+      hibernate.type.preferred_instant_jdbc_type: TIMESTAMP
+```
+
+(Hibernate logs a harmless `HHH90006001 ... incubating setting` warning for this key — expected.) Rebuild the backend image and recreate the container so it picks up the change — `up -d --build` alone does not always swap a running container onto the freshly built image, so force it:
+
+```bash
+podman compose -f deploy/podman/compose.local.yml build backend
+podman compose -f deploy/podman/compose.local.yml up -d --force-recreate --no-deps backend
+```
+
 ## PAF install
 
 ### `local up` errors with `image not known: localhost/applied-ai-label:…`
