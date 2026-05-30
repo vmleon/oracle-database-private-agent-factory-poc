@@ -9,9 +9,18 @@ import java.util.regex.Pattern;
 public final class Envelope {
 
     private static final Pattern SENTINEL = Pattern.compile("\\[\\[SESSION[^\\]]*\\]\\]");
+    private static final Pattern LEADING_MARKERS = Pattern.compile("^(?:\\s*\\[\\[[^\\]]*\\]\\]\\s*)+");
     private static final List<String> REPLY_FIELDS = List.of("message", "content", "reply", "output", "text");
 
     private Envelope() {
+    }
+
+    /** Remove leading [[MARKER ...]] block(s) an agent emits before the customer-facing text. */
+    public static String stripMarkers(String text) {
+        if (text == null) {
+            return "";
+        }
+        return LEADING_MARKERS.matcher(text).replaceFirst("").strip();
     }
 
     /** Strip any [[SESSION ...]] sentinel a customer might inject. MANDATORY before enveloping. */
@@ -36,11 +45,11 @@ public final class Envelope {
     public static String extractReply(JsonNode root) {
         JsonNode data = root.has("data") ? root.get("data") : root;
         if (data.isTextual()) {
-            return data.asText();
+            return stripMarkers(data.asText());
         }
         for (String field : REPLY_FIELDS) {
             if (data.hasNonNull(field) && data.get(field).isTextual()) {
-                return data.get(field).asText();
+                return stripMarkers(data.get(field).asText());
             }
         }
         throw new IllegalStateException(

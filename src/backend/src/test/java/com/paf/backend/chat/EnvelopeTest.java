@@ -58,4 +58,33 @@ class EnvelopeTest {
         assertThatThrownBy(() -> Envelope.extractReply(root))
                 .isInstanceOf(IllegalStateException.class);
     }
+
+    @Test
+    void stripMarkersRemovesLeadingMarkerBlock() {
+        assertThat(Envelope.stripMarkers("[[INTAKE status=COLLECTING]]\nHow much would you like to borrow?"))
+                .isEqualTo("How much would you like to borrow?");
+    }
+
+    @Test
+    void stripMarkersRemovesMultipleLeadingMarkers() {
+        assertThat(Envelope.stripMarkers("[[DECISION tier=REVIEW]]\n[[EVIDENCE x=1]]\nWe'll follow up."))
+                .isEqualTo("We'll follow up.");
+    }
+
+    @Test
+    void stripMarkersLeavesPlainTextUntouched() {
+        assertThat(Envelope.stripMarkers("Just a normal reply.")).isEqualTo("Just a normal reply.");
+    }
+
+    @Test
+    void stripMarkersHandlesMarkerOnlyAndNull() {
+        assertThat(Envelope.stripMarkers("[[APPLICATION_CREATED id=42]]")).isEmpty();
+        assertThat(Envelope.stripMarkers(null)).isEmpty();
+    }
+
+    @Test
+    void extractReplyStripsMarkerFromLiveShape() throws Exception {
+        var root = mapper.readTree("{\"message\":\"[[INTAKE status=READY]]\\nGreat, let's review it.\",\"roomId\":\"r1\"}");
+        assertThat(Envelope.extractReply(root)).isEqualTo("Great, let's review it.");
+    }
 }
