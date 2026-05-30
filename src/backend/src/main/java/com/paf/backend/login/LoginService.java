@@ -1,7 +1,7 @@
 package com.paf.backend.login;
 
+import com.paf.backend.api.Dtos.CustomerSummary;
 import com.paf.backend.api.Dtos.LoginResponse;
-import com.paf.backend.domain.CustomerOption;
 import com.paf.backend.domain.CustomerRepository;
 import com.paf.backend.domain.LoanApplication;
 import com.paf.backend.domain.LoanApplicationRepository;
@@ -26,9 +26,13 @@ public class LoginService {
         this.customers = customers;
     }
 
-    /** Customers with an open application, for the mock-login dropdown. */
-    public List<CustomerOption> listCustomers() {
-        return customers.findOpenApplicationOptions();
+    /** All customers for the mock-login dropdown, flagged by whether they have an open application. */
+    public List<CustomerSummary> listCustomers() {
+        return customers.findCustomerOptions().stream()
+                .map(o -> new CustomerSummary(o.getCustomerId(), o.getName(), o.getApplicationId(),
+                        o.getProductType(), o.getAmountRequested(), o.getTermMonths(),
+                        o.getApplicationId() != null))
+                .toList();
     }
 
     /** Resolve the customer's open application and mint a session token bound to it. */

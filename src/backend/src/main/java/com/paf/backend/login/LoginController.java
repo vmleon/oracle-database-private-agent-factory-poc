@@ -1,8 +1,8 @@
 package com.paf.backend.login;
 
+import com.paf.backend.api.Dtos.CustomerSummary;
 import com.paf.backend.api.Dtos.LoginRequest;
 import com.paf.backend.api.Dtos.LoginResponse;
-import com.paf.backend.domain.CustomerOption;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -22,7 +22,7 @@ public class LoginController {
     }
 
     @GetMapping("/customers")
-    public List<CustomerOption> customers() {
+    public List<CustomerSummary> customers() {
         return loginService.listCustomers();
     }
 

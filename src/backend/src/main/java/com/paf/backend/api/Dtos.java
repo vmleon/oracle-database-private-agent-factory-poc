@@ -14,6 +14,11 @@ public final class Dtos {
     public record LoginResponse(String sessionToken, Long customerId, Long applicationId, String roomId) {
     }
 
+    public record CustomerSummary(Long customerId, String name, Long applicationId,
+                                  String productType, java.math.BigDecimal amountRequested,
+                                  Integer termMonths, boolean hasOpenApplication) {
+    }
+
     public record ChatRequest(String message) {
     }
 
