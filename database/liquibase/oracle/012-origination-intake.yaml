@@ -1,0 +1,58 @@
+databaseChangeLog:
+  # 012 — conversational origination intake.
+  # A customer can now log in and chat WITHOUT an existing application:
+  #  - auth_session.application_id becomes optional (the session binds to the
+  #    customer; the application is resolved as the customer's open one).
+  #  - chat_message.application_id becomes optional (a pre-application turn has
+  #    no application yet; the room is keyed by customer).
+  #  - loan_application.amount_requested / term_months become optional so the
+  #    Concierge agent can create a DRAFT and patch fields as the conversation
+  #    collects them. get_context.missing[] reports which are still null.
+
+  - changeSet:
+      id: 012-auth-session-application-id-nullable
+      author: paf-poc
+      preconditions:
+        - onFail: MARK_RAN
+          sqlCheck:
+            expectedResult: "1"
+            sql: >-
+              SELECT COUNT(*) FROM all_tab_columns
+               WHERE owner='APP' AND table_name='AUTH_SESSION'
+                 AND column_name='APPLICATION_ID' AND nullable='N'
+      changes:
+        - sql:
+            sql: ALTER TABLE APP.auth_session MODIFY (application_id NULL)
+
+  - changeSet:
+      id: 012-chat-message-application-id-nullable
+      author: paf-poc
+      preconditions:
+        - onFail: MARK_RAN
+          sqlCheck:
+            expectedResult: "1"
+            sql: >-
+              SELECT COUNT(*) FROM all_tab_columns
+               WHERE owner='APP' AND table_name='CHAT_MESSAGE'
+                 AND column_name='APPLICATION_ID' AND nullable='N'
+      changes:
+        - sql:
+            sql: ALTER TABLE APP.chat_message MODIFY (application_id NULL)
+
+  - changeSet:
+      id: 012-loan-application-amount-term-nullable
+      author: paf-poc
+      preconditions:
+        - onFail: MARK_RAN
+          sqlCheck:
+            expectedResult: "2"
+            sql: >-
+              SELECT COUNT(*) FROM all_tab_columns
+               WHERE owner='APP' AND table_name='LOAN_APPLICATION'
+                 AND column_name IN ('AMOUNT_REQUESTED','TERM_MONTHS')
+                 AND nullable='N'
+      changes:
+        - sql:
+            sql: |-
+              ALTER TABLE APP.loan_application
+                MODIFY (amount_requested NULL, term_months NULL)
