@@ -1,6 +1,6 @@
 # Local deployment
 
-End-to-end runbook for the Decisioning Engine PoC on rootless podman. The architecture that motivates this is in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md); this file is the click-by-click runbook.
+End-to-end runbook for the Decisioning Engine PoC on rootless podman. The architecture and the four-agent rationale live in [`docs/DESIGN.md`](docs/DESIGN.md) (deployment strategy in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)); the flow itself is [`paf/flows/CHAT_WORKFLOW.md`](paf/flows/CHAT_WORKFLOW.md). This file is the click-by-click runbook.
 
 You walk through five steps:
 
@@ -224,14 +224,7 @@ The trust-boundary rationale (token-only envelope, customer resolved server-side
 
 `CHAT_WORKFLOW` is the customer-facing Agent Builder flow that combines OPA, OCR, Company Registry, and the in-DB HITL tool into the three-tier recommendation contract documented in `docs/DECISIONING-ENGINE-USE-CASE.md`. It is the only Agent Builder flow you need to build in this runbook.
 
-The full blueprint is at [`paf/flows/CHAT_WORKFLOW.md`](paf/flows/CHAT_WORKFLOW.md). It gives you, in one place:
-
-- The node graph (Chat input + Prompt + SQL Query for application context + two MCP server nodes — `opa-mcp` and `hitl-mcp` — + one REST API datasource node + Agent + Chat output). `ocr-mcp` is intentionally NOT wired by default; re-add it only when testing OCR scenarios.
-- The SQL Query that resolves `customer_id → application_id`, joining `chat_v_loan_application` + `chat_v_applicant_profile` + `chat_v_credit_bureau` and aggregating monthly facility payments.
-- The full **Custom instructions** block to paste into the Agent node — encodes a 4-step recipe (`required_documents` → `verify_employer` → DTI/PTI + `evaluate_eligibility` → `create_hitl_task`), the three-tier recommendation contract, and strict rules against tool loops and customer-facing disclosure of internal numbers.
-- The wiring table (port → port).
-- Playground test prompts mapped to scenario customers (`1` Alice / `4` David / `5` Eva / `6` Frank / `10` Jane / `11` Kyle), plus a mismatch check that exercises the no-row guard. Each scenario leaves one row in `APP.hitl_task` and one message on `APP.HITL_REQUEST`; the mismatch case emits an `application not found` evidence block instead.
-- An **Operating constraints** section listing the non-obvious behaviours that shape the build (port-type compatibility rules, per-agent tool-surface discipline, model-size requirements, customer-id numbering on fresh deploys, etc.) — read it before iterating on the flow.
+The full build blueprint — the node graph, the four agents' (`Concierge` → `Docs & Employer` → `Eligibility` → `Recommendation`) custom instructions, the wiring table, test prompts (including the no-application intake walkthrough), and the operating constraints — is **[`paf/flows/CHAT_WORKFLOW.md`](paf/flows/CHAT_WORKFLOW.md)**. Build it there. This runbook only gets you to the point of opening Agent Builder with the tools (§4) and the LLM (§3) registered; the blueprint is the single source of truth for the flow itself.
 
 Verify each run with:
 
