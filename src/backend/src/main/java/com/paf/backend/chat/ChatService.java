@@ -44,7 +44,7 @@ public class ChatService {
     @Transactional(readOnly = true)
     public List<ChatMessageView> history(String token) {
         AuthSession session = sessions.resolve(token);
-        return messages.findByApplicationIdOrderByMessageIdAsc(session.getApplicationId()).stream()
+        return messages.findByCustomerIdOrderByMessageIdAsc(session.getCustomerId()).stream()
                 .map(m -> new ChatMessageView(m.getSender(), m.getBody(), m.getCreatedAt()))
                 .toList();
     }
@@ -60,6 +60,6 @@ public class ChatService {
     }
 
     private String roomId(AuthSession session) {
-        return "room-app-" + session.getApplicationId();
+        return "room-cust-" + session.getCustomerId();
     }
 }

@@ -44,7 +44,7 @@ class ChatServiceTest {
         ArgumentCaptor<ChatMessage> captor = ArgumentCaptor.forClass(ChatMessage.class);
         verify(messages, times(2)).save(captor.capture());
         assertThat(captor.getAllValues().get(0).getSender()).isEqualTo("CUSTOMER");
-        assertThat(captor.getAllValues().get(0).getRoomId()).isEqualTo("room-app-7");
+        assertThat(captor.getAllValues().get(0).getRoomId()).isEqualTo("room-cust-1");
         assertThat(captor.getAllValues().get(1).getSender()).isEqualTo("AGENT");
         assertThat(captor.getAllValues().get(1).getBody()).isEqualTo("agent reply");
     }
@@ -79,7 +79,7 @@ class ChatServiceTest {
         ChatMessage m = new ChatMessage();
         m.setSender("CUSTOMER");
         m.setBody("hi");
-        when(messages.findByApplicationIdOrderByMessageIdAsc(7L)).thenReturn(java.util.List.of(m));
+        when(messages.findByCustomerIdOrderByMessageIdAsc(1L)).thenReturn(java.util.List.of(m));
 
         var views = service.history("sess_1");
 
