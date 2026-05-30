@@ -32,7 +32,7 @@ Wired into the PoC via:
 
 - New Liquibase changeset for the `AGENT_TOOLS.predict_credit_score` PL/SQL function and any model-registry references.
 - New `manage.py ml train` / `manage.py ml deploy` commands.
-- `RecommendationAgent` prompt updated to ingest the new evidence field; a weight added to `system_config` so the score contributes to the tier composition.
+- The `Recommendation` agent's prompt (and the `Eligibility` agent's evidence) updated to ingest the new score field; a weight added to `system_config` so it contributes to the tier composition.
 - Exposed to PAF following the existing `create_hitl_task` pattern — **Select AI Tool** on cloud / ADB, thin **MCP wrapper** on local / Free 26ai. Same PL/SQL function on both sides; only the transport differs.
 
 End-to-end coverage: **training** (OML4Py + XGBoost) → **deployment** (model registry + PL/SQL wrapper) → **inference** (in-DB scoring via `PREDICTION()`) → **explainability** (top features surfaced in evidence). The feedback loop already exists — the `decision` Blockchain row captures human outcomes, ready for future retraining cycles.
