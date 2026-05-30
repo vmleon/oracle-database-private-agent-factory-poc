@@ -876,26 +876,6 @@ The test bench is for **functionality and observability**, not performance. Each
 
 ---
 
-## Next Steps
+## Next steps
 
-In priority order:
-
-1. **End-to-end test `CHAT_WORKFLOW` across the seeded scenarios.** `customer_id` / `application_id` are resolved server-side from an opaque session token via `banking-mcp.lookup_application` (cx_Oracle bind variables, fail-secure) — never taken from the chat message — which is why a PAF SQL Query node wasn't viable (see [`issues/01-sql-query-no-bind-variables.md`](../issues/01-sql-query-no-bind-variables.md)). A pytest harness covers the six tiers plus the fail-secure and prompt-injection cases: [`tests/test_chat_workflow.py`](../tests/test_chat_workflow.py). Once the Application Service exists (item 6) it mints the token at login and threads it through the same flow input.
-2. **Switch `EvaluationAgent`'s evidence block to JSON-schema-constrained output.** vLLM supports `response_format`; once PAF's Agent node exposes it, swap the markdown contract for a strict JSON object so `RecommendationAgent`'s parsing cannot drift.
-3. **Capture the `CHAT_WORKFLOW` JSON** to `paf/flows/chat_workflow.flow.json` as a reference snapshot — PAF has no export endpoint and re-import hard-fails on tool-ref drift, so a clean redeploy still rebuilds the canvas by hand and diffs against the snapshot ([`issues/05-no-flow-export-endpoint.md`](../issues/05-no-flow-export-endpoint.md)).
-4. **Build `RESEARCH_WORKFLOW`** — backoffice-only, broader read-only scope (full transactions, `decision_audit`, `policy_parameter_history`, deeper RAG over `policy_corpus`). No side-effect tools. Reuses the build pattern proven by `CHAT_WORKFLOW`.
-5. **Real OCR pipeline + `OcrAgent`.** Replace the canned `ocr-mcp` stub with the YOLO + PaddleOCR/Tesseract workflow (async via `OCR_REQUEST` queue, exception routing to `OCR_EXCEPTION_Q`). Insert `OcrAgent` between `EvaluationAgent` and `RecommendationAgent`: it consumes `required_documents`, extracts each upload via `ocr-mcp.extract_document`, and appends `USABLE` / `MARGINAL` / `UNUSABLE` findings to the evidence block. `RecommendationAgent` reads the augmented evidence; OCR quality feeds the tier decision via the existing OPA `kyc` rule.
-6. **Spring Boot Application Service + two Angular UIs.** The service threads `customer_id` into PAF invocations (closing out item 1), handles document uploads (enqueues `OCR_REQUEST`), writes the Blockchain `decision` row at HITL close, and persists chat turns to `chat_message`. The customer chat UI replays from `chat_message` on every load; the backoffice UI carries the **Case Research Agent** panel on the HITL task detail screen.
-7. **OPA bundle reload on parameter change.** Currently OPA loads its bundle once at container start; parameter edits in the Backoffice still write `system_config` + `policy_parameter_history` but require an OPA restart to take effect. Add a reload-on-write trigger from the Application Service over OPA's REST API.
-8. **Cloud deployment** — OCI Terraform + Ansible, ADB + LB. Topology in [`DEPLOYMENT.md §4`](DEPLOYMENT.md).
-9. **Customer-facing rejection reason.** When the reviewer closes a HITL task with REJECT, the Application Service appends an outcome message containing the **dominant** signal translated into one actionable sentence — e.g., _"Declined because your debt-to-income is 0.55, above our cap of 0.45 — you may reapply once your DTI is below the cap."_ The bank chooses which signals are customer-disclosable via `system_config` (sanctions / AML are never surfaced in detail). Sufficient for the customer to know what to address and retry; not the full evidence packet.
-10. **`opa test` coverage.** Per-rule tests for the `opa/packages/` content (eligibility / aml / kyc / fair_lending / required_documents / pricing) with policy-parameter fixtures drawn from `system_config`.
-11. **Test bench walk-through.** Every scenario in [§Test Bench](#test-bench) green with a complete `decision_audit` + `research_audit` trail and a Blockchain `decision` row.
-
-Schema follow-ups deferred until a concrete consumer needs them:
-
-- Vector indexes on `policy_corpus.embedding` and `case_history.case_embedding` — meaningless until the embedding pipeline populates the `VECTOR(1024, FLOAT32)` columns via `BAAI/bge-m3`. Add as a `runOnChange` changeset when seed data lands.
-- Per-schema `ENQUEUE` / `DEQUEUE` grants on `OCR_REQUEST` and `OCR_EXCEPTION_Q` — land with the OCR worker (no producer/consumer exists in-DB today).
-- `policy_corpus` text + embeddings ingestion, and synthetic `sanctions_list` for the AML scenario.
-
----
+The prioritised forward plan is maintained in one place — [`README.md` § What's next](../README.md#current-state) — with the future-feature detail in [`ENHANCEMENTS.md`](../ENHANCEMENTS.md).
