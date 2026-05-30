@@ -119,18 +119,19 @@ After install completes, sign in as the admin user.
 
 ## 4. Register tools and datasources
 
-Five post-install registrations in the PAF admin area — four MCP servers, one Database datasource, and one HTTP datasource. All target the `CHAT_WORKFLOW` flow; the `RESEARCH_WORKFLOW` flow has no external tools by design.
+Six post-install registrations in the PAF admin area — five MCP servers and one HTTP datasource. (A Database datasource is no longer required by `CHAT_WORKFLOW` — the agents read through `banking-mcp.get_context`, not a SQL Query node; see §4b.) All target the `CHAT_WORKFLOW` flow; the `RESEARCH_WORKFLOW` flow has no external tools by design.
 
 ### 4a. MCP servers
 
-Admin → **MCP Servers** → **Add MCP server**, four times. The form has three fields each time; use the same `Direct` authentication mode for all (no auth — the wrappers are internal to the compose network, not published to the host).
+Admin → **MCP Servers** → **Add MCP server**, five times. The form has three fields each time; use the same `Direct` authentication mode for all (no auth — the wrappers are internal to the compose network, not published to the host).
 
-| Server name   | Server URL                     | Tools                                                                                                                    |
-| ------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
-| `opa-mcp`     | `http://opa-mcp:8500/mcp/`     | seven typed tools wrapping the Rego rules — see table below                                                              |
-| `ocr-mcp`     | `http://ocr-mcp:8501/mcp/`     | one stub tool `extract_document(storage_uri, requested_doc_type?)` returning canned classification + OCR responses       |
-| `hitl-mcp`    | `http://hitl-mcp:8502/mcp/`    | one side-effect tool `create_hitl_task(...)` — calls the in-DB PL/SQL function in `AGENT_TOOLS.PKG_AGENT_TOOLS`          |
-| `banking-mcp` | `http://banking-mcp:8503/mcp/` | one read-only tool `lookup_application(session_token)` — resolves the opaque session token to the customer's app context |
+| Server name       | Server URL                         | Tools                                                                                                                                                                                                                               |
+| ----------------- | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `opa-mcp`         | `http://opa-mcp:8500/mcp/`         | seven typed tools wrapping the Rego rules — see table below                                                                                                                                                                         |
+| `ocr-mcp`         | `http://ocr-mcp:8501/mcp/`         | one stub tool `extract_document(storage_uri, requested_doc_type?)` returning canned classification + OCR responses                                                                                                                  |
+| `hitl-mcp`        | `http://hitl-mcp:8502/mcp/`        | one side-effect tool `create_hitl_task(...)` — calls the in-DB PL/SQL function in `AGENT_TOOLS.PKG_AGENT_TOOLS`                                                                                                                     |
+| `banking-mcp`     | `http://banking-mcp:8503/mcp/`     | two read-only tools: `get_context(session_token)` (the universal token-keyed read the origination agents use — customer + application + profile + credit + `missing[]`/staleness) and the older `lookup_application(session_token)` |
+| `application-mcp` | `http://application-mcp:8504/mcp/` | one write tool `upsert_application(session_token, amount?, term_months?, purpose?)` — creates / patches the customer's `DRAFT` application via `AGENT_TOOLS.PKG_AGENT_TOOLS.upsert_draft_application`                               |
 
 **Do not use `localhost`** in any URL — PAF must reach the wrappers over the compose network, not the host.
 
@@ -138,7 +139,9 @@ After saving, each server should report a connected status. The discovered tools
 
 **Note on `hitl-mcp`.** This is the agent's only side-effect tool — it writes a `hitl_task` row and enqueues `HITL_REQUEST` atomically. The `CHAT_WORKFLOW` flow you build in §5 calls it as the terminal action, sourcing `application_id` from `banking-mcp`'s `lookup_application` (never from the user). The cloud-path equivalent — exposing the same PL/SQL function as a Select AI Tool through the Select AI Bridge node — is documented in `docs/DESIGN.md §11` ("`create_hitl_task` transport").
 
-**Note on `banking-mcp`.** This is the trust boundary for `CHAT_WORKFLOW`. The agent receives an opaque `session_token` from a PAF Text Input node (hardcoded per-scenario for the POC; minted by the App Service in production). `banking-mcp.lookup_application` validates the token against `APP.auth_session` and returns the joined application context using `cx_Oracle` bind variables. **Never extract `customer_id` or `application_id` from the customer chat message** — that would be an IDOR vector (see `issues/01-sql-query-no-bind-variables.md` and `issues/02-no-flow-start-inputs.md`). The wrapper connects as `REPORTING` (same user as the Banking Application DB datasource in §4b); `REPORTING` is granted `SELECT` on `APP.auth_session` by Liquibase changeset 011, which also seeds one token row per test scenario.
+**Note on `banking-mcp`.** This is the trust boundary for `CHAT_WORKFLOW`. The agent receives an opaque `session_token` from a PAF Text Input node (hardcoded per-scenario for the POC; minted by the App Service in production). `banking-mcp.lookup_application` validates the token against `APP.auth_session` and returns the joined application context using `cx_Oracle` bind variables. **Never extract `customer_id` or `application_id` from the customer chat message** — that would be an IDOR vector (see `issues/01-sql-query-no-bind-variables.md` and `issues/02-no-flow-start-inputs.md`). The wrapper connects as `REPORTING` (same user as the Banking Application DB datasource in §4b); `REPORTING` is granted `SELECT` on `APP.auth_session` by Liquibase changeset 011, which also seeds one token row per test scenario. The origination agents call **`get_context(session_token)`** for the same trust-boundary reasons — one token-keyed read returns the customer's full picture (identity, KYC freshness, the open application or `null` with its `missing[]` fields, profile, credit, derived DTI/PTI) so each agent is self-sufficient from the database.
+
+**Note on `application-mcp`.** The single **write** surface for intake. `upsert_application(session_token, …)` resolves `customer_id` from the token (bind variables — never from the chat message, the same IDOR-safe boundary as `banking-mcp`), creates the customer's `DRAFT` application on the first call, and patches supplied fields after — idempotent per the customer's open draft. It connects as `AGENT_FACTORY` and calls the definer-rights PL/SQL function `AGENT_TOOLS.PKG_AGENT_TOOLS.upsert_draft_application` (grants from Liquibase changeset 012). Wire it only to the intake (Concierge) agent.
 
 `opa-mcp` exposes:
 
@@ -158,7 +161,7 @@ Each tool's input schema is auto-derived from the FastMCP type hints in `src/ai/
 
 ### 4b. Database datasource (Banking Application DB)
 
-The `CHAT_WORKFLOW` flow has a **SQL Query node** that joins `REPORTING.chat_v_loan_application` + `chat_v_applicant_profile` + `chat_v_credit_bureau` + `chat_v_existing_facilities` to resolve `customer_id → application_id` and pull DTI inputs into the prompt. SQL Query nodes only see databases registered as **Database data sources** — they don't reuse PAF's own metadata connection.
+**Optional — not required by `CHAT_WORKFLOW`.** The origination flow reads the customer's context through `banking-mcp.get_context` (cx_Oracle bind variables, fail-secure), **not** a PAF SQL Query node — so you can skip this registration for the runbook. Register a Database datasource only if you want an ad-hoc **SQL Query node** for experiments: SQL Query nodes only see databases registered as **Database data sources** (they don't reuse PAF's own metadata connection), and they must never carry untrusted input ([`issues/01-sql-query-no-bind-variables.md`](issues/01-sql-query-no-bind-variables.md)).
 
 In PAF: **Data Sources** → **Add new data source** → **Source type: Database**. Fill in:
 
