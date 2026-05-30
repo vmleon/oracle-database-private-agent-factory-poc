@@ -95,29 +95,29 @@ The customer chat is driven by `CHAT_WORKFLOW`: it asks for what _this_ applican
 
 ### Component Map
 
-| Component           | Tech                                                                                                                                               | Role                                                                                                                                                                                                                                                                              |
-| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Customer Chat UI    | Angular                                                                                                                                            | Chat-style request flow + document upload                                                                                                                                                                                                                                         |
-| Backoffice UI       | Angular                                                                                                                                            | CRUD, HITL queue, rule view, reports, dashboards, parameter management, **Case Research Agent** conversational panel                                                                                                                                                              |
-| Application Service | Spring Boot (Java)                                                                                                                                 | App CRUD, document upload, agent invocation (both `CHAT_WORKFLOW` and `RESEARCH_WORKFLOW`), Blockchain write at HITL close                                                                                                                                                        |
-| Object Storage      | OCI Object Storage                                                                                                                                 | Uploaded document PDFs / images                                                                                                                                                                                                                                                   |
-| OCR + Detection     | YOLO (field detection) + PaddleOCR/Tesseract                                                                                                       | Open-source extraction; composite confidence tiering                                                                                                                                                                                                                              |
-| Company Registry    | FastAPI (Python) — OpenAPI 3.1                                                                                                                     | Synthetic employer / company registry; one lookup per application; PAF HTTP datasource for `CHAT_WORKFLOW`                                                                                                                                                                        |
-| `CHAT_WORKFLOW`     | Oracle Private Agent Factory — Agent Builder workflow (two-agent pipeline)                                                                         | `EvaluationAgent` (OPA MCP `required_documents` + `evaluate_eligibility`, Company Registry HTTP `verify_employer`) emits an evidence block; `RecommendationAgent` (HITL MCP `create_hitl_task`) decides the tier and writes the task. `OcrAgent` slots in between when OCR lands. |
-| `RESEARCH_WORKFLOW` | Oracle Private Agent Factory — Agent Builder flow                                                                                                  | Backoffice-only research agent; tools = Select AI over the broader read-only view set, RAG; **no side-effect tools**                                                                                                                                                              |
-| Data plane          | Oracle AI Database 26ai                                                                                                                            | All banking data; per-agent NL2SQL view scopes enforced via Select AI profiles                                                                                                                                                                                                    |
-| Vector store        | Oracle AI Vector Search (same 26ai)                                                                                                                | `policy_corpus` + `case_history` embeddings                                                                                                                                                                                                                                       |
-| LLM + embeddings    | vLLM containers on a self-hosted GPU host (`Qwen/Qwen2.5-72B-Instruct-AWQ` + `BAAI/bge-m3`) — see [`DESIGN.md §11`](DESIGN.md#11-locked-decisions) | Reasoning + rationale + embeddings                                                                                                                                                                                                                                                |
-| Rule engine         | OPA + OPA MCP server (Python FastMCP wrapper)                                                                                                      | Eligibility, AML, KYC, escalation, fair-lending — inputs to the recommendation, not the decision                                                                                                                                                                                  |
-| Decision history    | Oracle Database Blockchain Table                                                                                                                   | One row per bank decision, written by the App Service at HITL close                                                                                                                                                                                                               |
-| Async messaging     | Oracle Database **TxEventQ** (in-DB AQ; JSON payload)                                                                                              | HITL claim, OCR async pipeline, future fan-out — all in the same engine                                                                                                                                                                                                           |
-| HITL surface        | Backoffice UI (queue + decision form + notification bell + Case Research panel)                                                                    | Bank employee picks up, reviews evidence, chats with the research agent, decides                                                                                                                                                                                                  |
+| Component           | Tech                                                                                                                                               | Role                                                                                                                                                                                |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Customer Chat UI    | Angular                                                                                                                                            | Chat-style request flow + document upload                                                                                                                                           |
+| Backoffice UI       | Angular                                                                                                                                            | CRUD, HITL queue, rule view, reports, dashboards, parameter management, **Case Research Agent** conversational panel                                                                |
+| Application Service | Spring Boot (Java)                                                                                                                                 | App CRUD, document upload, agent invocation (both `CHAT_WORKFLOW` and `RESEARCH_WORKFLOW`), Blockchain write at HITL close                                                          |
+| Object Storage      | OCI Object Storage                                                                                                                                 | Uploaded document PDFs / images                                                                                                                                                     |
+| OCR + Detection     | YOLO (field detection) + PaddleOCR/Tesseract                                                                                                       | Open-source extraction; composite confidence tiering                                                                                                                                |
+| Company Registry    | FastAPI (Python) — OpenAPI 3.1                                                                                                                     | Synthetic employer / company registry; one lookup per application; PAF HTTP datasource for `CHAT_WORKFLOW`                                                                          |
+| `CHAT_WORKFLOW`     | Oracle Private Agent Factory — Agent Builder workflow (four-agent origination pipeline)                                                            | `Concierge` (intake) → `Docs & Employer` → `Eligibility` → `Recommendation` (writes the HITL task). Build blueprint: [`paf/flows/CHAT_WORKFLOW.md`](../paf/flows/CHAT_WORKFLOW.md). |
+| `RESEARCH_WORKFLOW` | Oracle Private Agent Factory — Agent Builder flow                                                                                                  | Backoffice-only research agent; tools = Select AI over the broader read-only view set, RAG; **no side-effect tools**                                                                |
+| Data plane          | Oracle AI Database 26ai                                                                                                                            | All banking data; per-agent NL2SQL view scopes enforced via Select AI profiles                                                                                                      |
+| Vector store        | Oracle AI Vector Search (same 26ai)                                                                                                                | `policy_corpus` + `case_history` embeddings                                                                                                                                         |
+| LLM + embeddings    | vLLM containers on a self-hosted GPU host (`Qwen/Qwen2.5-72B-Instruct-AWQ` + `BAAI/bge-m3`) — see [`DESIGN.md §11`](DESIGN.md#11-locked-decisions) | Reasoning + rationale + embeddings                                                                                                                                                  |
+| Rule engine         | OPA + OPA MCP server (Python FastMCP wrapper)                                                                                                      | Eligibility, AML, KYC, escalation, fair-lending — inputs to the recommendation, not the decision                                                                                    |
+| Decision history    | Oracle Database Blockchain Table                                                                                                                   | One row per bank decision, written by the App Service at HITL close                                                                                                                 |
+| Async messaging     | Oracle Database **TxEventQ** (in-DB AQ; JSON payload)                                                                                              | HITL claim, OCR async pipeline, future fan-out — all in the same engine                                                                                                             |
+| HITL surface        | Backoffice UI (queue + decision form + notification bell + Case Research panel)                                                                    | Bank employee picks up, reviews evidence, chats with the research agent, decides                                                                                                    |
 
 ---
 
 ## Data Model — Synthetic but Realistic
 
-The synthetic dataset is generated to **trigger every decision path** rather than to validate a model. It is intentionally constructed so test-bench scenarios exercise the system end-to-end.
+The synthetic dataset is generated to **trigger every decision path** rather than to validate a model. It is intentionally constructed so test-bench scenarios exercise the system end-to-end. (Schema users, grants, and the Liquibase layout are owned by [`DESIGN.md §6`](DESIGN.md#6-component-breakdown); this section is the synthetic-data spec for the test bench.)
 
 ### Entities
 
@@ -543,164 +543,11 @@ Thresholds (`USABLE_min_confidence`, `MARGINAL_floor`) are in `system_config` an
 
 ---
 
-## `CHAT_WORKFLOW` — customer-facing Private Agent Factory flow
+## `CHAT_WORKFLOW` — customer-facing flow
 
-> **Note on implementation.** The recipe-style "instructions sketch" later in this section describes the original conceptual single-agent design. The **built workflow** is a two-agent pipeline (`EvaluationAgent` → `RecommendationAgent`) — the same tools, the same final contract (`create_hitl_task` once with a tier + reasoning + evidence), but split across two PAF Agent nodes so the side-effect tool is isolated and the model can't batch-hallucinate intermediate results. The authoritative build blueprint — node graph, custom instructions for each agent, wiring table, test prompts — lives at [`paf/flows/CHAT_WORKFLOW.md`](../paf/flows/CHAT_WORKFLOW.md). Skim that before iterating.
+This use case is delivered by the `CHAT_WORKFLOW` Agent Builder flow. This document owns the **decision contract** it honours: the three recommendation tiers (`APPROVE` / `REVIEW` / `DECLINE`), the reason codes, and the rule that **every application produces exactly one HITL task — no agent ever issues a binding decision to the customer** (term definitions in [`GLOSSARY.md`](GLOSSARY.md)).
 
-### Tools
-
-| Tool                          | Type                      | Bound to                                                                | Purpose                                                                                                         |
-| ----------------------------- | ------------------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `query_customer_profile`      | SQL (Select AI / NL2SQL)  | Customer-safe view over `customer` + `employment` + `existing_facility` | Pull profile, compute DTI / PTI                                                                                 |
-| `query_transaction_summary`   | SQL (Select AI)           | Aggregated view over `account_transaction`                              | Cashflow aggregates (not row-level history)                                                                     |
-| `query_credit_bureau`         | SQL                       | `credit_bureau_snapshot`                                                | Latest snapshot per customer                                                                                    |
-| `search_policy`               | Vector Search             | `policy_corpus`                                                         | RAG over policy text                                                                                            |
-| `search_similar_cases`        | Vector Search             | `case_history`                                                          | Similarity over past decisions (small `k`; deeper retrieval is `RESEARCH_WORKFLOW`'s job)                       |
-| `required_documents`          | MCP                       | OPA MCP server (`required_documents.rego`)                              | Returns required `doc_type` set for this applicant                                                              |
-| `check_document_completeness` | Function tool             | `loan_application_document` + required set                              | Returns missing / MARGINAL / UNUSABLE / mismatched docs so the agent can re-ask the customer                    |
-| `extract_document`            | Function tool             | OCR + YOLO pipeline (via `OCR_REQUEST` queue)                           | Classify `doc_type` + extract fields + per-field confidence + quality tier                                      |
-| `evaluate_eligibility`        | MCP                       | OPA MCP server                                                          | Eligibility signals (allow/deny/warn) for the recommendation                                                    |
-| `evaluate_aml`                | MCP                       | OPA MCP server                                                          | AML signals                                                                                                     |
-| `evaluate_kyc`                | MCP                       | OPA MCP server                                                          | KYC + doc validity + quality signals                                                                            |
-| `evaluate_fair_lending_flags` | MCP                       | OPA MCP server                                                          | Pre-flight fairness flag                                                                                        |
-| `lookup_pricing`              | SQL + OPA                 | `rate_card` + OPA pricing                                               | Indicative pricing for the recommendation packet                                                                |
-| `verify_employer`             | HTTP datasource (OpenAPI) | Company Registry FastAPI service (`src/api/registry/`)                  | Lookup employer / company by name → `{registered, trading_status, sector, registered_address, last_filed_year}` |
-| `create_hitl_task`            | In-DB SQL tool            | `hitl_task` + `HITL_REQUEST` (TxEventQ)                                 | Write the recommendation packet + enqueue HITL request (single transaction)                                     |
-
-`CHAT_WORKFLOW` has **no** `record_decision` tool — only the Application Service writes to the `decision` Blockchain Table, on HITL close.
-
-### `RESEARCH_WORKFLOW` — backoffice-only research flow
-
-| Tool                        | Type                     | Bound to                                         | Purpose                                                                         |
-| --------------------------- | ------------------------ | ------------------------------------------------ | ------------------------------------------------------------------------------- |
-| `query_full_transactions`   | SQL (Select AI / NL2SQL) | Full `account_transaction` view (not aggregated) | Row-level transaction analysis (NSF patterns, salary stability, large outflows) |
-| `query_decision_audit`      | SQL (Select AI)          | `decision_audit` + `research_audit`              | Show prior `CHAT_WORKFLOW` tool-call traces for similar applications            |
-| `query_parameter_history`   | SQL                      | `policy_parameter_history`                       | "When did `dti_hard_cap` change and to what?"                                   |
-| `query_decision_history`    | SQL (Select AI)          | `decision` view (Blockchain, read-only)          | Outcome distribution over time, by reviewer, by recommendation tier             |
-| `search_policy`             | Vector Search            | `policy_corpus`                                  | Same RAG as `CHAT_WORKFLOW`                                                     |
-| `search_similar_cases_deep` | Vector Search            | `case_history` + `decision`                      | Deeper similarity at higher `k`, with filters (date range, outcome, reviewer)   |
-
-`RESEARCH_WORKFLOW` is read-only by design: it has no write or enqueue tools at all. Enforced by `AGENT_TOOLS` grants and by which MCP servers are wired to which flow.
-
-### `CHAT_WORKFLOW` instructions (sketch)
-
-```
-You are CHAT_WORKFLOW for retail loan applications. You drive the chat, collect the
-documents this applicant actually needs, gather evidence, and emit one recommendation
-packet to the HITL queue. You DO NOT decide.
-
-HARD RULES:
-- You never approve or reject. Your only side-effect is create_hitl_task, which writes
-  exactly one recommendation packet per application.
-- Drive the conversation: ask the customer for product, amount, purpose, employment
-  type, residency status, salary band, existing facilities. Then call required_documents
-  and ask the customer for exactly those documents — do not ask for a fixed bundle.
-- Do not proceed to recommendation until check_document_completeness is satisfied:
-  Missing / MARGINAL / UNUSABLE / mismatched doc_type → re-ask the customer (cite the
-  policy snippet from search_policy if it helps explain). Persistent UNUSABLE after
-  re-upload feeds in as a DECLINE signal; persistent MARGINAL feeds in as a REVIEW
-  signal. Never silently terminate the application — always emit a recommendation.
-- Always call evaluate_kyc, evaluate_aml, evaluate_eligibility, evaluate_fair_lending_flags.
-  Their allow/deny/warn outputs are EVIDENCE, not gates. Do not short-circuit on deny.
-- Always call lookup_pricing for the indicative offer (used only if the human approves).
-- Always call search_policy on the signals you observed; never invent citations.
-- Compose the recommendation packet:
-    tier            ∈ {APPROVE, REVIEW, DECLINE}
-                       APPROVE  = high confidence, no inconsistencies
-                       REVIEW   = minor flags, needs human attention
-                       DECLINE  = inconsistencies, missing data, compliance hits
-    reasoning       = LLM-composed text grounded in OPA outputs + cited policy chunks,
-                      explaining with data WHY this tier was chosen
-    explore_hints   = (REVIEW only) short list of areas the reviewer should examine or
-                      follow-up data to request from the customer
-    evidence        = OPA outputs, RAG citations, OCR summary, computed DTI/PTI/score,
-                      indicative pricing
-- Call create_hitl_task with the recommendation packet. This is the end of your turn.
-- Surface to the customer only: "we're reviewing your application". Never reveal the
-  tier.
-
-WORKFLOW:
-1. Greet, gather product + amount + purpose + employment type + residency + salary band.
-2. Call required_documents(applicant_so_far, product). Present the list in chat.
-3. As the customer uploads, wait for OCR (async via OCR_REQUEST queue) and call
-   check_document_completeness. If incomplete → ask for what is missing/marginal/wrong;
-   loop until complete OR a doc is persistently UNUSABLE/MARGINAL.
-4. Read system_config thresholds + tier weights.
-5. Pull customer profile, transactions summary, credit bureau via SQL tools.
-6. Compute applicant payload (age, DTI, PTI, score, employment tenure).
-7. Call OPA: evaluate_kyc → evaluate_aml → evaluate_eligibility → evaluate_fair_lending_flags.
-8. Call lookup_pricing for the indicative offer.
-9. Call search_policy on observed signals; search_similar_cases at small k.
-10. Compute recommendation tier from the configured weights.
-11. Compose reasoning + (if REVIEW) explore_hints.
-12. Call create_hitl_task(packet).
-```
-
-### `RESEARCH_WORKFLOW` instructions (sketch)
-
-```
-You are the Case Research Agent. A backoffice reviewer is examining a HITL task.
-Your job is to help them dig deeper. You DO NOT decide and you DO NOT write anything.
-
-HARD RULES:
-- You have NO side-effect tools. You cannot create HITL tasks, cannot write to
-  decision, cannot enqueue anything. If asked to "approve" or "reject" anything,
-  decline and remind the reviewer that they are the decision-maker.
-- Cite the data you use: name the SQL view, the row count, the case_id, the
-  policy chunk reference. Reviewers will fact-check your answers.
-- Stay within the broader read-only scope: full transactions, decision_audit,
-  policy_parameter_history, decision history (Blockchain, read), case_history,
-  policy_corpus. Do not speculate beyond what these tools return.
-- When asked open-ended questions ("show me similar cases", "what does our policy
-  say about X"), use the appropriate retrieval tool and present results compactly.
-```
-
-### Per-application `CHAT_WORKFLOW` tool-call sequence
-
-```
--- Phase A: profile + document collection (multiple chat turns) --
-1.  gather profile via chat (product, amount, purpose, employment_type, residency_status, ...)
-2.  required_documents({ applicant_so_far, product })       -- OPA MCP
-3.  present list, ask uploads → OCR_REQUEST enqueued per doc (async)
-4.  check_document_completeness({ application_id })         -- loop until complete (or persistent UNUSABLE/MARGINAL)
-
--- Phase B: recommendation (single turn, once docs are settled) --
-5.  read system_config thresholds + tier weights
-6.  query_customer_profile(customer_id)
-7.  query_transaction_summary(customer_id, months=12)
-8.  query_credit_bureau(customer_id)
-9.  verify_employer({ employer_name })                       -- HTTP datasource (OpenAPI)
-10. evaluate_kyc({ documents, quality_tiers })
-11. evaluate_aml({ customer, application })
-12. evaluate_eligibility({ applicant, application, product })
-13. evaluate_fair_lending_flags({ protected_attrs, decision_draft })
-14. lookup_pricing({ applicant, application })
-15. search_policy(signals)
-16. search_similar_cases(applicant features)
-17. compute tier (APPROVE / REVIEW / DECLINE) from weighted signals
-18. create_hitl_task({ tier, reasoning, explore_hints?, evidence })  -- always exactly one
-```
-
-### Recommendation tiering (configurable)
-
-The tier is derived from a weighted composite of signals; **all weights live in `system_config`** and are editable from the backoffice:
-
-```
-score = w1 × min(per_doc_quality_score)
-      + w2 × data_completeness_ratio
-      + w3 × policy_proximity_score
-      + w4 × opa_signal_score        -- positive contribution from `allow`, negative from `warn` / `deny`
-      + w5 × ocr_tier_score          -- USABLE = +, MARGINAL = 0, UNUSABLE = −
-      + w6 × employer_signal_score   -- active = +, dormant = −, not_registered = − −
-
-tier =  APPROVE  if score ≥ approve_floor   AND no `deny[]` from OPA AND all docs USABLE AND employer = active
-        DECLINE  if score ≤ decline_ceiling OR any `deny[]` from OPA OR any persistent UNUSABLE
-        REVIEW   otherwise
-```
-
-Default weights and tier cutoffs ship with reasonable demo values; backoffice operators tune for their context. Note that the tier is the agent's _recommendation_, not the bank's decision — every application produces a HITL task regardless of tier.
-
----
+How the flow is _built_ — the four agents (`Concierge` → `Docs & Employer` → `Eligibility` → `Recommendation`), their custom instructions, node graph, wiring, and test prompts — is canonical in **[`paf/flows/CHAT_WORKFLOW.md`](../paf/flows/CHAT_WORKFLOW.md)**; the architectural rationale (the ≤3-tool-per-agent split, DB-as-memory) is in [`DESIGN.md`](DESIGN.md).
 
 ## Async messaging — TxEventQ queues
 
