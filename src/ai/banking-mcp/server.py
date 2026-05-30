@@ -33,9 +33,22 @@ views and is granted SELECT on APP.auth_session by Liquibase changeset 011.
 from __future__ import annotations
 
 import os
+from datetime import datetime, timezone
 
 import oracledb
 from fastmcp import FastMCP
+
+
+def _now_utc() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _f(v):
+    return None if v is None else float(v)
+
+
+def _i(v):
+    return None if v is None else int(v)
 
 mcp = FastMCP("banking-mcp")
 
@@ -79,6 +92,44 @@ _APPLICATION_CONTEXT_SQL = """
        AND la.status IN ('SUBMITTED', 'DRAFT', 'IN_REVIEW')
      FETCH FIRST 1 ROW ONLY
 """
+
+_CUSTOMER_BY_TOKEN_SQL = """
+    SELECT customer_id
+      FROM APP.auth_session
+     WHERE session_token = :token
+       AND (expires_at IS NULL OR expires_at > SYSTIMESTAMP)
+"""
+
+_PROFILE_SQL = """
+    SELECT p.customer_id,
+           p.age_years,
+           LOWER(p.residency)        AS residency,
+           p.kyc_status,
+           p.kyc_updated_at,
+           LOWER(p.employment_type)  AS employment_type,
+           p.monthly_salary,
+           p.employer_name,
+           b.score                   AS credit_score,
+           NVL((SELECT SUM(f.monthly_payment)
+                  FROM REPORTING.chat_v_existing_facilities f
+                 WHERE f.customer_id = p.customer_id), 0) AS existing_monthly_debt
+      FROM REPORTING.chat_v_applicant_profile p
+      LEFT JOIN REPORTING.chat_v_credit_bureau b ON b.customer_id = p.customer_id
+     WHERE p.customer_id = :customer_id
+"""
+
+_OPEN_APPLICATION_SQL = """
+    SELECT application_id, amount_requested, term_months,
+           product_type, purpose, status
+      FROM REPORTING.chat_v_loan_application
+     WHERE customer_id = :customer_id
+       AND status IN ('DRAFT','SUBMITTED','IN_REVIEW')
+     ORDER BY application_id DESC
+     FETCH FIRST 1 ROW ONLY
+"""
+
+_KYC_STALE_DAYS = 180
+_REQUIRED_APPLICATION_FIELDS = ("amount_requested", "term_months", "purpose")
 
 
 @mcp.tool()
@@ -152,6 +203,90 @@ def lookup_application(session_token: str) -> dict:
             result["dti"] = round((existing_monthly_debt + monthly_payment) / monthly_salary, 2)
 
             print(f"[lookup_application] -> success application_id={result.get('application_id')} amount={result.get('amount_requested')} employer={result.get('employer_name')!r} dti={result['dti']} pti={result['pti']}", flush=True)
+            return result
+
+
+@mcp.tool()
+def get_context(session_token: str) -> dict:
+    """Resolve an opaque session token to the customer's full origination
+    context in one call: identity + KYC freshness, profile/income, credit,
+    existing debt, and their open application (or null) with the list of
+    still-missing loan-request fields. Every origination agent calls this
+    first so its facts come from the database, never from another agent's text.
+
+    Returns a dict shaped:
+      { customer:{...}, application:{...}|None with missing[], profile:{...},
+        credit:{...}, facilities:{...}, derived:{dti,pti}|None }
+    or {"error": "invalid_or_expired_session"} for a bad/expired token.
+    """
+    print(f"[get_context] called session_token={session_token!r}", flush=True)
+    with oracledb.connect(user=DB_USER, password=DB_PASSWORD, dsn=DB_DSN) as conn:
+        with conn.cursor() as cur:
+            cur.execute(_CUSTOMER_BY_TOKEN_SQL, token=session_token)
+            row = cur.fetchone()
+            if row is None:
+                print("[get_context] -> invalid_or_expired_session", flush=True)
+                return {"error": "invalid_or_expired_session"}
+            customer_id = int(row[0])
+
+            cur.execute(_PROFILE_SQL, customer_id=customer_id)
+            p = dict(zip([d[0].lower() for d in cur.description], cur.fetchone()))
+
+            cur.execute(_OPEN_APPLICATION_SQL, customer_id=customer_id)
+            app_row = cur.fetchone()
+            application = None
+            derived = None
+            if app_row is not None:
+                a = dict(zip([d[0].lower() for d in cur.description], app_row))
+                missing = [f for f in _REQUIRED_APPLICATION_FIELDS if a.get(f) is None]
+                application = {
+                    "id": int(a["application_id"]),
+                    "status": a["status"],
+                    "amount_requested": _f(a["amount_requested"]),
+                    "term_months": _i(a["term_months"]),
+                    "purpose": a["purpose"],
+                    "missing": missing,
+                }
+                if not missing:
+                    monthly_payment = round(float(a["amount_requested"]) / int(a["term_months"]), 2)
+                    salary = float(p["monthly_salary"])
+                    debt = float(p["existing_monthly_debt"])
+                    derived = {
+                        "monthly_payment": monthly_payment,
+                        "pti": round(monthly_payment / salary, 2),
+                        "dti": round((debt + monthly_payment) / salary, 2),
+                    }
+
+            kyc_updated_at = p.get("kyc_updated_at")
+            kyc_age_days = None
+            kyc_stale = True
+            if kyc_updated_at is not None:
+                ref = kyc_updated_at if kyc_updated_at.tzinfo else kyc_updated_at.replace(tzinfo=timezone.utc)
+                kyc_age_days = (_now_utc() - ref).days
+                kyc_stale = kyc_age_days > _KYC_STALE_DAYS
+
+            result = {
+                "customer": {
+                    "id": customer_id,
+                    "age_years": _i(p["age_years"]),
+                    "residency": p["residency"],
+                    "kyc_status": p["kyc_status"],
+                    "kyc_age_days": kyc_age_days,
+                    "kyc_stale": kyc_stale,
+                },
+                "application": application,
+                "profile": {
+                    "employment_type": p["employment_type"],
+                    "employer_name": p["employer_name"],
+                    "monthly_salary": _f(p["monthly_salary"]),
+                    "income_stale": False,  # Phase 2: wire real income recency
+                },
+                "credit": {"score": _i(p["credit_score"])},
+                "facilities": {"existing_monthly_debt": _f(p["existing_monthly_debt"])},
+                "derived": derived,
+            }
+            print(f"[get_context] -> customer_id={customer_id} has_app={application is not None} "
+                  f"missing={application['missing'] if application else None} kyc_stale={kyc_stale}", flush=True)
             return result
 
 
