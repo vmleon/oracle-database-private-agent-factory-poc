@@ -2,6 +2,8 @@
 
 Architecture, technologies, samples, and integration patterns. Generated study notes from Oracle docs, product pages, and linked articles.
 
+> **Scope:** this is a _generic_ PAF study guide (product mechanics, any use case). For how **this** project uses PAF, see [`DESIGN.md §5`](DESIGN.md) (runtime mapping), [`../LOCAL.md`](../LOCAL.md) (install + register tools), and [`../paf/flows/CHAT_WORKFLOW.md`](../paf/flows/CHAT_WORKFLOW.md) (the flow build). For banking/credit/compliance terms, see [`GLOSSARY.md`](GLOSSARY.md).
+
 ---
 
 ## How to use this guide
@@ -1457,6 +1459,8 @@ Some of these appear partially present in public docs or product pages, while ot
 ---
 
 ## 25. Glossary
+
+> PAF-product terms only. For banking/credit/compliance terms (DTI, KYC, AML, fair lending, …), see [`GLOSSARY.md`](GLOSSARY.md).
 
 **Agent Builder** — Visual canvas for custom agents and workflows.
 
