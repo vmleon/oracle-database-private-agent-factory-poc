@@ -412,3 +412,29 @@ databaseChangeLog:
         - sql:
             sql: |-
               GRANT SELECT ON REPORTING.research_v_hitl_task TO AGENT_FACTORY
+
+  # Add kyc_updated_at to the customer-safe applicant profile view.
+  - changeSet:
+      id: 006-chat-applicant-profile-add-kyc-updated-at
+      author: paf-poc
+      runOnChange: true
+      changes:
+        - sql:
+            sql: |-
+              CREATE OR REPLACE VIEW REPORTING.chat_v_applicant_profile AS
+              SELECT
+                c.customer_id,
+                c.full_name,
+                c.date_of_birth,
+                TRUNC(MONTHS_BETWEEN(SYSDATE, c.date_of_birth) / 12) AS age_years,
+                c.residency,
+                c.kyc_status,
+                c.kyc_updated_at,
+                e.employer_name,
+                e.employment_type,
+                e.monthly_salary,
+                e.tenure_months
+              FROM APP.customer c
+              LEFT JOIN APP.employment e
+                ON e.customer_id = c.customer_id
+                AND e.is_current = 'Y'
