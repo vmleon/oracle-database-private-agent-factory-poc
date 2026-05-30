@@ -102,6 +102,7 @@ _CUSTOMER_BY_TOKEN_SQL = """
 
 _PROFILE_SQL = """
     SELECT p.customer_id,
+           p.full_name,
            p.age_years,
            LOWER(p.residency)        AS residency,
            p.kyc_status,
@@ -268,6 +269,7 @@ def get_context(session_token: str) -> dict:
             result = {
                 "customer": {
                     "id": customer_id,
+                    "name": p["full_name"],
                     "age_years": _i(p["age_years"]),
                     "residency": p["residency"],
                     "kyc_status": p["kyc_status"],
