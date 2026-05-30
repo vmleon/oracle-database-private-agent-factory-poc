@@ -107,6 +107,27 @@ services:
       DB_USER: "AGENT_FACTORY"
       DB_PASSWORD: "${DB_PASSWORD}"
 
+  # Application MCP — write surface for conversational loan intake.
+  # Exposes upsert_draft_application as an MCP tool so the Concierge agent
+  # can create/patch a customer's DRAFT loan application as it collects
+  # loan details. Connects to Oracle as AGENT_FACTORY (same as hitl-mcp).
+  # PAF reaches it at http://application-mcp:8504/mcp/.
+  application-mcp:
+    build:
+      context: ../../src/ai/application-mcp
+    container_name: paf-application-mcp
+    restart: unless-stopped
+    depends_on:
+      oracle-free-26ai:
+        condition: service_healthy
+    environment:
+      PORT: "8504"
+      DB_HOST: "oracle-free-26ai"
+      DB_PORT: "1521"
+      DB_SERVICE: "FREEPDB1"
+      DB_USER: "AGENT_FACTORY"
+      DB_PASSWORD: "${DB_PASSWORD}"
+
   # Banking MCP — opaque-session lookup. Resolves a token (set by login,
   # held by the operator in a PAF Text Input node for POC) to the customer's
   # current loan-application context, using cx_Oracle bind variables. This

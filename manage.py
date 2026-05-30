@@ -994,7 +994,7 @@ def local_up() -> None:
         console.print(f"[bold]PAF image {paf_tag} missing — building from kit...[/bold]")
         _run(["bash", str(PAF_BUILD_SCRIPT), "aai"], cwd=str(PAF_KIT_DIR))
     _ensure_tls_certs()
-    services = ["oracle-free-26ai", "caddy-ollama-tls", "opa", "opa-mcp", "ocr-mcp", "hitl-mcp", "banking-mcp", "registry-api", "backend"]
+    services = ["oracle-free-26ai", "caddy-ollama-tls", "opa", "opa-mcp", "ocr-mcp", "hitl-mcp", "application-mcp", "banking-mcp", "registry-api", "backend"]
     # Always export so compose substitution succeeds even when paf isn't started.
     os.environ["PAF_APP_VERSION"] = _paf_app_version() or "unset"
     os.environ.setdefault("HOST_OS", platform.system())
