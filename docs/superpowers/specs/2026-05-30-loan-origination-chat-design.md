@@ -117,7 +117,7 @@ application { id|null, status, amount_requested, term_months, purpose, missing[]
 profile     { employment_type, employer_name, monthly_salary, income_stale }
 credit      { score }
 facilities  { existing_monthly_debt }
-derived     { dti, pti }
+derived     { dti, pti, monthly_payment } | null when the application is incomplete
 ```
 
 `missing[]` and the `*_stale` booleans are computed **server-side** so each step has a
@@ -129,8 +129,8 @@ on a write-capable server (`application-mcp`, `AGENT_FACTORY` user, mirroring `h
 calling a new `AGENT_TOOLS.PKG_AGENT_TOOLS` function with bind variables. Derives `customer_id` from the
 token; creates the customer's `DRAFT` application on first call and patches supplied fields
 thereafter. **Idempotent** per the customer's open draft — a re-run never duplicates.
-Returns the updated `application{…}` (same shape as above). `product_type` defaults to
-`PERSONAL_LOAN`.
+Returns `{ application_id }`; the agent re-reads the full application via `get_context`
+(the DB is the memory). `product_type` defaults to `PERSONAL_LOAN`.
 
 Both tools keep the trust boundary identical to today's `lookup_application`: customer scope
 from the token, values from the conversation.
