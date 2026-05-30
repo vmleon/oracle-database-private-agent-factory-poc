@@ -89,14 +89,18 @@ Two deployment options, same source tree:
 - **Local** — rootless podman on a laptop or LAN. See [`LOCAL.md`](LOCAL.md).
 - **Cloud** — Oracle Cloud Infrastructure (OCI) Terraform + Ansible (5 computes + **ADB** (Autonomous Database) + **LB** (load balancer)). See [`CLOUD.md`](CLOUD.md) _(not yet implemented)_.
 
-## Documentation
+## Documentation — start here
 
-- [`docs/DESIGN.md`](docs/DESIGN.md) — architecture, components, PAF Hybrid runtime mapping, source layout, locked decisions.
-- [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — deployment plan, `manage.py` command surface, Liquibase strategy, current scope.
-- [`docs/PAF.md`](docs/PAF.md) — Oracle PAF practical study guide (in-repo reference).
-- [`docs/DECISIONING-ENGINE-USE-CASE.md`](docs/DECISIONING-ENGINE-USE-CASE.md) — the credit-decisioning use case the PoC implements.
-- [`ENHANCEMENTS.md`](ENHANCEMENTS.md) — planned features beyond the current loan-decisioning flow: Customer 360 view, XGBoost credit-scoring tool, product-recommendation workflow, TOON spike.
-- [`docs/GLOSSARY.md`](docs/GLOSSARY.md) — plain-English glossary of the banking and compliance terms used across the docs (DTI, PTI, KYC, AML, fair lending, etc.).
+New to the project? Read in this order:
+
+1. **This README** — the story, the current state, the quickstart.
+2. [`docs/GLOSSARY.md`](docs/GLOSSARY.md) — plain-English banking terms (DTI, PTI, KYC, AML, fair lending), if they're new to you.
+3. [`docs/DECISIONING-ENGINE-USE-CASE.md`](docs/DECISIONING-ENGINE-USE-CASE.md) — the credit-decisioning use case: what the system does and why.
+4. [`docs/DESIGN.md`](docs/DESIGN.md) — the architecture, PAF Hybrid runtime mapping, source layout, and locked decisions.
+5. [`paf/flows/CHAT_WORKFLOW.md`](paf/flows/CHAT_WORKFLOW.md) — the customer-facing agent flow, in build detail.
+6. [`LOCAL.md`](LOCAL.md) — stand the stack up and test it.
+
+Reference as needed: [`docs/PAF.md`](docs/PAF.md) (generic PAF product guide) · [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) (deploy strategy + `manage.py`) · [`docs/TROUBLESHOOT.md`](docs/TROUBLESHOOT.md) (workarounds) · [`ENHANCEMENTS.md`](ENHANCEMENTS.md) (future features: Customer 360, XGBoost scoring, product-rec, TOON).
 
 ## Quickstart (local)
 

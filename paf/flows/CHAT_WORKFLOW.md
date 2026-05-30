@@ -14,6 +14,8 @@ Two principles shape the whole design:
 
 > **Status: build target, not yet validated end-to-end.** The DB tools, the `application-mcp`/`get_context` surface, and the Spring backend are implemented and tested (see the design spec). This canvas flow is assembled by hand in PAF; treat the **Custom Instructions below as drafts to tune against the live 72B**, exactly as the earlier two-agent flow's instructions were. When it runs green, capture the JSON per [Export](#export) and fold any instruction fixes back here.
 
+This is the **flow-build SSOT**. Architecture rationale: [`docs/DESIGN.md`](../../docs/DESIGN.md); deploy + register the tools: [`LOCAL.md`](../../LOCAL.md).
+
 Source-of-truth references:
 
 - Design + decisions (agents, ≤3-tool rule, reason codes, customer hint): [`docs/superpowers/specs/2026-05-30-loan-origination-chat-design.md`](../../docs/superpowers/specs/2026-05-30-loan-origination-chat-design.md)
