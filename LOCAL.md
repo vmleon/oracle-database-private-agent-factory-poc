@@ -17,13 +17,15 @@ When you're done you have:
 - An `opa` container (Open Policy Agent in server mode loading every `.rego` under `opa/packages/`) and a sibling `opa-mcp` container — a FastMCP wrapper exposing each Rego rule as a typed MCP tool at `http://opa-mcp:8500/mcp/`. PAF reaches it as an **MCP Server node** wired to `CHAT_WORKFLOW` only.
 - A stub `ocr-mcp` container — FastMCP wrapper with one `extract_document` tool at `http://ocr-mcp:8501/mcp/`. Returns canned classification + extraction results keyed on the document filename (placeholder for the real YOLO + PaddleOCR/Tesseract pipeline).
 - A `registry-api` container — synthetic FastAPI Company Registry with a single `verify_employer(name)` route. OpenAPI 3.1 spec at `http://registry-api:8600/openapi.json`. Registered with PAF as an **HTTP datasource** wired to `CHAT_WORKFLOW` only.
+- A `paf-backend` container — the Spring Boot Application Service on `localhost:8090`. It lists demo customers (`GET /v1/customers`), mints the opaque session token at `POST /v1/login`, brokers each chat turn at `POST /v1/chat` (enveloping the token, stripping the agent's internal marker blocks), and replays history at `GET /v1/chat/history`. It is the client that drives `CHAT_WORKFLOW`.
+- An `application-mcp` container — FastMCP write tool `upsert_application(session_token, amount?, term_months?, purpose?)` at `http://application-mcp:8504/mcp/`. The intake agent uses it to create / patch a customer's `DRAFT` loan application. Connects as `AGENT_FACTORY`; the customer is resolved from the token server-side.
 - A `caddy-ollama-tls` container terminating TLS in front of the LAN LLM endpoint, plus an Oracle SSL wallet trusting Caddy's CA (registered via the `SSL_WALLET` database property — kept for future HTTPS-from-DB work).
 - LLM Configuration in PAF registered against your vLLM endpoint on the GPU host (generation on `:8000`, embeddings on `:8001`).
 - The customer-facing `CHAT_WORKFLOW` flow built in PAF Agent Builder from a versioned blueprint, exercising all four tool channels against the seed data.
 
 **Not wired locally**: Select AI profiles (`chat_profile` / `research_profile`). Oracle Database Free 26ai (23.26.x) rejects custom `provider_endpoint` values in `DBMS_CLOUD_AI` pre-flight (`ORA-20401`) — see [`docs/DEPLOYMENT.md §7`](docs/DEPLOYMENT.md). The `CHAT_WORKFLOW` flow uses a SQL Query node + LLM locally; full Select AI Bridge is the ADB demo path.
 
-The Spring Boot backend and the Angular UIs are not in the compose yet, and the OCR service is a stub (real YOLO/Tesseract pipeline is a separate workstream). The next-steps list in [`README.md`](README.md#current-state) shows the order they land in.
+The Spring Boot backend (`paf-backend`) is now part of the compose and comes up with `local up`. The Angular UI is still out of the compose, and the OCR service is a stub (real YOLO/Tesseract pipeline is a separate workstream). The next-steps list in [`README.md`](README.md#current-state) shows the order the rest land in.
 
 ## Prereqs
 
