@@ -202,6 +202,24 @@ The `registry-api` service ships eight synthetic company records that align with
 
 Run the sanity-check curls + log tail in [`docs/TROUBLESHOOT.md §Sanity-check curls`](docs/TROUBLESHOOT.md#sanity-check-curls-paf--tools--datasources).
 
+## Application Service (`paf-backend`)
+
+`local up` also starts the Spring Boot Application Service on `localhost:8090` — the client that drives `CHAT_WORKFLOW`. It exposes:
+
+- `GET /v1/customers` — demo customers for the login picker, each flagged `hasOpenApplication`. Customers with **no** open application (e.g. `Liam NoApplication`) are included so you can exercise conversational intake.
+- `POST /v1/login` `{"customerId": N}` — mints an opaque, **customer-bound** session token. `applicationId` is `null` for a customer with no open application; `roomId` is `room-cust-{customerId}`. Passwordless by design (mock login, POC).
+- `POST /v1/chat` `{"message": "…"}` with header `X-Session-Token: sess_…` — one chat turn. The backend envelopes the token as `[[SESSION …]]`, calls the published flow, and strips the agent's internal `[[…]]` marker blocks before returning the customer-facing reply.
+- `GET /v1/chat/history` (same header) — replays the conversation for the session's customer.
+
+`/v1/customers` and `/v1/login` work as soon as the database is up (§2); `/v1/chat` additionally needs the `CHAT_WORKFLOW` flow built and **published** (§5) and the vLLM endpoint reachable. Confirm the service is live:
+
+```bash
+curl -s http://localhost:8090/actuator/health                    # {"status":"UP"}
+curl -s http://localhost:8090/v1/customers | python -m json.tool # find Liam NoApplication → "hasOpenApplication": false
+```
+
+The trust-boundary rationale (token-only envelope, customer resolved server-side) is in the design spec [`docs/superpowers/specs/2026-05-30-loan-origination-chat-design.md`](docs/superpowers/specs/2026-05-30-loan-origination-chat-design.md).
+
 ## 5. Build `CHAT_WORKFLOW`
 
 `CHAT_WORKFLOW` is the customer-facing Agent Builder flow that combines OPA, OCR, Company Registry, and the in-DB HITL tool into the three-tier recommendation contract documented in `docs/DECISIONING-ENGINE-USE-CASE.md`. It is the only Agent Builder flow you need to build in this runbook.
