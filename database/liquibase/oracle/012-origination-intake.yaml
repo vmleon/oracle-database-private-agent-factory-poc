@@ -56,3 +56,26 @@ databaseChangeLog:
             sql: |-
               ALTER TABLE APP.loan_application
                 MODIFY (amount_requested NULL, term_months NULL)
+
+  - changeSet:
+      id: 012-seed-no-application-customer
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              INSERT INTO APP.customer
+                (full_name, date_of_birth, residency, email, phone, kyc_status, kyc_updated_at)
+              VALUES ('Liam NoApplication', DATE '1989-04-12', 'RESIDENT',
+                      'liam@example.com', '+10000000011', 'PASSED', SYSTIMESTAMP)
+        - sql:
+            sql: |-
+              INSERT INTO APP.employment
+                (customer_id, employer_name, employment_type, monthly_salary, is_current)
+              SELECT customer_id, 'Globex Corporation', 'SALARIED', 5200, 'Y'
+                FROM APP.customer WHERE full_name = 'Liam NoApplication'
+        - sql:
+            sql: |-
+              INSERT INTO APP.credit_bureau_snapshot
+                (customer_id, snapshot_date, score, score_scale_min, score_scale_max)
+              SELECT customer_id, SYSDATE, 705, 300, 850
+                FROM APP.customer WHERE full_name = 'Liam NoApplication'
