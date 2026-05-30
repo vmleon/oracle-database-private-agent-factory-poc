@@ -235,4 +235,56 @@ databaseChangeLog:
                   RETURN l_task_id;
                 END create_hitl_task;
 
+                FUNCTION upsert_draft_application(
+                  p_session_token IN VARCHAR2,
+                  p_amount        IN NUMBER,
+                  p_term_months   IN NUMBER,
+                  p_purpose       IN VARCHAR2
+                ) RETURN NUMBER AS
+                  l_customer_id    APP.loan_application.customer_id%TYPE;
+                  l_application_id APP.loan_application.application_id%TYPE;
+                  l_product_id     APP.product_catalog.product_id%TYPE;
+                BEGIN
+                  -- Fail-secure: unknown/expired token raises NO_DATA_FOUND,
+                  -- which the MCP wrapper maps to invalid_or_expired_session.
+                  SELECT customer_id INTO l_customer_id
+                    FROM APP.auth_session
+                   WHERE session_token = p_session_token
+                     AND (expires_at IS NULL OR expires_at > SYSTIMESTAMP);
+
+                  SELECT product_id INTO l_product_id
+                    FROM APP.product_catalog
+                   WHERE product_type = 'PERSONAL_LOAN'
+                   FETCH FIRST 1 ROW ONLY;
+
+                  BEGIN
+                    SELECT application_id INTO l_application_id
+                      FROM APP.loan_application
+                     WHERE customer_id = l_customer_id
+                       AND status IN ('DRAFT','SUBMITTED','IN_REVIEW')
+                     ORDER BY application_id DESC
+                     FETCH FIRST 1 ROW ONLY;
+                  EXCEPTION WHEN NO_DATA_FOUND THEN
+                    l_application_id := NULL;
+                  END;
+
+                  IF l_application_id IS NULL THEN
+                    INSERT INTO APP.loan_application
+                      (customer_id, product_id, amount_requested, term_months,
+                       purpose, channel, status)
+                    VALUES
+                      (l_customer_id, l_product_id, p_amount, p_term_months,
+                       p_purpose, 'CHAT', 'DRAFT')
+                    RETURNING application_id INTO l_application_id;
+                  ELSE
+                    UPDATE APP.loan_application
+                       SET amount_requested = NVL(p_amount, amount_requested),
+                           term_months      = NVL(p_term_months, term_months),
+                           purpose          = NVL(p_purpose, purpose)
+                     WHERE application_id = l_application_id;
+                  END IF;
+
+                  RETURN l_application_id;
+                END upsert_draft_application;
+
               END PKG_AGENT_TOOLS;

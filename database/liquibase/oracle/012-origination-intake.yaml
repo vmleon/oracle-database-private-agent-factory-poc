@@ -79,3 +79,31 @@ databaseChangeLog:
                 (customer_id, snapshot_date, score, score_scale_min, score_scale_max)
               SELECT customer_id, SYSDATE, 705, 300, 850
                 FROM APP.customer WHERE full_name = 'Liam NoApplication'
+
+  - changeSet:
+      id: 012-grant-loan-application-write-to-agent-tools
+      author: paf-poc
+      changes:
+        - sql:
+            sql: GRANT INSERT, UPDATE ON APP.loan_application TO AGENT_TOOLS
+
+  - changeSet:
+      id: 012-grant-loan-application-read-to-agent-tools
+      author: paf-poc
+      changes:
+        - sql:
+            sql: GRANT SELECT ON APP.loan_application TO AGENT_TOOLS
+
+  - changeSet:
+      id: 012-grant-auth-session-read-to-agent-tools
+      author: paf-poc
+      changes:
+        - sql:
+            sql: GRANT SELECT ON APP.auth_session TO AGENT_TOOLS
+
+  - changeSet:
+      id: 012-grant-product-catalog-read-to-agent-tools
+      author: paf-poc
+      changes:
+        - sql:
+            sql: GRANT SELECT ON APP.product_catalog TO AGENT_TOOLS

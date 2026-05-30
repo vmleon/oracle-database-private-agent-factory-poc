@@ -46,6 +46,16 @@ databaseChangeLog:
                   p_evidence        IN CLOB,
                   p_agent_run_id    IN VARCHAR2
                 ) RETURN NUMBER;
+                -- upsert_draft_application: resolve the customer from the
+                -- opaque session token, create their DRAFT loan application on
+                -- first call, then patch any supplied field. Returns the
+                -- application_id. NULL args leave existing values untouched.
+                FUNCTION upsert_draft_application(
+                  p_session_token IN VARCHAR2,
+                  p_amount        IN NUMBER,
+                  p_term_months   IN NUMBER,
+                  p_purpose       IN VARCHAR2
+                ) RETURN NUMBER;
               END PKG_AGENT_TOOLS;
 
   - changeSet:
