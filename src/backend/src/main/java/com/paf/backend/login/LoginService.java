@@ -5,9 +5,7 @@ import com.paf.backend.api.Dtos.LoginResponse;
 import com.paf.backend.domain.CustomerRepository;
 import com.paf.backend.domain.LoanApplication;
 import com.paf.backend.domain.LoanApplicationRepository;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 
@@ -35,13 +33,15 @@ public class LoginService {
                 .toList();
     }
 
-    /** Resolve the customer's open application and mint a session token bound to it. */
+    /** Mint a session bound to the customer. The open application (if any) is cached on the
+     *  session; a customer with none enters intake. Room is keyed by customer so the thread is
+     *  stable across the pre-application -> application transition. */
     public LoginResponse login(Long customerId) {
-        LoanApplication app = applications.findOpenByCustomer(customerId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "no open application for customer " + customerId));
-        String token = sessionService.mint(customerId, app.getApplicationId());
-        String roomId = "room-app-" + app.getApplicationId();
-        return new LoginResponse(token, customerId, app.getApplicationId(), roomId);
+        Long applicationId = applications.findOpenByCustomer(customerId)
+                .map(LoanApplication::getApplicationId)
+                .orElse(null);
+        String token = sessionService.mint(customerId, applicationId);
+        String roomId = "room-cust-" + customerId;
+        return new LoginResponse(token, customerId, applicationId, roomId);
     }
 }

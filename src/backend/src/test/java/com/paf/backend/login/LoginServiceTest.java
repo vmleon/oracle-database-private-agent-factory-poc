@@ -7,13 +7,10 @@ import com.paf.backend.domain.CustomerRepository;
 import com.paf.backend.domain.LoanApplication;
 import com.paf.backend.domain.LoanApplicationRepository;
 import org.junit.jupiter.api.Test;
-import org.springframework.web.server.ResponseStatusException;
-
 import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -33,15 +30,19 @@ class LoginServiceTest {
 
         assertThat(resp.sessionToken()).isEqualTo("sess_abc");
         assertThat(resp.applicationId()).isEqualTo(7L);
-        assertThat(resp.roomId()).isEqualTo("room-app-7");
+        assertThat(resp.roomId()).isEqualTo("room-cust-1");
     }
 
     @Test
-    void loginRaises404WhenNoOpenApplication() {
-        when(appRepo.findOpenByCustomer(99L)).thenReturn(Optional.empty());
-        assertThatThrownBy(() -> service.login(99L))
-                .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("404");
+    void loginMintsTokenForCustomerWithNoApplication() {
+        when(appRepo.findOpenByCustomer(21L)).thenReturn(Optional.empty());
+        when(sessionService.mint(21L, null)).thenReturn("sess_xyz");
+
+        LoginResponse resp = service.login(21L);
+
+        assertThat(resp.sessionToken()).isEqualTo("sess_xyz");
+        assertThat(resp.applicationId()).isNull();
+        assertThat(resp.roomId()).isEqualTo("room-cust-21");
     }
 
     @Test
