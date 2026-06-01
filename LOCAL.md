@@ -17,15 +17,16 @@ When you're done you have:
 - An `opa` container (Open Policy Agent in server mode loading every `.rego` under `opa/packages/`) and a sibling `opa-mcp` container — a FastMCP wrapper exposing each Rego rule as a typed MCP tool at `http://opa-mcp:8500/mcp/`. PAF reaches it as an **MCP Server node** wired to `CHAT_WORKFLOW` only.
 - A stub `ocr-mcp` container — FastMCP wrapper with one `extract_document` tool at `http://ocr-mcp:8501/mcp/`. Returns canned classification + extraction results keyed on the document filename (placeholder for the real YOLO + PaddleOCR/Tesseract pipeline).
 - A `registry-api` container — synthetic FastAPI Company Registry with a single `verify_employer(name)` route. OpenAPI 3.1 spec at `http://registry-api:8600/openapi.json`. Registered with PAF as an **HTTP datasource** wired to `CHAT_WORKFLOW` only.
-- A `paf-backend` container — the Spring Boot Application Service on `localhost:8090`. It lists demo customers (`GET /v1/customers`), mints the opaque session token at `POST /v1/login`, brokers each chat turn at `POST /v1/chat` (enveloping the token, stripping the agent's internal marker blocks), and replays history at `GET /v1/chat/history`. It is the client that drives `CHAT_WORKFLOW`.
+- An `application-backend` container — the Spring Boot Application Service on `localhost:8090`. (It stands in for the bank's **existing application backend, extended to drive PAF flows** — it is the PAF _client_, not part of the PAF platform.) It lists demo customers (`GET /v1/customers`), mints the opaque session token at `POST /v1/login`, brokers each chat turn at `POST /v1/chat` (enveloping the token, stripping the agent's internal marker blocks), and replays history at `GET /v1/chat/history`. It is the client that drives `CHAT_WORKFLOW`.
 - An `application-mcp` container — FastMCP write tool `upsert_application(session_token, amount?, term_months?, purpose?)` at `http://application-mcp:8504/mcp/`. The intake agent uses it to create / patch a customer's `DRAFT` loan application. Connects as `AGENT_FACTORY`; the customer is resolved from the token server-side.
-- A `caddy-ollama-tls` container terminating TLS in front of the LAN LLM endpoint, plus an Oracle SSL wallet trusting Caddy's CA (registered via the `SSL_WALLET` database property — kept for future HTTPS-from-DB work).
-- LLM Configuration in PAF registered against your vLLM endpoint on the GPU host (generation on `:8000`, embeddings on `:8001`).
+- LLM Configuration in PAF registered against your vLLM endpoint on the GPU host (generation on `:8000`, embeddings on `:8001`). PAF reaches vLLM directly — there is no TLS proxy in the loop.
 - The customer-facing `CHAT_WORKFLOW` flow built in PAF Agent Builder from a versioned blueprint, exercising all four tool channels against the seed data.
 
 **Not wired locally**: Select AI profiles (`chat_profile` / `research_profile`). Oracle Database Free 26ai (23.26.x) rejects custom `provider_endpoint` values in `DBMS_CLOUD_AI` pre-flight (`ORA-20401`) — see [`docs/DEPLOYMENT.md §7`](docs/DEPLOYMENT.md). The `CHAT_WORKFLOW` flow uses local MCP tools + LLM; full Select AI Bridge is the ADB demo path.
 
-The Spring Boot backend (`paf-backend`) is now part of the compose and comes up with `local up`. The Angular UI is still out of the compose, and the OCR service is a stub (real YOLO/Tesseract pipeline is a separate workstream). The next-steps list in [`README.md`](README.md#current-state) shows the order the rest land in.
+> **Note — Caddy / HTTPS-from-DB removed.** Oracle's `DBMS_CLOUD` requires an HTTPS callout, so an earlier iteration ran a Caddy TLS terminator in front of vLLM (self-signed cert added to the Oracle SSL wallet) plus a network ACL. That has been removed: Select AI never worked locally anyway (`ORA-20401`), so the Caddy proxy, SSL wallet, and ACL were pure inconsistency. **If you ever wire Select AI locally** you'd need to re-introduce TLS termination in front of vLLM, add its CA to the Oracle wallet, and grant the ACL — but the `ORA-20401` validator still blocks it, so Select AI stays a cloud/ADB feature. `CHAT_WORKFLOW` reaches the LLM through PAF's vLLM provider directly.
+
+The Spring Boot backend (`application-backend`) is part of the compose and comes up with `local up`. The two Angular UIs (customer chat, backoffice) are not yet implemented, and the OCR service is a stub (real YOLO/Tesseract pipeline is a separate workstream). The next-steps list in [`README.md`](README.md#current-state) shows the order the rest land in.
 
 ## Prereqs
 
@@ -44,7 +45,7 @@ Install these on the host once.
 You also need network access to pull:
 
 - `container-registry.oracle.com/database/free:latest` (Oracle Database Free 26ai image; ~9 GB).
-- `docker.io/openpolicyagent/opa:latest`, `docker.io/caddy:2-alpine`, `docker.io/python:3.12-slim` (the slim base is built once each for `opa-mcp`, `ocr-mcp`, and `registry-api`).
+- `docker.io/openpolicyagent/opa:latest`, `docker.io/python:3.12-slim` (the slim base is built once each for `opa-mcp`, `ocr-mcp`, and `registry-api`).
 - `ojdbc11` JDBC driver from Maven Central (the Ansible role caches it to `~/.cache/paf-poc/liquibase-libs/`).
 
 ## 1. Install prereqs and extract the PAF kit
@@ -76,12 +77,11 @@ python manage.py local up
 What this does, in order:
 
 - Starts the Oracle container, waits for `DATABASE IS READY TO USE!`, sets `max_string_size=EXTENDED`.
-- Generates a self-signed Caddy CA + server cert, builds an Oracle SSL wallet that trusts the CA, and points the database at it via the `SSL_WALLET` property.
 - Installs `DBMS_CLOUD` (if missing) via `catcon.pl`.
 - Applies pre-Liquibase sysdba grants (TABLE RETENTION, required before the Blockchain `decision` table is created).
 - Runs Liquibase against `database/liquibase/oracle/` (via Ansible).
-- Applies post-Liquibase sysdba grants + network ACL for `caddy-ollama-tls:443`.
-- Builds the `opa-mcp`, `ocr-mcp`, and `registry-api` images (first run only) and starts the `opa`, `opa-mcp`, `ocr-mcp`, `registry-api`, `caddy-ollama-tls`, and `paf` containers.
+- Applies post-Liquibase sysdba grants (`EXECUTE` on `DBMS_CLOUD` / `DBMS_CLOUD_AI` to `AGENT_FACTORY`).
+- Builds the `opa-mcp`, `ocr-mcp`, and `registry-api` images (first run only) and starts the `opa`, `opa-mcp`, `ocr-mcp`, `hitl-mcp`, `application-mcp`, `banking-mcp`, `registry-api`, `application-backend`, and `paf` containers.
 - Writes PAF's `.config_complete.marker` and `version.json` so the kit's startup script unblocks.
 
 The command is idempotent — re-running it from any state is safe and converges to a healthy stack.
@@ -202,7 +202,7 @@ The `registry-api` service ships eight synthetic company records that align with
 
 Run the sanity-check curls + log tail in [`docs/TROUBLESHOOT.md §Sanity-check curls`](docs/TROUBLESHOOT.md#sanity-check-curls-paf--tools--datasources).
 
-## Application Service (`paf-backend`)
+## Application Service (`application-backend`)
 
 `local up` also starts the Spring Boot Application Service on `localhost:8090` — the client that drives `CHAT_WORKFLOW`. It exposes:
 
@@ -246,7 +246,7 @@ If anything hangs or errors, `python manage.py local logs paf` shows the backend
 | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `python manage.py local up`             | Idempotent: starts containers if down, runs Liquibase if any pending changesets.                                                                                                                                                                                                                       |
 | `python manage.py local provision`      | Re-runs Liquibase + grants only (no podman restart). Use after editing the changelog.                                                                                                                                                                                                                  |
-| `python manage.py local logs <service>` | Tails a service (`oracle-free-26ai`, `paf`, `opa`, `opa-mcp`, `ocr-mcp`, `registry-api`, `caddy-ollama-tls`).                                                                                                                                                                                          |
+| `python manage.py local logs <service>` | Tails a service (`oracle-free-26ai`, `paf`, `opa`, `opa-mcp`, `ocr-mcp`, `hitl-mcp`, `application-mcp`, `banking-mcp`, `registry-api`, `application-backend`).                                                                                                                                         |
 | `python manage.py local down`           | Stops and removes containers. State persists in the `paf-oradata` volume and PAF's bind-mounted `paf-kit/applied-ai/{volume,dev-shared}` directories.                                                                                                                                                  |
 | `python manage.py local down --purge`   | Also removes the Oracle data volume **and** resets PAF's bind-mounted `applied-ai/{volume,dev-shared}` directories to the kit-shipped defaults (snapshotted at `paf prepare` time). Next `local up` starts with a fresh DB and PAF presents the install wizard again. Does **not** re-extract the kit. |
 

@@ -12,10 +12,8 @@ services:
     volumes:
       - oradata:/opt/oracle/oradata
       - ./init-scripts:/opt/oracle/scripts/startup:ro
-    # Oracle DBMS_CLOUD_AI (Select AI) talks to the caddy-ollama-tls
-    # service over compose's internal DNS — no extra_hosts needed here.
-    # The TLS terminator that resolves the real Ollama upstream is the
-    # Caddy service below.
+    # Select AI (DBMS_CLOUD_AI) is not wired locally — it needs an HTTPS
+    # endpoint in front of vLLM and is the cloud/ADB path. See LOCAL.md.
     healthcheck:
       test: ["CMD", "/opt/oracle/checkDBStatus.sh"]
       interval: 30s
@@ -40,11 +38,11 @@ services:
     volumes:
       - ../../paf-kit/applied-ai/dev-shared:/dev-shared
       - ../../paf-kit/applied-ai/volume:/mount
-    # PAF can't do mDNS / Bonjour, so when OLLAMA_HOST is a .local name we
+    # PAF can't do mDNS / Bonjour, so when VLLM_HOST is a .local name we
     # resolve it on the host (which does mDNS) at `local up` and inject the
     # mapping here. Falls back to a no-op loopback entry when not needed.
     extra_hosts:
-      - "${OLLAMA_HOSTS_ENTRY:-localhost:127.0.0.1}"
+      - "${VLLM_HOSTS_ENTRY:-localhost:127.0.0.1}"
     environment:
       IS_UPGRADE: "false"
       HOST_OS: "${HOST_OS:-Darwin}"
@@ -183,10 +181,10 @@ services:
   # CHAT_WORKFLOW (login cookie + run). Connects to Oracle as APP (owns
   # auth_session + chat_message). Reaches PAF on the compose network at
   # https://paf:8080 (self-signed cert; the client skips TLS verification).
-  backend:
+  application-backend:
     build:
       context: ../../src/backend
-    container_name: paf-backend
+    container_name: application-backend
     restart: unless-stopped
     depends_on:
       oracle-free-26ai:
@@ -205,27 +203,6 @@ services:
       PAF_ADMIN_USER: "${PAF_ADMIN_USER}"
       PAF_ADMIN_PASS: "${PAF_ADMIN_PASS}"
       CHAT_WORKFLOW_AGENT_ID: "${CHAT_WORKFLOW_AGENT_ID:-}"
-
-  # TLS terminator in front of Ollama. Exists because Oracle 26ai's
-  # DBMS_CLOUD_AI rejects HTTP endpoints on-prem (ORA-20047). Caddy
-  # serves a pre-generated self-signed cert; the matching CA root is
-  # baked into the Oracle container's OS trust store by `manage.py local up`.
-  #
-  # No host port is published — only the compose network reaches it.
-  # The upstream (real Ollama on a LAN GPU host or laptop) is resolved
-  # via extra_hosts (same mDNS trick PAF uses).
-  caddy-ollama-tls:
-    image: docker.io/caddy:2-alpine
-    container_name: paf-caddy-ollama-tls
-    restart: unless-stopped
-    volumes:
-      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - ./caddy/tls:/etc/caddy/tls:ro
-    environment:
-      OLLAMA_HOST: "${OLLAMA_HOST}"
-      OLLAMA_PORT: "${OLLAMA_PORT:-11434}"
-    extra_hosts:
-      - "${OLLAMA_HOSTS_ENTRY:-localhost:127.0.0.1}"
 
 volumes:
   oradata:

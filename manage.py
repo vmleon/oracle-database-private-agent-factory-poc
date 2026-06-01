@@ -32,17 +32,6 @@ PAF_VERSION_FILE = PAF_KIT_DIR / "applied-ai" / "kit" / "agent_factory" / "inter
 PAF_BUILD_SCRIPT = PAF_KIT_DIR / "build-image.sh"
 PAF_IMAGE_REPO = "localhost/applied-ai-label"
 
-# Caddy → Ollama HTTPS proxy. Cert + key live on the host (mounted into the
-# Caddy container); the CA root is baked into the Oracle container's OS trust
-# store. Hostname must match the compose service name and the SAN below.
-CADDY_TLS_DIR = PROJECT_ROOT / "deploy" / "podman" / "caddy" / "tls"
-CADDY_TLS_HOSTNAME = "caddy-ollama-tls"
-# Oracle SSL wallet path inside the database container. DBMS_CLOUD looks
-# this up via the SSL_WALLET database property (set by `_setup_oracle_ssl_wallet`).
-# The wallet password is only used by orapki at create-time — the wallet is
-# `-auto_login`, so DBMS_CLOUD opens it passwordlessly at runtime.
-ORACLE_WALLET_DIR = "/opt/oracle/dcs/commonstore/wallets/ssl"
-ORACLE_WALLET_PWD = "PafWalletPwd_internal_only"
 # Snapshot of the kit-shipped initial state of `applied-ai/{volume,dev-shared}`,
 # captured at `paf prepare` time. `local down --purge` restores from this so
 # runtime accretions (admin user records, .config_complete.marker, /mount/data)
@@ -256,180 +245,22 @@ def _grant_sysdba_post_liquibase(container: str = "paf-oracle-free-26ai") -> Non
     must run after Liquibase. Re-granting is a no-op.
 
     Also grants EXECUTE on DBMS_CLOUD / DBMS_CLOUD_AI to AGENT_FACTORY
-    (the packages are installed by `_install_dbms_cloud` earlier), and
-    appends a network ACL letting AGENT_FACTORY make outbound HTTPS to
-    the Caddy TLS proxy that fronts Ollama (used by Select AI profiles).
-    The ACL grants both `http` and `https` privileges — Oracle's HTTPS
-    callout requires both to be present for the underlying TCP setup.
+    (the packages are installed by `_install_dbms_cloud` earlier).
+
+    Note: Select AI is not wired locally, so no outbound-HTTPS network ACL
+    is added here. Wiring Select AI locally would also need an ACL to the
+    HTTPS endpoint fronting vLLM — see the note in `_bootstrap_select_ai_profiles`.
     """
     sql_lines = [
         "ALTER SESSION SET CONTAINER=FREEPDB1;",
         "GRANT SELECT ON SYS.V_$PARAMETER TO AGENT_FACTORY;",
         "GRANT EXECUTE ON DBMS_CLOUD TO AGENT_FACTORY;",
         "GRANT EXECUTE ON DBMS_CLOUD_AI TO AGENT_FACTORY;",
-        "BEGIN",
-        "  DBMS_NETWORK_ACL_ADMIN.APPEND_HOST_ACE(",
-        f"    host => '{CADDY_TLS_HOSTNAME}',",
-        "    lower_port => 443,",
-        "    upper_port => 443,",
-        "    ace => xs$ace_type(",
-        "      privilege_list => xs$name_list('http', 'http_proxy'),",
-        "      principal_name => 'AGENT_FACTORY',",
-        "      principal_type => xs_acl.ptype_db));",
-        "END;",
-        "/",
         "EXIT;",
     ]
     sql = "\n".join(sql_lines) + "\n"
     _run_sysdba_sql(sql, "Post-Liquibase sysdba grant", container)
     console.print("[green]✓[/green] SYS-only grants applied to AGENT_FACTORY.")
-    console.print(
-        f"[green]✓[/green] Network ACL: AGENT_FACTORY → {CADDY_TLS_HOSTNAME}:443 (https)."
-    )
-
-
-def _ensure_tls_certs() -> None:
-    """Generate (once) the self-signed CA + leaf cert used by the Caddy
-    HTTPS proxy in front of the LAN LLM endpoint. Idempotent: skipped if both files
-    already exist.
-
-    Why: Oracle 26ai's DBMS_CLOUD_AI rejects HTTP endpoints (ORA-20047),
-    so we put Caddy in the loop to terminate TLS. Caddy serves
-    `server.crt` (signed by our local CA `ca.crt`); the Oracle container
-    has `ca.crt` baked into its OS trust store by
-    `_install_caddy_ca_in_oracle`, so the TLS handshake succeeds. Oracle
-    26ai trusts the OS cert store directly (no wallet needed for normal
-    CA-rooted chains) — see Martin Carstenbach's "Using the OS cert store
-    in 26ai" post.
-    """
-    ca_crt = CADDY_TLS_DIR / "ca.crt"
-    ca_key = CADDY_TLS_DIR / "ca.key"
-    server_crt = CADDY_TLS_DIR / "server.crt"
-    server_key = CADDY_TLS_DIR / "server.key"
-    if all(p.exists() for p in (ca_crt, ca_key, server_crt, server_key)):
-        console.print(f"[green]✓[/green] Caddy TLS certs already present.")
-        return
-    if not shutil.which("openssl"):
-        console.print(
-            "[red]openssl not found on PATH.[/red] Install via "
-            "`brew install openssl` (macOS) or `dnf install openssl` (OL8)."
-        )
-        sys.exit(1)
-    CADDY_TLS_DIR.mkdir(parents=True, exist_ok=True)
-    console.print(f"[bold]Generating Caddy TLS certs in {CADDY_TLS_DIR.relative_to(PROJECT_ROOT)}...[/bold]")
-
-    # CA — 10-year validity, self-signed root.
-    subprocess.run(
-        ["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",
-         "-keyout", str(ca_key), "-out", str(ca_crt),
-         "-days", "3650", "-subj", "/CN=PAF-PoC Local CA"],
-        check=True, capture_output=True,
-    )
-
-    # Server cert with SAN covering the compose service name + a couple
-    # of fallbacks for debugging.
-    csr = CADDY_TLS_DIR / "server.csr"
-    ext = CADDY_TLS_DIR / "server.ext"
-    ext.write_text(
-        f"subjectAltName = DNS:{CADDY_TLS_HOSTNAME},DNS:localhost,IP:127.0.0.1\n"
-    )
-    subprocess.run(
-        ["openssl", "req", "-newkey", "rsa:2048", "-nodes",
-         "-keyout", str(server_key), "-out", str(csr),
-         "-subj", f"/CN={CADDY_TLS_HOSTNAME}"],
-        check=True, capture_output=True,
-    )
-    subprocess.run(
-        ["openssl", "x509", "-req", "-in", str(csr),
-         "-CA", str(ca_crt), "-CAkey", str(ca_key), "-CAcreateserial",
-         "-out", str(server_crt), "-days", "365", "-extfile", str(ext)],
-        check=True, capture_output=True,
-    )
-    # Clean up artefacts we don't need at runtime.
-    for p in (csr, ext, CADDY_TLS_DIR / "ca.srl"):
-        if p.exists():
-            p.unlink()
-    console.print(f"[green]✓[/green] CA + server certs generated (SAN: {CADDY_TLS_HOSTNAME}).")
-
-
-def _setup_oracle_ssl_wallet(container: str = "paf-oracle-free-26ai") -> None:
-    """Build an Oracle SSL wallet, register it via the SSL_WALLET database
-    property, and add the Caddy CA cert to it.
-
-    Oracle 26ai trusts the OS cert store for plain `UTL_HTTP`, but
-    `DBMS_CLOUD` is special — it looks up an Oracle wallet whose path
-    is registered as a database property. Without this, the first HTTPS
-    callout from a DBMS_CLOUD profile raises
-    `ORA-20000: Database property SSL_WALLET not found`.
-
-    Steps (all idempotent):
-      1. Copy the Caddy CA cert into the container.
-      2. `orapki wallet create -auto_login` at `ORACLE_WALLET_DIR`
-         if not already present.
-      3. `orapki wallet add -trusted_cert` — re-adding the same cert
-         returns a non-fatal error which we discard.
-      4. Append `WALLET_LOCATION=...` to `sqlnet.ora` (only if missing).
-      5. `ALTER DATABASE PROPERTY SET SSL_WALLET = ...` in CDB$ROOT
-         (no-op when already set to the same value).
-    """
-    ca_crt = CADDY_TLS_DIR / "ca.crt"
-    if not ca_crt.exists():
-        console.print(f"[red]{ca_crt.relative_to(PROJECT_ROOT)} missing.[/red] "
-                      "Run `_ensure_tls_certs()` first.")
-        sys.exit(1)
-
-    # 1. Copy CA into the container (overwriting any prior copy is fine).
-    cp = subprocess.run(
-        ["podman", "cp", str(ca_crt),
-         f"{container}:/tmp/paf-caddy-ca.crt"],
-        capture_output=True, text=True,
-    )
-    if cp.returncode != 0:
-        console.print(f"[red]podman cp failed:[/red]\n{cp.stderr}")
-        sys.exit(1)
-
-    # 2-4. Wallet create + add trusted cert + sqlnet.ora append.
-    # Runs as the default oracle user so file ownership matches the DB.
-    bash_cmd = (
-        "set -e\n"
-        f"mkdir -p {ORACLE_WALLET_DIR}\n"
-        f"cd {ORACLE_WALLET_DIR}\n"
-        # Create only if missing — cwallet.sso is the auto-login file.
-        f'if [ ! -f cwallet.sso ]; then\n'
-        f'  $ORACLE_HOME/bin/orapki wallet create -wallet . '
-        f'-pwd {ORACLE_WALLET_PWD} -auto_login\n'
-        'fi\n'
-        # Re-adding the same trusted cert returns a non-zero exit but is harmless.
-        f'$ORACLE_HOME/bin/orapki wallet add -wallet . -trusted_cert '
-        f'-cert /tmp/paf-caddy-ca.crt -pwd {ORACLE_WALLET_PWD} >/dev/null 2>&1 || true\n'
-        # sqlnet.ora WALLET_LOCATION — idempotent.
-        'SQLNET=$ORACLE_HOME/network/admin/sqlnet.ora\n'
-        'if ! grep -q "WALLET_LOCATION" "$SQLNET" 2>/dev/null; then\n'
-        f'  printf "\\nWALLET_LOCATION=(SOURCE=(METHOD=FILE)(METHOD_DATA=(DIRECTORY={ORACLE_WALLET_DIR})))\\n" >> "$SQLNET"\n'
-        'fi\n'
-    )
-    wallet_setup = subprocess.run(
-        ["podman", "exec", container, "bash", "-c", bash_cmd],
-        capture_output=True, text=True,
-    )
-    if wallet_setup.returncode != 0:
-        console.print(
-            f"[red]Oracle wallet setup failed:[/red]\n"
-            f"{wallet_setup.stdout}\n{wallet_setup.stderr}"
-        )
-        sys.exit(1)
-
-    # 5. Register the wallet path with the database. Must run in CDB$ROOT
-    # (no ALTER SESSION SET CONTAINER), and Oracle propagates to PDBs.
-    sql = (
-        f"ALTER DATABASE PROPERTY SET SSL_WALLET = '{ORACLE_WALLET_DIR}';\n"
-        "EXIT;\n"
-    )
-    _run_sysdba_sql(sql, "SSL_WALLET database property", container)
-    console.print(
-        f"[green]✓[/green] Oracle SSL wallet at {ORACLE_WALLET_DIR} "
-        "+ Caddy CA trusted + SSL_WALLET property set."
-    )
 
 
 def _is_dbms_cloud_installed(container: str = "paf-oracle-free-26ai") -> bool:
@@ -533,10 +364,15 @@ def _bootstrap_select_ai_profiles(container: str = "paf-oracle-free-26ai") -> No
       - chat_profile    → REPORTING.chat_v_*    (customer-safe)
       - research_profile → REPORTING.research_v_* (broader read-only)
 
-    Uses the `openai` provider with a `provider_endpoint` pointed at the
-    Caddy HTTPS proxy (`https://caddy-ollama-tls/v1`) rather than at
-    the vLLM endpoint directly. Caddy bridges Oracle's TLS requirement;
-    its upstream is whatever LLM `VLLM_HOST:VLLM_GEN_PORT` resolves to.
+    Uses the `openai` provider with a `provider_endpoint` pointed at an
+    HTTPS endpoint in front of vLLM (`VLLM_HOST:VLLM_GEN_PORT`).
+
+    NOTE: DBMS_CLOUD requires an HTTPS callout. The local POC previously ran
+    a Caddy TLS terminator in front of vLLM (self-signed cert added to the
+    Oracle SSL wallet) to satisfy this; that has been removed because Select
+    AI never worked locally anyway (see LOCAL CONSTRAINT below). If you wire
+    Select AI locally again you must re-introduce TLS termination in front of
+    vLLM, add its CA to the Oracle wallet, and grant a network ACL to it.
 
     A `credential_name` is mandatory on every DBMS_CLOUD_AI profile;
     vLLM doesn't enforce auth by default, so we create a dummy `VLLM_CRED`
@@ -548,14 +384,13 @@ def _bootstrap_select_ai_profiles(container: str = "paf-oracle-free-26ai") -> No
     LOCAL CONSTRAINT (`DEPLOYMENT_TARGET=local`): Oracle Database Free
     26ai (23.26.x) rejects `provider: ollama` / `provider: openai-compatible`
     (ORA-20046) and rejects HTTP `provider_endpoint` values (ORA-20047).
-    Forcing it through Caddy HTTPS clears those, but `provider: openai`
-    then fails pre-flight with ORA-20401 — the on-prem build appears
-    to allow-list the OpenAI hostname and reject custom endpoints at
-    validation time, before the request leaves the DB. See the
-    operational note in `docs/DEPLOYMENT.md`. The function therefore
-    drops any leftover credential / profiles on local and skips
-    creation. On ADB / cloud the same code will create profiles
-    successfully — `DEPLOYMENT_TARGET=cloud` runs the full body.
+    Even via HTTPS, `provider: openai` then fails pre-flight with ORA-20401 —
+    the on-prem build appears to allow-list the OpenAI hostname and reject
+    custom endpoints at validation time, before the request leaves the DB.
+    See the operational note in `docs/DEPLOYMENT.md`. The function therefore
+    drops any leftover credential / profiles on local and skips creation.
+    Select AI is the cloud/ADB path — `DEPLOYMENT_TARGET=cloud` runs the
+    full body.
     """
     deployment_target = (os.getenv("DEPLOYMENT_TARGET") or "").strip().lower()
     if deployment_target == "local":
@@ -579,7 +414,13 @@ def _bootstrap_select_ai_profiles(container: str = "paf-oracle-free-26ai") -> No
         )
         return
 
-    provider_endpoint = f"https://{CADDY_TLS_HOSTNAME}/v1"
+    vllm_gen_port = os.getenv("VLLM_GEN_PORT", "8000")
+    # Cloud/ADB path: an HTTPS endpoint must front vLLM for the DB callout
+    # (see NOTE in the docstring). Override via VLLM_TLS_ENDPOINT if a
+    # dedicated TLS terminator is used.
+    provider_endpoint = os.getenv(
+        "VLLM_TLS_ENDPOINT", f"https://{vllm_host}:{vllm_gen_port}/v1"
+    )
     credential_name = "VLLM_CRED"
 
     chat_views = [
@@ -993,20 +834,16 @@ def local_up() -> None:
     if paf_ready and not _paf_image_present(paf_tag):
         console.print(f"[bold]PAF image {paf_tag} missing — building from kit...[/bold]")
         _run(["bash", str(PAF_BUILD_SCRIPT), "aai"], cwd=str(PAF_KIT_DIR))
-    _ensure_tls_certs()
-    services = ["oracle-free-26ai", "caddy-ollama-tls", "opa", "opa-mcp", "ocr-mcp", "hitl-mcp", "application-mcp", "banking-mcp", "registry-api", "backend"]
+    services = ["oracle-free-26ai", "opa", "opa-mcp", "ocr-mcp", "hitl-mcp", "application-mcp", "banking-mcp", "registry-api", "application-backend"]
     # Always export so compose substitution succeeds even when paf isn't started.
     os.environ["PAF_APP_VERSION"] = _paf_app_version() or "unset"
     os.environ.setdefault("HOST_OS", platform.system())
-    # `deploy/podman/compose.local.yml` substitutes `${OLLAMA_HOST}` /
-    # `${OLLAMA_PORT}` for the Caddy upstream. Mirror the VLLM_* values
-    # into those names so the Caddy service resolves the configured LLM
-    # endpoint regardless of provider naming.
-    os.environ["OLLAMA_HOST"] = os.environ.get("VLLM_HOST", "")
-    os.environ["OLLAMA_PORT"] = os.environ.get("VLLM_GEN_PORT", "8000")
+    # PAF reaches vLLM directly; when VLLM_HOST is a `.local` mDNS name the
+    # PAF container can't resolve it, so we resolve it on the host and inject
+    # the mapping via the compose `extra_hosts` (`${VLLM_HOSTS_ENTRY}`).
     hosts_entry = _compute_vllm_hosts_entry()
     if hosts_entry:
-        os.environ["OLLAMA_HOSTS_ENTRY"] = hosts_entry
+        os.environ["VLLM_HOSTS_ENTRY"] = hosts_entry
         console.print(f"[dim]Injecting extra_hosts: {hosts_entry}[/dim]")
     if paf_ready:
         services.append("paf")
@@ -1022,8 +859,6 @@ def local_up() -> None:
     ])
     console.print("[bold]Waiting for Oracle DB to be healthy (up to 5 min)...[/bold]")
     _wait_for_db()
-    console.print("[bold]Setting up Oracle SSL wallet with Caddy CA...[/bold]")
-    _setup_oracle_ssl_wallet()
     console.print("[bold]Applying pre-Liquibase sysdba grants...[/bold]")
     _grant_sysdba_pre_liquibase()
     console.print("[bold]Ensuring DBMS_CLOUD is installed...[/bold]")
@@ -1037,14 +872,15 @@ def local_up() -> None:
     if paf_ready:
         console.print("[bold]Configuring PAF container (post-start handshake)...[/bold]")
         _paf_post_start()
-    # `up --build` rebuilds the backend image when src/backend changed, but
-    # podman leaves the already-running container on the old image — so code
-    # changes were silently ignored. Force-recreate just the backend (DB is
-    # healthy by now) so it always lands on the freshly built image.
-    console.print("[bold]Recreating backend onto the latest image...[/bold]")
+    # `up --build` rebuilds the application-backend image when src/backend
+    # changed, but podman leaves the already-running container on the old
+    # image — so code changes were silently ignored. Force-recreate just the
+    # application-backend (DB is healthy by now) so it always lands on the
+    # freshly built image.
+    console.print("[bold]Recreating application-backend onto the latest image...[/bold]")
     _run([
         "podman", "compose", "-f", str(PODMAN_COMPOSE),
-        "up", "-d", "--force-recreate", "--no-deps", "backend",
+        "up", "-d", "--force-recreate", "--no-deps", "application-backend",
     ])
     console.print("\n[green]✓ Local stack up.[/green]")
     if paf_ready:
@@ -1105,8 +941,6 @@ def local_logs(service: str | None) -> None:
 def local_provision() -> None:
     """Apply Liquibase + grants + Select AI bootstrap against the local DB (idempotent)."""
     _ensure_env()
-    _ensure_tls_certs()
-    _setup_oracle_ssl_wallet()
     _grant_sysdba_pre_liquibase()
     _install_dbms_cloud()
     _provision_local()
@@ -1137,8 +971,7 @@ def info() -> None:
         console.print(f"OCR MCP (stub): http://ocr-mcp:8501/mcp/ (compose-internal — wire as PAF MCP server)")
         console.print(f"HITL MCP:       http://hitl-mcp:8502/mcp/ (compose-internal — wire as PAF MCP server; create_hitl_task side effect)")
         console.print(f"Registry API:   http://registry-api:8600/openapi.json (compose-internal — wire as PAF HTTP datasource)")
-        console.print(f"Backend API:    http://localhost:8090 (App Service — /v1/customers, /v1/login, /v1/chat)")
-        console.print(f"Caddy TLS:      https://caddy-ollama-tls/v1 (compose-internal — Oracle SSL wallet trusted)")
+        console.print(f"Application API:http://localhost:8090 (application-backend — /v1/customers, /v1/login, /v1/chat)")
         paf_version = _paf_app_version()
         if paf_version:
             console.print(f"PAF installer:  https://localhost:8080/agentFactory/installation")
