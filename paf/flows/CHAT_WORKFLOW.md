@@ -78,7 +78,7 @@ The [node graph](#node-graph) above is the map; this section is the turn-by-turn
 - A **Prompt** node exposes its `{{var}}` input ports **only after** you paste the template and click **Save prompt**. Always paste + Save _before_ wiring anything into a Prompt.
 - Use **`{{input}}`**, never `{{message}}`, as a placeholder name — `{{message}}` collides with the `Message` output-port id and the wire misbehaves (suspected PAF bug).
 - To remove a tool from an agent, **delete the MCP/REST node**, not just the wire — orphan nodes fail the validator.
-- Each **`Condition`** (type `conditionComponent`, category Processing) has a dense form: `Text Input` (the value tested), optionally `True Message` (the payload forwarded on the True branch), `Match Text` (the regex), Operator **`Regex match`**, and two branch outputs (`True` / `False`). Fill all of it in the step where you drop the node — only one branch fires per turn (BranchingStep semantics).
+- Each **`Condition`** (type `conditionComponent`, category Processing) has a dense form: `Text Input` (the value tested), `True Message` / `False Message` (the value **forwarded** on each branch), `Match Text` (the regex), Operator **`Regex match`**, and two branch outputs (`True` / `False`). A branch edge does **double duty** — wiring `True`/`False` into a node both **sequences** that node (control flow) **and binds the branch's message into the target input port** (data flow). There is no trigger-only wire, so the message you forward _is_ the value the next step receives. Fill all of it in the step where you drop the node — only one branch fires per turn (BranchingStep semantics).
 - There are **four terminal Chat outputs**, one per branch — never converge two branches onto one node (Wayflow rejects it, [`issues/06`](../../issues/06-non-descriptive-flow-validator-error.md)). Close each Condition's `False` branch with its own Chat output **immediately**, in the step right after the gate.
 
 All four agents use LLM Configuration **`gen-model`** (the generic generative config registered at install — see [LOCAL.md §3](../../LOCAL.md#3-install-paf)) at temperature **`0.01`**. An agent's tool surface is whatever MCP/REST nodes you wire to it (PAF has no per-tool filter) — wire each agent only the tools its step lists.
@@ -108,7 +108,7 @@ flowchart LR
     CI["Chat input"] -->|Message → Input text| RT["Token extractor"]
 ```
 
-This node's `Message` output carries the bare token, and it feeds **every** agent's prompt `session_token` port (so each agent can call `get_context` independently). You wire it into each prompt in the steps below.
+This node's `Message` output carries the bare token. It feeds the `session_token` port of the **Concierge, Eligibility, and Recommendation** prompts directly (so each can call `get_context` independently). **Docs & Employer is the exception** — its prompt has only `session_token`, so the token reaches it through G1's `True Message` (Steps 6 & 8), not by a direct wire.
 
 ### Step 3 — Message extractor (`Regex extractor`)
 
@@ -193,30 +193,38 @@ flowchart LR
 
 ### Step 6 — Condition G1 (intake gate)
 
+This gate **forwards a value** on whichever branch it takes (a branch edge binds the branch's message into the next step's input — see [Before you start](#build-sequence)). The Docs & Employer prompt has only `session_token`, so on **True** the gate must forward the **token**; on **False** it forwards the **Concierge's question** for the customer. That means three input wires, from two sources:
+
 - **Drag** a `Condition`.
-- **Configure** — `Text Input` ← Concierge.`Message`; Operator = `Regex match`; `Match Text`:
+- **Configure:**
+  - `Text Input` ← Concierge.`Message` — the value tested by the regex.
+  - `True Message` ← **Token extractor**.`Message` — forwarded to Docs & Employer on READY (lands in its `session_token`).
+  - `False Message` ← Concierge.`Message` — the still-collecting question shown to the customer.
+  - Operator = `Regex match`; `Match Text`:
 
 ```
 \[\[INTAKE status=READY\]\]
 ```
 
-- **Wire** (the input wire; the `True`/`False` branches are wired in Steps 8 and 7):
+- **Wire** (inputs now; the `True`/`False` outputs are wired in Steps 8 and 7):
 
 ```mermaid
 flowchart LR
-    A["Concierge"] -->|Message → Text Input| G1{"Condition G1<br/>Regex match"}
-    G1 -.->|True → Step 8| DE["Docs & Employer"]
-    G1 -.->|False → Step 7| OC["Chat output (collecting)"]
+    C["Concierge"] -->|Message → Text Input| G1{"Condition G1<br/>Regex match"}
+    C -->|Message → False Message| G1
+    RT["Token extractor"] -->|Message → True Message| G1
+    G1 -.->|True output → Step 8| P8["Prompt (Docs & Employer) · session_token"]
+    G1 -.->|False output → Step 7| OC["Chat output (collecting)"]
 ```
 
 ### Step 7 — Chat output (collecting) — closes G1 `False`
 
-- **Drag** a Chat output.
-- **Wire** — the `False` branch forwards the Concierge's question straight to the customer:
+- **Drag** a Chat output. Leave its `Message` empty — the text arrives as G1's `False Message` (the Concierge's question, set in Step 6).
+- **Wire:**
 
 ```mermaid
 flowchart LR
-    G1{"Condition G1"} -->|False → Message| OC["Chat output (collecting)"]
+    G1{"Condition G1"} -->|False output → Message| OC["Chat output (collecting)"]
 ```
 
 ### Step 8 — Prompt (Docs & Employer)
@@ -228,12 +236,11 @@ Gather documentation and employer evidence for the customer's application.
 Session token (AUTHORITATIVE): {{session_token}}
 ```
 
-- **Wire** — the token value plus the gate's pass-through that triggers this branch:
+- **Wire** — a **single** edge from G1's `True` output into `session_token`. That one edge both **sequences** this step (control flow) and **delivers the token** (data flow), because Step 6 set G1's `True Message` to the token. Do **not** also wire the Token extractor here — a second feeder on `session_token` would conflict, and the token already arrives through the gate. _(Eligibility and Recommendation differ: their prompts have a second port — `evidence` / `findings` — for the gate output to land on, so they take `session_token` straight from the extractor. Docs & Employer has only `session_token`, so the gate forwards the token itself.)_
 
 ```mermaid
 flowchart LR
-    RT["Token extractor"] -->|Message → session_token| P["Prompt (Docs & Employer)"]
-    G1{"Condition G1"} -->|True — trigger| P
+    G1{"Condition G1"} -->|True output → session_token| P["Prompt (Docs & Employer)"]
 ```
 
 ### Step 9 — Docs & Employer agent (+ tools)
@@ -479,40 +486,41 @@ flowchart LR
 
 Every wire is created in the steps above; this table is the post-build cross-check. Walk it top-to-bottom and confirm each edge exists.
 
-| Source port                               | Target port                                       |
-| ----------------------------------------- | ------------------------------------------------- |
-| Chat input.`Message`                      | Token extractor.`Input text`                      |
-| Chat input.`Message`                      | Message extractor.`Input text`                    |
-| Token extractor.`Message`                 | Prompt (Concierge).`session_token`                |
-| Message extractor.`Message`               | Prompt (Concierge).`input`                        |
-| Prompt (Concierge).`Prompt message`       | Concierge.`Prompt`                                |
-| MCP (banking-mcp).`Tools`                 | Concierge.`Tools`                                 |
-| MCP (application-mcp).`Tools`             | Concierge.`Tools`                                 |
-| Concierge.`Message`                       | Condition G1.`Text Input`                         |
-| Condition G1.`False`                      | Chat output (collecting).`Message`                |
-| Condition G1.`True`                       | Prompt (Docs & Employer) _(pass-through trigger)_ |
-| Token extractor.`Message`                 | Prompt (Docs & Employer).`session_token`          |
-| Prompt (Docs & Employer).`Prompt message` | Docs & Employer.`Prompt`                          |
-| MCP (banking-mcp).`Tools`                 | Docs & Employer.`Tools`                           |
-| MCP (opa-mcp).`Tools`                     | Docs & Employer.`Tools`                           |
-| REST (registry).`Tools`                   | Docs & Employer.`Tools`                           |
-| Docs & Employer.`Message`                 | Condition G2.`Text Input` + `True Message`        |
-| Condition G2.`False`                      | Chat output (error).`Message`                     |
-| Condition G2.`True`                       | Prompt (Eligibility).`evidence`                   |
-| Token extractor.`Message`                 | Prompt (Eligibility).`session_token`              |
-| Prompt (Eligibility).`Prompt message`     | Eligibility.`Prompt`                              |
-| MCP (banking-mcp).`Tools`                 | Eligibility.`Tools`                               |
-| MCP (opa-mcp).`Tools`                     | Eligibility.`Tools`                               |
-| Eligibility.`Message`                     | Condition G3.`Text Input` + `True Message`        |
-| Condition G3.`False`                      | Chat output (error 2).`Message`                   |
-| Condition G3.`True`                       | Prompt (Recommendation).`findings`                |
-| Token extractor.`Message`                 | Prompt (Recommendation).`session_token`           |
-| Prompt (Recommendation).`Prompt message`  | Recommendation.`Prompt`                           |
-| MCP (banking-mcp).`Tools`                 | Recommendation.`Tools`                            |
-| MCP (hitl-mcp).`Tools`                    | Recommendation.`Tools`                            |
-| Recommendation.`Message`                  | Chat output (decision).`Message`                  |
+| Source port                               | Target port                                                                    |
+| ----------------------------------------- | ------------------------------------------------------------------------------ |
+| Chat input.`Message`                      | Token extractor.`Input text`                                                   |
+| Chat input.`Message`                      | Message extractor.`Input text`                                                 |
+| Token extractor.`Message`                 | Prompt (Concierge).`session_token`                                             |
+| Message extractor.`Message`               | Prompt (Concierge).`input`                                                     |
+| Prompt (Concierge).`Prompt message`       | Concierge.`Prompt`                                                             |
+| MCP (banking-mcp).`Tools`                 | Concierge.`Tools`                                                              |
+| MCP (application-mcp).`Tools`             | Concierge.`Tools`                                                              |
+| Concierge.`Message`                       | Condition G1.`Text Input`                                                      |
+| Concierge.`Message`                       | Condition G1.`False Message`                                                   |
+| Token extractor.`Message`                 | Condition G1.`True Message`                                                    |
+| Condition G1.`True output`                | Prompt (Docs & Employer).`session_token` _(carries the token + sequences D&E)_ |
+| Condition G1.`False output`               | Chat output (collecting).`Message`                                             |
+| Prompt (Docs & Employer).`Prompt message` | Docs & Employer.`Prompt`                                                       |
+| MCP (banking-mcp).`Tools`                 | Docs & Employer.`Tools`                                                        |
+| MCP (opa-mcp).`Tools`                     | Docs & Employer.`Tools`                                                        |
+| REST (registry).`Tools`                   | Docs & Employer.`Tools`                                                        |
+| Docs & Employer.`Message`                 | Condition G2.`Text Input` + `True Message`                                     |
+| Condition G2.`False`                      | Chat output (error).`Message`                                                  |
+| Condition G2.`True`                       | Prompt (Eligibility).`evidence`                                                |
+| Token extractor.`Message`                 | Prompt (Eligibility).`session_token`                                           |
+| Prompt (Eligibility).`Prompt message`     | Eligibility.`Prompt`                                                           |
+| MCP (banking-mcp).`Tools`                 | Eligibility.`Tools`                                                            |
+| MCP (opa-mcp).`Tools`                     | Eligibility.`Tools`                                                            |
+| Eligibility.`Message`                     | Condition G3.`Text Input` + `True Message`                                     |
+| Condition G3.`False`                      | Chat output (error 2).`Message`                                                |
+| Condition G3.`True`                       | Prompt (Recommendation).`findings`                                             |
+| Token extractor.`Message`                 | Prompt (Recommendation).`session_token`                                        |
+| Prompt (Recommendation).`Prompt message`  | Recommendation.`Prompt`                                                        |
+| MCP (banking-mcp).`Tools`                 | Recommendation.`Tools`                                                         |
+| MCP (hitl-mcp).`Tools`                    | Recommendation.`Tools`                                                         |
+| Recommendation.`Message`                  | Chat output (decision).`Message`                                               |
 
-The token extractor's `Message` feeds **every** agent prompt's `session_token` port — that is the four near-identical rows above, one per agent, so each agent calls `get_context` independently.
+The token extractor's `Message` feeds the `session_token` port of **three** prompts directly — Concierge, Eligibility, Recommendation. **Docs & Employer is the exception**: its token arrives via G1's `True Message` (Steps 6 & 8), because its prompt has no spare port for the gate output to land on. Either way, all four agents call `get_context` with the real token.
 
 ## Test prompts
 
