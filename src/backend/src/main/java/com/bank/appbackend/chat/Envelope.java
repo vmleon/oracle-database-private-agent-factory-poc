@@ -9,18 +9,31 @@ import java.util.regex.Pattern;
 public final class Envelope {
 
     private static final Pattern SENTINEL = Pattern.compile("\\[\\[SESSION[^\\]]*\\]\\]");
-    private static final Pattern LEADING_MARKERS = Pattern.compile("^(?:\\s*\\[\\[[^\\]]*\\]\\]\\s*)+");
+    // Greedy `.*` (single-line) so a marker whose body contains `]` — e.g.
+    // `[[DECISION tier=APPROVE reasons=["DTI_TOO_HIGH"]]]` — is matched up to its
+    // final `]]`, not truncated at the first inner `]`.
+    private static final Pattern LEADING_MARKERS = Pattern.compile("^(?:\\s*\\[\\[.*\\]\\]\\s*)+");
+    // Reasoning ("thinking") models emit a <think>…</think> monologue before the
+    // real answer. Drop everything up to and including the LAST </think> so the
+    // chain-of-thought never reaches the customer. Anchored at start, DOTALL,
+    // greedy — a no-op when the model doesn't think.
+    private static final Pattern THINKING = Pattern.compile("(?s)^.*</think>\\s*");
     private static final List<String> REPLY_FIELDS = List.of("message", "content", "reply", "output", "text");
 
     private Envelope() {
     }
 
-    /** Remove leading [[MARKER ...]] block(s) an agent emits before the customer-facing text. */
+    /**
+     * Clean an agent's raw reply into the customer-facing text: drop any
+     * &lt;think&gt;…&lt;/think&gt; reasoning, then remove the leading [[MARKER ...]]
+     * block(s) the agent emits before the customer sentence.
+     */
     public static String stripMarkers(String text) {
         if (text == null) {
             return "";
         }
-        return LEADING_MARKERS.matcher(text).replaceFirst("").strip();
+        String withoutThinking = THINKING.matcher(text).replaceFirst("");
+        return LEADING_MARKERS.matcher(withoutThinking).replaceFirst("").strip();
     }
 
     /** Strip any [[SESSION ...]] sentinel a customer might inject. MANDATORY before enveloping. */

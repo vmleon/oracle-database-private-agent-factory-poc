@@ -4,13 +4,13 @@ Strategy: each test mints a unique opaque session token (`sess_<hex>`) into
 APP.auth_session pointing at the desired (customer_id, application_id), then
 sends it in-band to the flow inside a `[[SESSION <token>]]` envelope. The
 flow's RegexExtractor splits the token from the customer message at flow
-start; banking-mcp.lookup_application resolves the token — exactly what a
-production App Service would do at login. Unique per-test tokens mean no
-shared-row contention.
+start; each agent's first call is banking-mcp.get_context, which resolves the
+token — exactly what a production App Service would do at login. Unique
+per-test tokens mean no shared-row contention.
 
 Required canvas setup (one-time, manual): the published CHAT_WORKFLOW must
 split the envelope — a RegexExtractor on `(?<=\[\[SESSION )[^\]]+` feeds the
-Evaluation prompt's session_token, and one on `(?<=\]\])[\s\S]+` feeds its
+Concierge prompt's session_token, and one on `(?<=\]\])[\s\S]+` feeds its
 input. See paf/flows/CHAT_WORKFLOW.md.
 
 Required env vars (.env, loaded automatically):

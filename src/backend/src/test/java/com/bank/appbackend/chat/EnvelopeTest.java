@@ -87,4 +87,29 @@ class EnvelopeTest {
         var root = mapper.readTree("{\"message\":\"[[INTAKE status=READY]]\\nGreat, let's review it.\",\"roomId\":\"r1\"}");
         assertThat(Envelope.extractReply(root)).isEqualTo("Great, let's review it.");
     }
+
+    @Test
+    void stripMarkersDropsThinkingThenLeadingMarker() {
+        // A reasoning model leaks its monologue + </think>, then the marker, then the sentence.
+        String raw = "The HITL task succeeded. Now I output the marker.\n</think>\n\n"
+                + "[[DECISION tier=APPROVE reasons=[]]]\n"
+                + "Looks strong — it's with our team for final approval; we'll confirm shortly.";
+        assertThat(Envelope.stripMarkers(raw))
+                .isEqualTo("Looks strong — it's with our team for final approval; we'll confirm shortly.");
+    }
+
+    @Test
+    void stripMarkersDropsThinkingWithNoMarker() {
+        String raw = "The session token is invalid. I should apologise.\n</think>\n"
+                + "Sorry — we couldn't process your application right now. Please try again in a moment.";
+        assertThat(Envelope.stripMarkers(raw))
+                .isEqualTo("Sorry — we couldn't process your application right now. Please try again in a moment.");
+    }
+
+    @Test
+    void stripMarkersUsesLastThinkClose() {
+        // Defensive: if a stray </think> appears, keep only what follows the last one.
+        String raw = "a </think> b </think>\n[[DECISION tier=REVIEW]]\nA reviewer will follow up.";
+        assertThat(Envelope.stripMarkers(raw)).isEqualTo("A reviewer will follow up.");
+    }
 }
