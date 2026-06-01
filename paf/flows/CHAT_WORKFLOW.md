@@ -288,10 +288,18 @@ flowchart LR
 ### Step 10 — Condition G2 (evidence gate)
 
 - **Drag** a `Condition`.
-- **Configure** — `Text Input` ← Docs & Employer.`Message`; `True Message` ← Docs & Employer.`Message` (so the True branch forwards the EVIDENCE block); Operator = `Regex match`; `Match Text`:
+- **Configure** — `Text Input` ← Docs & Employer.`Message`; `True Message` ← Docs & Employer.`Message` (forwards the EVIDENCE block to Eligibility on match); Operator = `Regex match`. Then set two inline values, `Match Text` and `False Message`:
+
+`Match Text`:
 
 ```
 \[\[EVIDENCE[\s\S]*?application_id:\s*\d+
+```
+
+`False Message` — typed inline; this is the customer-facing apology, and it rides the `False` output to the error Chat output in Step 11 (a branch edge carries `False Message` as the next node's input, so the apology must live here, not on the Chat output):
+
+```
+Sorry — we couldn't process your application right now. Please try again in a moment.
 ```
 
 - **Wire** (input; the branches are wired in Steps 12 and 11):
@@ -305,17 +313,12 @@ flowchart LR
 
 ### Step 11 — Chat output (error) — closes G2 `False`
 
-- **Drag** a Chat output. Set its inline `Message` to the fixed apology:
-
-```
-Sorry — we couldn't process your application right now. Please try again in a moment.
-```
-
+- **Drag** a Chat output. Leave its `Message` empty — the apology arrives as G2's `False Message` (set in Step 10).
 - **Wire:**
 
 ```mermaid
 flowchart LR
-    G2{"Condition G2"} -->|False → Message| OE["Chat output (error)"]
+    G2{"Condition G2"} -->|False output → Message| OE["Chat output (error)"]
 ```
 
 ### Step 12 — Prompt (Eligibility)
@@ -372,10 +375,18 @@ flowchart LR
 ### Step 14 — Condition G3 (signals gate)
 
 - **Drag** a `Condition`.
-- **Configure** — `Text Input` ← Eligibility.`Message`; `True Message` ← Eligibility.`Message` (forwards the EVIDENCE + ELIGIBILITY findings); Operator = `Regex match`; `Match Text`:
+- **Configure** — `Text Input` ← Eligibility.`Message`; `True Message` ← Eligibility.`Message` (forwards the EVIDENCE + ELIGIBILITY findings to Recommendation on match); Operator = `Regex match`. Then set two inline values, `Match Text` and `False Message`:
+
+`Match Text`:
 
 ```
 \[\[ELIGIBILITY[\s\S]*?allow=
+```
+
+`False Message` — typed inline; the customer-facing apology that rides the `False` output to the error Chat output in Step 15:
+
+```
+Sorry — we couldn't process your application right now. Please try again in a moment.
 ```
 
 - **Wire** (input; the branches are wired in Steps 16 and 15):
@@ -389,17 +400,12 @@ flowchart LR
 
 ### Step 15 — Chat output (error 2) — closes G3 `False`
 
-- **Drag** a Chat output. Set its inline `Message` to the same fixed apology as Step 11:
-
-```
-Sorry — we couldn't process your application right now. Please try again in a moment.
-```
-
+- **Drag** a Chat output. Leave its `Message` empty — the apology arrives as G3's `False Message` (set in Step 14).
 - **Wire:**
 
 ```mermaid
 flowchart LR
-    G3{"Condition G3"} -->|False → Message| OE2["Chat output (error 2)"]
+    G3{"Condition G3"} -->|False output → Message| OE2["Chat output (error 2)"]
 ```
 
 ### Step 16 — Prompt (Recommendation)
