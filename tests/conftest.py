@@ -16,8 +16,8 @@ input. See paf/flows/CHAT_WORKFLOW.md.
 Required env vars (.env, loaded automatically):
   - PAF_ADMIN_USER, PAF_ADMIN_PASS — programmatic login via /v1/loginValidation
   - DB_HOST, DB_PORT, DB_SERVICE, DB_PASSWORD — Oracle connection as APP
-  - CHAT_WORKFLOW_AGENT_ID (optional) — pin the agent_id; auto-discovers
-    by name from /v1/agents when unset.
+
+The CHAT_WORKFLOW agent_id is discovered by name from /v1/agents.
 """
 from __future__ import annotations
 
@@ -89,10 +89,7 @@ def paf(env) -> requests.Session:
 
 @pytest.fixture(scope="session")
 def agent_id(paf) -> str:
-    """Find CHAT_WORKFLOW's agent_id. Honour env override; else discover."""
-    pinned = os.getenv("CHAT_WORKFLOW_AGENT_ID")
-    if pinned:
-        return pinned
+    """Discover CHAT_WORKFLOW's agent_id by name from /v1/agents."""
     r = paf.get(f"{PAF_BASE}/agentFactory/v1/agents", timeout=30)
     r.raise_for_status()
     body = r.json()
@@ -108,7 +105,7 @@ def agent_id(paf) -> str:
                 return aid
     pytest.exit(
         "CHAT_WORKFLOW not found in PAF's agent list. "
-        "Build it per paf/flows/CHAT_WORKFLOW.md, or set CHAT_WORKFLOW_AGENT_ID."
+        "Build and publish it per paf/flows/CHAT_WORKFLOW.md."
     )
 
 

@@ -202,7 +202,6 @@ services:
       PAF_BASE_URL: "https://paf:8080"
       PAF_ADMIN_USER: "${PAF_ADMIN_USER}"
       PAF_ADMIN_PASS: "${PAF_ADMIN_PASS}"
-      CHAT_WORKFLOW_AGENT_ID: "${CHAT_WORKFLOW_AGENT_ID:-}"
 
 volumes:
   oradata:

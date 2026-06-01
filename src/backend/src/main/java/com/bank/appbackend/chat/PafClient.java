@@ -34,12 +34,10 @@ public class PafClient {
 
     public PafClient(RestClient pafRestClient,
                      @Value("${paf.admin-user}") String adminUser,
-                     @Value("${paf.admin-pass}") String adminPass,
-                     @Value("${paf.agent-id:}") String configuredAgentId) {
+                     @Value("${paf.admin-pass}") String adminPass) {
         this.http = pafRestClient;
         this.adminUser = adminUser;
         this.adminPass = adminPass;
-        this.agentId = (configuredAgentId == null || configuredAgentId.isBlank()) ? null : configuredAgentId;
     }
 
     /** Run CHAT_WORKFLOW with an already-enveloped message; returns the agent reply text. */
@@ -149,7 +147,7 @@ public class PafClient {
             }
         }
         throw new ResponseStatusException(BAD_GATEWAY,
-                "CHAT_WORKFLOW not found in PAF agent list; set CHAT_WORKFLOW_AGENT_ID");
+                "CHAT_WORKFLOW not found in PAF agent list; build and publish it per paf/flows/CHAT_WORKFLOW.md");
     }
 
     private JsonNode readTree(String body) {

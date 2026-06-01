@@ -28,7 +28,6 @@ paf:
   base-url: ${PAF_BASE_URL:https://paf:8080}
   admin-user: ${PAF_ADMIN_USER:}
   admin-pass: ${PAF_ADMIN_PASS:}
-  agent-id: ${CHAT_WORKFLOW_AGENT_ID:}
 
 session:
   ttl-hours: ${SESSION_TTL_HOURS:8}

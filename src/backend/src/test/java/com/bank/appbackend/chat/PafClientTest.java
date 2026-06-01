@@ -29,7 +29,15 @@ class PafClientTest {
     void setUp() {
         builder = RestClient.builder().baseUrl("https://paf:8080");
         server = MockRestServiceServer.bindTo(builder).build();
-        client = new PafClient(builder.build(), "admin@example.com", "secret", "agent-123");
+        client = new PafClient(builder.build(), "admin@example.com", "secret");
+    }
+
+    private void expectAgentsList(String agentId) {
+        server.expect(requestTo("https://paf:8080/agentFactory/v1/agents"))
+                .andExpect(method(GET))
+                .andRespond(withSuccess(
+                        "{\"data\":{\"items\":[{\"name\":\"CHAT_WORKFLOW\",\"agentId\":\"" + agentId + "\"}]}}",
+                        MediaType.APPLICATION_JSON));
     }
 
     @Test
@@ -38,6 +46,7 @@ class PafClientTest {
                 .andExpect(method(GET))
                 .andRespond(withSuccess()
                         .header(HttpHeaders.SET_COOKIE, "ahffi_session=abc; Path=/; HttpOnly"));
+        expectAgentsList("agent-123");
         server.expect(requestTo("https://paf:8080/agentFactory/v1/agentBuilder/run/agent-123"))
                 .andExpect(method(POST))
                 .andExpect(header(HttpHeaders.COOKIE, "ahffi_session=abc"))
@@ -54,6 +63,7 @@ class PafClientTest {
     void runRaises502OnErrorMessages() {
         server.expect(requestTo("https://paf:8080/agentFactory/v1/loginValidation"))
                 .andRespond(withSuccess().header(HttpHeaders.SET_COOKIE, "ahffi_session=abc"));
+        expectAgentsList("agent-123");
         server.expect(requestTo("https://paf:8080/agentFactory/v1/agentBuilder/run/agent-123"))
                 .andRespond(withSuccess("{\"data\":null,\"errorMessages\":[\"boom\"]}",
                         MediaType.APPLICATION_JSON));
@@ -64,8 +74,7 @@ class PafClientTest {
     }
 
     @Test
-    void runDiscoversAgentIdWhenNotPinned() {
-        client = new PafClient(builder.build(), "admin@example.com", "secret", "");
+    void runDiscoversAgentIdByName() {
         server.expect(requestTo("https://paf:8080/agentFactory/v1/loginValidation"))
                 .andRespond(withSuccess().header(HttpHeaders.SET_COOKIE, "ahffi_session=abc"));
         server.expect(requestTo("https://paf:8080/agentFactory/v1/agents"))
@@ -85,6 +94,7 @@ class PafClientTest {
     void runRelogsInAndRetriesOn401() {
         server.expect(requestTo("https://paf:8080/agentFactory/v1/loginValidation"))
                 .andRespond(withSuccess().header(HttpHeaders.SET_COOKIE, "ahffi_session=stale"));
+        expectAgentsList("agent-123");
         server.expect(requestTo("https://paf:8080/agentFactory/v1/agentBuilder/run/agent-123"))
                 .andRespond(withStatus(HttpStatus.UNAUTHORIZED));
         server.expect(requestTo("https://paf:8080/agentFactory/v1/loginValidation"))
