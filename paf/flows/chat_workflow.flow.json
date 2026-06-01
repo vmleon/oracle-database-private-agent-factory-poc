@@ -237,17 +237,6 @@
         },
         {
           "data": {
-            "sourceHandleId": "true_output",
-            "targetHandleId": "session_token"
-          },
-          "id": "xy-edge__node-1780313409498-0707d4d3-32c3-4654-bc06-da8d05a8d405true_output-node-1780313409498-0707d4d3-32c3-4654-bc06-da8d05a8d405-node-1780318223953-ff9aa91e-9fb1-4f74-bf68-a1af3be07cc9session_token-node-1780318223953-ff9aa91e-9fb1-4f74-bf68-a1af3be07cc9",
-          "source": "node-1780313409498-0707d4d3-32c3-4654-bc06-da8d05a8d405",
-          "sourceHandle": "true_output-node-1780313409498-0707d4d3-32c3-4654-bc06-da8d05a8d405",
-          "target": "node-1780318223953-ff9aa91e-9fb1-4f74-bf68-a1af3be07cc9",
-          "targetHandle": "session_token-node-1780318223953-ff9aa91e-9fb1-4f74-bf68-a1af3be07cc9"
-        },
-        {
-          "data": {
             "sourceHandleId": "false_output",
             "targetHandleId": "message"
           },
@@ -278,17 +267,6 @@
           "sourceHandle": "tool_output-node-1780318271987-8027d536-b9d5-4e84-bf0d-b437c3c8eb52",
           "target": "node-1780320296043-e9c954f1-b419-4d8f-b5ee-f5728c8487a0",
           "targetHandle": "true_message-node-1780320296043-e9c954f1-b419-4d8f-b5ee-f5728c8487a0"
-        },
-        {
-          "data": {
-            "sourceHandleId": "tool_output",
-            "targetHandleId": "true_message"
-          },
-          "id": "xy-edge__node-1780313073762-70a70687-693e-47d3-ab0b-733aa837af40tool_output-node-1780313073762-70a70687-693e-47d3-ab0b-733aa837af40-node-1780313409498-0707d4d3-32c3-4654-bc06-da8d05a8d405true_message-node-1780313409498-0707d4d3-32c3-4654-bc06-da8d05a8d405",
-          "source": "node-1780313073762-70a70687-693e-47d3-ab0b-733aa837af40",
-          "sourceHandle": "tool_output-node-1780313073762-70a70687-693e-47d3-ab0b-733aa837af40",
-          "target": "node-1780313409498-0707d4d3-32c3-4654-bc06-da8d05a8d405",
-          "targetHandle": "true_message-node-1780313409498-0707d4d3-32c3-4654-bc06-da8d05a8d405"
         },
         {
           "data": {
@@ -355,6 +333,39 @@
           "sourceHandle": "tool_output-node-1780318356492-7afc7a19-1b9f-4c85-b2be-97484e39289d",
           "target": "node-1780320728738-a1c98d0d-d438-4180-a023-728159cbbc7e",
           "targetHandle": "true_message-node-1780320728738-a1c98d0d-d438-4180-a023-728159cbbc7e"
+        },
+        {
+          "data": {
+            "sourceHandleId": "message",
+            "targetHandleId": "true_message"
+          },
+          "id": "xy-edge__node-1780313357944-986ba67c-9787-46ec-ba34-d35ce81f565emessage-node-1780313357944-986ba67c-9787-46ec-ba34-d35ce81f565e-node-1780313409498-0707d4d3-32c3-4654-bc06-da8d05a8d405true_message-node-1780313409498-0707d4d3-32c3-4654-bc06-da8d05a8d405",
+          "source": "node-1780313357944-986ba67c-9787-46ec-ba34-d35ce81f565e",
+          "sourceHandle": "message-node-1780313357944-986ba67c-9787-46ec-ba34-d35ce81f565e",
+          "target": "node-1780313409498-0707d4d3-32c3-4654-bc06-da8d05a8d405",
+          "targetHandle": "true_message-node-1780313409498-0707d4d3-32c3-4654-bc06-da8d05a8d405"
+        },
+        {
+          "data": {
+            "sourceHandleId": "tool_output",
+            "targetHandleId": "false_message"
+          },
+          "id": "xy-edge__node-1780313073762-70a70687-693e-47d3-ab0b-733aa837af40tool_output-node-1780313073762-70a70687-693e-47d3-ab0b-733aa837af40-node-1780313409498-0707d4d3-32c3-4654-bc06-da8d05a8d405false_message-node-1780313409498-0707d4d3-32c3-4654-bc06-da8d05a8d405",
+          "source": "node-1780313073762-70a70687-693e-47d3-ab0b-733aa837af40",
+          "sourceHandle": "tool_output-node-1780313073762-70a70687-693e-47d3-ab0b-733aa837af40",
+          "target": "node-1780313409498-0707d4d3-32c3-4654-bc06-da8d05a8d405",
+          "targetHandle": "false_message-node-1780313409498-0707d4d3-32c3-4654-bc06-da8d05a8d405"
+        },
+        {
+          "data": {
+            "sourceHandleId": "true_output",
+            "targetHandleId": "session_token"
+          },
+          "id": "xy-edge__node-1780313409498-0707d4d3-32c3-4654-bc06-da8d05a8d405true_output-node-1780313409498-0707d4d3-32c3-4654-bc06-da8d05a8d405-node-1780318223953-ff9aa91e-9fb1-4f74-bf68-a1af3be07cc9session_token-node-1780318223953-ff9aa91e-9fb1-4f74-bf68-a1af3be07cc9",
+          "source": "node-1780313409498-0707d4d3-32c3-4654-bc06-da8d05a8d405",
+          "sourceHandle": "true_output-node-1780313409498-0707d4d3-32c3-4654-bc06-da8d05a8d405",
+          "target": "node-1780318223953-ff9aa91e-9fb1-4f74-bf68-a1af3be07cc9",
+          "targetHandle": "session_token-node-1780318223953-ff9aa91e-9fb1-4f74-bf68-a1af3be07cc9"
         }
       ],
       "nodes": [
@@ -823,7 +834,7 @@
                   "message"
                 ],
                 "required": false,
-                "value": "Sorry \u2014 we couldn't process your application right now. Please try again in a moment.",
+                "value": "",
                 "valueType": "str"
               },
               "match_text": {
@@ -1147,8 +1158,8 @@
             "width": 274
           },
           "position": {
-            "x": 1419.5240971634323,
-            "y": 855.0630124326287
+            "x": 1417.2280802003042,
+            "y": 1029.5603016303714
           },
           "selected": false,
           "type": "flowGenericNode"
@@ -2319,8 +2330,8 @@
             "width": 214
           },
           "position": {
-            "x": 2498.379916490125,
-            "y": 1153.080455870134
+            "x": 2499.246117616331,
+            "y": 1147.0170479866956
           },
           "selected": false,
           "type": "flowGenericNode"
@@ -2487,7 +2498,7 @@
             "x": 3164.384807976875,
             "y": 548.9669280366988
           },
-          "selected": true,
+          "selected": false,
           "type": "flowGenericNode"
         },
         {
@@ -2548,7 +2559,7 @@
     "icon": "workflow",
     "name": "CHAT_WORKFLOW",
     "published": 0,
-    "updatedAt": "2026-06-01T13:34:09"
+    "updatedAt": "2026-06-01T15:38:50"
   },
   "errorMessages": [],
   "messages": [],
