@@ -145,7 +145,7 @@ Embedding dimension is set once at deploy time and tied to the chosen vLLM embed
 
 Stored under `paf/` and bootstrapped by `manage.py` after PAF is up:
 
-- **LLM Management** configurations: `vllm-gen-qwen2.5-72B`, `vllm-embed-bge-m3` pointing at the configured vLLM endpoints (provider: `vLLM`, separate Host + Port fields).
+- **LLM Management** configurations: `gen-model`, `emb-model` (generic names, kept stable across model swaps) pointing at the configured vLLM endpoints (provider: `vLLM`, separate Host + Port fields).
 - **Data sources**:
   - Two **Database** data sources over `REPORTING` (one customer-safe, one backoffice-broader).
   - One **File** data source for the seed `policy_corpus` PDFs/text.

@@ -252,7 +252,7 @@
                 "displayCondition": null,
                 "inputTypes": null,
                 "required": false,
-                "value": "vllm-gen-qwen2.5-72B",
+                "value": "gen-model",
                 "valueType": "str"
               },
               "prompt": {
@@ -417,7 +417,7 @@
                 "displayCondition": null,
                 "inputTypes": null,
                 "required": false,
-                "value": "vllm-gen-qwen2.5-72B",
+                "value": "gen-model",
                 "valueType": "str"
               },
               "prompt": {

@@ -80,7 +80,7 @@ Unchanged from the prior design. The chat message arrives as `[[SESSION <token>]
 
 ## Agents
 
-All four agents use LLM Configuration **`vllm-gen-qwen2.5-72B`** (registered at install — see [LOCAL.md §3](../../LOCAL.md#3-install-paf)) at temperature **`0.01`**. Tool surface is controlled by **which MCP/REST nodes you wire** to each agent (PAF has no per-tool filter) plus tight Custom Instructions. Wire each agent only the tools listed.
+All four agents use LLM Configuration **`gen-model`** (the generic generative config registered at install — see [LOCAL.md §3](../../LOCAL.md#3-install-paf)) at temperature **`0.01`**. Tool surface is controlled by **which MCP/REST nodes you wire** to each agent (PAF has no per-tool filter) plus tight Custom Instructions. Wire each agent only the tools listed.
 
 ### Concierge
 
@@ -374,7 +374,7 @@ Non-obvious rules and limits that shape the build. Skim before iterating.
 
 ### Agent / LLM behaviour
 
-- **`Qwen/Qwen2.5-72B-Instruct-AWQ` is the target model.** Smaller models / quantisations are not recommended — they drop the marker emissions and are less reliable under prompt injection.
+- **Use a strong tool-calling generative model** (registered as `gen-model`; validated on `Qwen/Qwen2.5-72B-Instruct-AWQ` — see [LOCAL.md §3 Recommended models](../../LOCAL.md#3-install-paf)). Smaller / heavily-quantised models are not recommended — they drop the marker emissions and are less reliable under prompt injection.
 - **Qwen's post-tool text emission is unreliable.** Each CI pins the marker format and labels the final emission as mandatory; the gates are the second line of defence when the model still drops it.
 - **Qwen will call a wired tool even when told not to.** The narrow per-agent tool surface (wire only what each agent needs; `Recommendation` is the only agent that sees `hitl-mcp`) is the _only_ enforceable boundary — DB constraints are the final net.
 - **The customer-facing reply contains no internal numbers, ids, tiers, or adverse reasons.** The three hint sentences (and the apology) are the only text the customer ever sees.

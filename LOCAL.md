@@ -96,24 +96,31 @@ Prints the JDBC URL, service users, PAF URL, OPA URL, OPA MCP URL, OCR MCP URL, 
 
 ## 3. Install PAF
 
-Open the installer in your browser:
+Run:
 
+```bash
+python manage.py paf bootstrap
 ```
-https://localhost:8080/agentFactory/installation
-```
 
-PAF terminates TLS itself with a self-signed cert — your browser will warn; accept and continue. Plain `http://` returns HTTP 400.
+It prints the installer URL plus the exact values to paste into each wizard step. Open the URL it shows (PAF serves a self-signed cert, so your browser will warn — accept and continue; plain `http://` returns HTTP 400) and follow the output, which has four sections:
 
-`python manage.py paf bootstrap` prints the exact values to paste. It covers all four wizard steps:
-
-- **Step 1 — admin user.** Pick a name and password; you'll sign in as this user.
-- **Step 2 — database.** DB host: `oracle-free-26ai` (compose service name — **not** `localhost`, which would point at the PAF container itself). Port `1521`, service `FREEPDB1`, user `AGENT_FACTORY`, password = `DB_PASSWORD` from `.env`.
+- **Step 1 — admin user.** Pick a name and password; you sign in as this user after install.
+- **Step 2 — database.** Connection details for the local 26ai: host `oracle-free-26ai` (the compose service name — **not** `localhost`, which would point at the PAF container itself), port `1521`, service `FREEPDB1`, user `AGENT_FACTORY`, password = `DB_PASSWORD` from `.env`. Not air-gapped, no wallet.
 - **Step 3 — install.** Click Install. PAF creates its metadata tables under `AGENT_FACTORY` and a read-only worker user `AAI_RO_AGENT_FACTORY`.
-- **Step 4 — LLM Management.** Register two **LLM Configurations** against your vLLM endpoint:
-  - **`vllm-gen-qwen2.5-72B`** — generative; model `Qwen/Qwen2.5-72B-Instruct-AWQ` (native tool-calling; the target model for the 4-tool recipe — see [`paf/flows/CHAT_WORKFLOW.md §Operating constraints`](paf/flows/CHAT_WORKFLOW.md)).
-  - **`vllm-embed-bge-m3`** — embeddings; model `BAAI/bge-m3`.
+- **Step 4 — LLM Management.** Register two **LLM Configurations** against your vLLM endpoint, using **generic configuration names** so they survive a model swap:
+  - **`gen-model`** — generative; Model ID = `VLLM_GEN_MODEL` from `.env`.
+  - **`emb-model`** — embeddings; Model ID = `VLLM_EMBED_MODEL` from `.env`.
 
-  PAF's Agent node lists registrations by **configuration name**, not by model ID — `paf/flows/CHAT_WORKFLOW.md` references these names verbatim, so use them exactly. Pick **LLM provider: vLLM** (a first-class radio option in PAF's form, alongside OCI GenAI / OpenAI / Ollama / Gemini). The two models run as separate vLLM containers on separate ports (defaults `:8000` for generation, `:8001` for embeddings). Paste the host with its scheme into the **Host** field (`http://<gpu_host>`) and the port (`8000` or `8001`) into the separate **Port** field — PAF appends `/v1/…` itself when the provider is vLLM. `paf bootstrap` resolves `.local` mDNS names to an IPv4 address for you, since the PAF container can't do mDNS. Smaller quantisations / 7B variants are not recommended for the 4-tool pipeline — see `paf/flows/CHAT_WORKFLOW.md §Operating constraints`.
+  PAF's Agent node lists registrations by **configuration name**, not by model ID — `paf/flows/CHAT_WORKFLOW.md` references **`gen-model`** verbatim, so use that exact name; because the name is model-agnostic, swapping the underlying model later needs no flow change. Pick **LLM provider: vLLM** (a first-class radio option in PAF's form, alongside OCI GenAI / OpenAI / Ollama / Gemini). Paste the host with its scheme into the **Host** field (`http://<gpu_host>`) and the port into the separate **Port** field (gen `:8000`, embed `:8001`) — PAF appends `/v1/…` itself when the provider is vLLM. `paf bootstrap` resolves `.local` mDNS names to an IPv4 address for you, since the PAF container can't do mDNS.
+
+**Recommended models** (chosen in `manage.py setup local`, stored in `.env` as `VLLM_GEN_MODEL` / `VLLM_EMBED_MODEL`):
+
+| Role                     | Validated                                             | Also under test                    |
+| ------------------------ | ----------------------------------------------------- | ---------------------------------- |
+| Generative (`gen-model`) | `Qwen/Qwen2.5-72B-Instruct-AWQ` (native tool-calling) | `Qwen/Qwen3.6-35B-A3B`, and others |
+| Embeddings (`emb-model`) | `BAAI/bge-m3` (1024 dims)                             | —                                  |
+
+Smaller / heavily-quantised generative models are not recommended for the 4-tool pipeline — they drop the marker emissions `CHAT_WORKFLOW` relies on (see [`paf/flows/CHAT_WORKFLOW.md §Operating constraints`](paf/flows/CHAT_WORKFLOW.md)).
 
 After install completes, sign in as the admin user.
 
