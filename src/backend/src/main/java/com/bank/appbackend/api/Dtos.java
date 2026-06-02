@@ -22,9 +22,6 @@ public final class Dtos {
     public record ChatRequest(String message) {
     }
 
-    public record ChatResponse(String reply, String pafRoomId) {
-    }
-
     /** Returned by POST /v1/chat — the async turn id the SSE reply will reference. */
     public record TurnAccepted(String turnId) {
     }
