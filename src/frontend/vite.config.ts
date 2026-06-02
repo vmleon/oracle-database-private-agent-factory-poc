@@ -7,6 +7,9 @@ const TEN_MIN = 600_000;
 
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    alias: { "@": new URL("./src", import.meta.url).pathname },
+  },
   server: {
     proxy: {
       "/v1": {
