@@ -52,6 +52,14 @@ public class SessionService {
         return session;
     }
 
+    /** Revoke a session so its token can no longer be used. Idempotent. */
+    public void invalidate(String token) {
+        if (token == null || token.isBlank()) {
+            return;
+        }
+        repo.findById(token).ifPresent(repo::delete);
+    }
+
     private ResponseStatusException unauthorized() {
         return new ResponseStatusException(HttpStatus.UNAUTHORIZED, "invalid_or_expired_session");
     }

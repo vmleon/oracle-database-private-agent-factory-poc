@@ -13,6 +13,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -71,5 +72,26 @@ class SessionServiceTest {
         String token = service.mint(5L, 9L);
         assertThat(token).startsWith("sess_");
         verify(repo).save(argThat(s -> s.getSessionToken().equals(token)));
+    }
+
+    @Test
+    void invalidateDeletesAnExistingSession() {
+        AuthSession session = new AuthSession();
+        session.setSessionToken("sess_x");
+        when(repo.findById("sess_x")).thenReturn(java.util.Optional.of(session));
+
+        service.invalidate("sess_x");
+
+        verify(repo).delete(session);
+    }
+
+    @Test
+    void invalidateIsNoopForBlankOrUnknownToken() {
+        service.invalidate("   ");
+        service.invalidate(null);
+        when(repo.findById("ghost")).thenReturn(java.util.Optional.empty());
+        service.invalidate("ghost");
+
+        verify(repo, never()).delete(any());
     }
 }
