@@ -1,18 +1,25 @@
 package com.bank.appbackend.chat;
 
 import com.bank.appbackend.api.Dtos.ChatMessageView;
-import com.bank.appbackend.api.Dtos.ChatResponse;
 import com.bank.appbackend.domain.AuthSession;
 import com.bank.appbackend.domain.ChatMessage;
 import com.bank.appbackend.domain.ChatMessageRepository;
 import com.bank.appbackend.login.SessionService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.Executor;
 
 @Service
 public class ChatService {
+
+    private static final Logger log = LoggerFactory.getLogger(ChatService.class);
 
     // The fixed fail-secure apology the flow returns when get_context can't resolve the session
     // (in practice: PAF's streamed tool-call corrupted the token). Used to detect-and-retry.
@@ -23,38 +30,52 @@ public class ChatService {
     private final SessionService sessions;
     private final ChatMessageRepository messages;
     private final PafClient paf;
+    private final ChatEventPublisher events;
+    private final Executor chatExecutor;
 
-    public ChatService(SessionService sessions, ChatMessageRepository messages, PafClient paf) {
+    public ChatService(SessionService sessions, ChatMessageRepository messages, PafClient paf,
+                       ChatEventPublisher events, @Qualifier("chatExecutor") Executor chatExecutor) {
         this.sessions = sessions;
         this.messages = messages;
         this.paf = paf;
+        this.events = events;
+        this.chatExecutor = chatExecutor;
     }
 
-    /** One chat turn: persist the customer message, call PAF, persist + return the reply. */
-    public ChatResponse handleTurn(String token, String message) {
+    /** Open (or replace) the customer's SSE channel. Fails 401 if the token is bad. */
+    public SseEmitter openStream(String token) {
+        sessions.resolve(token);
+        return events.register(token);
+    }
+
+    /** Persist the customer message, kick off the PAF turn in the background, return its id. */
+    public String startTurn(String token, String message) {
         AuthSession session = sessions.resolve(token);
         String roomId = roomId(session);
-
         save(session, roomId, "CUSTOMER", message, null);
-        String enveloped = Envelope.build(token, message);
-        PafClient.Result result = paf.run(enveloped); // throws 502 on PAF error -> no AGENT row
-        // PAF streams agent tool-calls, and vLLM's streamed tool-call args occasionally drop or
-        // duplicate a character in the session_token, so get_context fails and the flow returns
-        // this fixed apology. The corruption is random per run, so just re-run the turn a couple
-        // of times; with a valid token the apology otherwise means corruption, not a real failure.
-        for (int attempt = 2; attempt <= MAX_PAF_ATTEMPTS && PAF_APOLOGY.equals(result.reply()); attempt++) {
-            result = paf.run(enveloped);
-        }
-        save(session, roomId, "AGENT", result.reply(), result.pafRoomId());
-
-        return new ChatResponse(result.reply(), result.pafRoomId());
+        String turnId = UUID.randomUUID().toString();
+        chatExecutor.execute(() -> runTurn(token, message, session, roomId, turnId));
+        return turnId;
     }
 
-    /**
-     * Replay the persisted conversation for the token's application. readOnly transaction
-     * keeps the persistence session open while the CLOB body is read during DTO mapping
-     * (open-in-view is false).
-     */
+    /** Background worker: call PAF (with apology-retry), persist the reply, push it over SSE. */
+    void runTurn(String token, String message, AuthSession session, String roomId, String turnId) {
+        try {
+            String enveloped = Envelope.build(token, message);
+            PafClient.Result result = paf.run(enveloped);
+            // PAF streams agent tool-calls; vLLM occasionally corrupts the session_token, so
+            // get_context fails and the flow returns the fixed apology. Re-run a couple of times.
+            for (int attempt = 2; attempt <= MAX_PAF_ATTEMPTS && PAF_APOLOGY.equals(result.reply()); attempt++) {
+                result = paf.run(enveloped);
+            }
+            save(session, roomId, "AGENT", result.reply(), result.pafRoomId());
+            events.pushAgent(token, turnId, result.reply(), result.pafRoomId());
+        } catch (RuntimeException e) {
+            log.warn("chat turn {} failed", turnId, e);
+            events.pushError(token, turnId, "We couldn't get a response. Please try again.");
+        }
+    }
+
     @Transactional(readOnly = true)
     public List<ChatMessageView> history(String token) {
         AuthSession session = sessions.resolve(token);

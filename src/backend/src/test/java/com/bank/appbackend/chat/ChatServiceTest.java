@@ -1,6 +1,5 @@
 package com.bank.appbackend.chat;
 
-import com.bank.appbackend.api.Dtos.ChatResponse;
 import com.bank.appbackend.domain.AuthSession;
 import com.bank.appbackend.domain.ChatMessage;
 import com.bank.appbackend.domain.ChatMessageRepository;
@@ -10,10 +9,11 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.web.server.ResponseStatusException;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -23,7 +23,13 @@ class ChatServiceTest {
     private final SessionService sessions = mock(SessionService.class);
     private final ChatMessageRepository messages = mock(ChatMessageRepository.class);
     private final PafClient paf = mock(PafClient.class);
-    private final ChatService service = new ChatService(sessions, messages, paf);
+    private final ChatEventPublisher events = mock(ChatEventPublisher.class);
+    // Synchronous executor so submitted runTurn runs inline within the test.
+    private final ChatService service =
+            new ChatService(sessions, messages, paf, events, Runnable::run);
+
+    private static final String APOLOGY =
+            "Sorry — we couldn't process your application right now. Please try again in a moment.";
 
     private AuthSession session() {
         AuthSession s = new AuthSession();
@@ -34,79 +40,79 @@ class ChatServiceTest {
     }
 
     @Test
-    void handleTurnPersistsBothMessagesAndReturnsReply() {
+    void startTurnPersistsBothMessagesPushesAgentAndReturnsTurnId() {
         when(sessions.resolve("sess_1")).thenReturn(session());
         when(paf.run(anyString())).thenReturn(new PafClient.Result("agent reply", "paf-room-1"));
 
-        ChatResponse resp = service.handleTurn("sess_1", "hello");
+        String turnId = service.startTurn("sess_1", "hello");
 
-        assertThat(resp.reply()).isEqualTo("agent reply");
-        assertThat(resp.pafRoomId()).isEqualTo("paf-room-1");
+        assertThat(turnId).isNotBlank();
         ArgumentCaptor<ChatMessage> captor = ArgumentCaptor.forClass(ChatMessage.class);
         verify(messages, times(2)).save(captor.capture());
         assertThat(captor.getAllValues().get(0).getSender()).isEqualTo("CUSTOMER");
         assertThat(captor.getAllValues().get(0).getRoomId()).isEqualTo("room-cust-1");
-        assertThat(captor.getAllValues().get(0).getPafRoomId()).isNull();
         assertThat(captor.getAllValues().get(1).getSender()).isEqualTo("AGENT");
         assertThat(captor.getAllValues().get(1).getBody()).isEqualTo("agent reply");
         assertThat(captor.getAllValues().get(1).getPafRoomId()).isEqualTo("paf-room-1");
+        verify(events).pushAgent(eq("sess_1"), eq(turnId), eq("agent reply"), eq("paf-room-1"));
     }
 
     @Test
-    void handleTurnEnvelopesTheToken() {
+    void runTurnEnvelopesTheToken() {
         when(sessions.resolve("sess_1")).thenReturn(session());
         ArgumentCaptor<String> sent = ArgumentCaptor.forClass(String.class);
         when(paf.run(sent.capture())).thenReturn(new PafClient.Result("ok", null));
 
-        service.handleTurn("sess_1", "I want a loan");
+        service.startTurn("sess_1", "I want a loan");
 
         assertThat(sent.getValue()).isEqualTo("[[SESSION sess_1]]\nI want a loan");
     }
 
-    private static final String APOLOGY =
-            "Sorry — we couldn't process your application right now. Please try again in a moment.";
-
     @Test
-    void handleTurnRetriesPastTheApologyThenReturnsTheRealReply() {
-        when(sessions.resolve("sess_1")).thenReturn(session());
-        // First run hits PAF's streamed-token corruption (apology), second run succeeds.
-        when(paf.run(anyString()))
-                .thenReturn(new PafClient.Result(APOLOGY, "room-a"))
-                .thenReturn(new PafClient.Result("agent reply", "room-b"));
-
-        ChatResponse resp = service.handleTurn("sess_1", "hello");
-
-        assertThat(resp.reply()).isEqualTo("agent reply");
-        verify(paf, times(2)).run(anyString());
-        // Only the CUSTOMER row and the FINAL (good) AGENT row are persisted — no apology row.
-        ArgumentCaptor<ChatMessage> captor = ArgumentCaptor.forClass(ChatMessage.class);
-        verify(messages, times(2)).save(captor.capture());
-        assertThat(captor.getAllValues().get(1).getSender()).isEqualTo("AGENT");
-        assertThat(captor.getAllValues().get(1).getBody()).isEqualTo("agent reply");
-    }
-
-    @Test
-    void handleTurnGivesUpAfterMaxAttemptsAndReturnsTheApology() {
-        when(sessions.resolve("sess_1")).thenReturn(session());
-        when(paf.run(anyString())).thenReturn(new PafClient.Result(APOLOGY, "room-x"));
-
-        ChatResponse resp = service.handleTurn("sess_1", "hello");
-
-        assertThat(resp.reply()).isEqualTo(APOLOGY);
-        verify(paf, times(3)).run(anyString()); // 1 try + 2 retries
-    }
-
-    @Test
-    void handleTurnDoesNotPersistAgentRowOnPafFailure() {
+    void pafFailurePushesErrorAndPersistsNoAgentRow() {
         when(sessions.resolve("sess_1")).thenReturn(session());
         when(paf.run(anyString())).thenThrow(new ResponseStatusException(
                 org.springframework.http.HttpStatus.BAD_GATEWAY, "boom"));
 
-        assertThatThrownBy(() -> service.handleTurn("sess_1", "hello"))
-                .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("502");
+        String turnId = service.startTurn("sess_1", "hello");
 
-        verify(messages, times(1)).save(any(ChatMessage.class));
+        verify(messages, times(1)).save(any(ChatMessage.class)); // CUSTOMER only
+        verify(events).pushError(eq("sess_1"), eq(turnId), anyString());
+        verify(events, never()).pushAgent(anyString(), anyString(), anyString(), any());
+    }
+
+    @Test
+    void retriesPastTheApologyThenPushesTheRealReply() {
+        when(sessions.resolve("sess_1")).thenReturn(session());
+        when(paf.run(anyString()))
+                .thenReturn(new PafClient.Result(APOLOGY, "room-a"))
+                .thenReturn(new PafClient.Result("agent reply", "room-b"));
+
+        String turnId = service.startTurn("sess_1", "hello");
+
+        verify(paf, times(2)).run(anyString());
+        verify(events).pushAgent(eq("sess_1"), eq(turnId), eq("agent reply"), eq("room-b"));
+    }
+
+    @Test
+    void givesUpAfterMaxAttemptsAndPushesTheApology() {
+        when(sessions.resolve("sess_1")).thenReturn(session());
+        when(paf.run(anyString())).thenReturn(new PafClient.Result(APOLOGY, "room-x"));
+
+        String turnId = service.startTurn("sess_1", "hello");
+
+        verify(paf, times(3)).run(anyString()); // 1 try + 2 retries
+        verify(events).pushAgent(eq("sess_1"), eq(turnId), eq(APOLOGY), eq("room-x"));
+    }
+
+    @Test
+    void openStreamResolvesSessionThenRegistersEmitter() {
+        when(sessions.resolve("sess_1")).thenReturn(session());
+
+        service.openStream("sess_1");
+
+        verify(sessions).resolve("sess_1");
+        verify(events).register("sess_1");
     }
 
     @Test
