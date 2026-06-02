@@ -53,9 +53,10 @@ class PafClientTest {
                 .andRespond(withSuccess("{\"data\":\"hello from agent\",\"roomId\":\"r1\",\"errorMessages\":[]}",
                         MediaType.APPLICATION_JSON));
 
-        String reply = client.run("[[SESSION sess_x]]\nhi");
+        PafClient.Result result = client.run("[[SESSION sess_x]]\nhi");
 
-        assertThat(reply).isEqualTo("hello from agent");
+        assertThat(result.reply()).isEqualTo("hello from agent");
+        assertThat(result.pafRoomId()).isEqualTo("r1");
         server.verify();
     }
 
@@ -86,7 +87,7 @@ class PafClientTest {
                 .andExpect(method(POST))
                 .andRespond(withSuccess("{\"data\":\"discovered reply\"}", MediaType.APPLICATION_JSON));
 
-        assertThat(client.run("[[SESSION s]]\nhi")).isEqualTo("discovered reply");
+        assertThat(client.run("[[SESSION s]]\nhi").reply()).isEqualTo("discovered reply");
         server.verify();
     }
 
@@ -103,7 +104,27 @@ class PafClientTest {
                 .andExpect(header(HttpHeaders.COOKIE, "ahffi_session=fresh"))
                 .andRespond(withSuccess("{\"data\":\"after relogin\"}", MediaType.APPLICATION_JSON));
 
-        assertThat(client.run("[[SESSION s]]\nhi")).isEqualTo("after relogin");
+        assertThat(client.run("[[SESSION s]]\nhi").reply()).isEqualTo("after relogin");
+        server.verify();
+    }
+
+    @Test
+    void runRelogsInWhenExpiredSessionReturnsHtmlInsteadOfJson() {
+        server.expect(requestTo("https://paf:8080/agentFactory/v1/loginValidation"))
+                .andRespond(withSuccess().header(HttpHeaders.SET_COOKIE, "ahffi_session=stale"));
+        expectAgentsList("agent-123");
+        // Expired cookie: PAF 303s the run, and the followed chain lands on the /agentFactory/
+        // HTML dashboard (a 200, NOT a 401 and NOT the login page). Any non-JSON body = expiry.
+        server.expect(requestTo("https://paf:8080/agentFactory/v1/agentBuilder/run/agent-123"))
+                .andRespond(withSuccess(
+                        "<!doctype html><html><body>Oracle Agent Factory</body></html>", MediaType.TEXT_HTML));
+        server.expect(requestTo("https://paf:8080/agentFactory/v1/loginValidation"))
+                .andRespond(withSuccess().header(HttpHeaders.SET_COOKIE, "ahffi_session=fresh"));
+        server.expect(requestTo("https://paf:8080/agentFactory/v1/agentBuilder/run/agent-123"))
+                .andExpect(header(HttpHeaders.COOKIE, "ahffi_session=fresh"))
+                .andRespond(withSuccess("{\"data\":\"recovered\"}", MediaType.APPLICATION_JSON));
+
+        assertThat(client.run("[[SESSION s]]\nhi").reply()).isEqualTo("recovered");
         server.verify();
     }
 }

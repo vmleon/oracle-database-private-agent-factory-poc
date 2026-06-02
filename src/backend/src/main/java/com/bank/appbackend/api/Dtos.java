@@ -22,7 +22,7 @@ public final class Dtos {
     public record ChatRequest(String message) {
     }
 
-    public record ChatResponse(String reply, String agentRunId) {
+    public record ChatResponse(String reply, String pafRoomId) {
     }
 
     public record ChatMessageView(String sender, String body, Instant createdAt) {

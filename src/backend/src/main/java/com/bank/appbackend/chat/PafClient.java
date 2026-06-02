@@ -40,45 +40,73 @@ public class PafClient {
         this.adminPass = adminPass;
     }
 
-    /** Run CHAT_WORKFLOW with an already-enveloped message; returns the agent reply text. */
-    public String run(String envelopedMessage) {
+    /** Agent reply text plus PAF's own roomId (its conversation thread id); roomId may be null. */
+    public record Result(String reply, String pafRoomId) {
+    }
+
+    /** Run CHAT_WORKFLOW with an already-enveloped message; returns the reply text and PAF roomId. */
+    public Result run(String envelopedMessage) {
         ensureCookie();
         String id = ensureAgentId();
-        String body;
-        try {
-            body = postRun(id, envelopedMessage);
-        } catch (org.springframework.web.client.RestClientResponseException e) {
-            if (e.getStatusCode().value() == 401) {
-                // Cached cookie likely expired — drop it, re-login, and retry once.
-                this.cookie = null;
-                ensureCookie();
-                try {
-                    body = postRun(id, envelopedMessage);
-                } catch (org.springframework.web.client.RestClientException retry) {
-                    log.warn("PAF run failed after re-login (agentId={})", id, retry);
-                    throw new ResponseStatusException(BAD_GATEWAY, "PAF run failed after re-login", retry);
-                }
-            } else {
-                log.warn("PAF run returned HTTP {} (agentId={}): {}",
-                        e.getStatusCode().value(), id, e.getResponseBodyAsString(), e);
-                throw new ResponseStatusException(BAD_GATEWAY, "PAF run returned HTTP error", e);
-            }
-        } catch (org.springframework.web.client.RestClientException e) {
-            log.warn("PAF run failed (agentId={})", id, e);
-            throw new ResponseStatusException(BAD_GATEWAY, "PAF run failed", e);
-        }
+        String body = postRunWithSessionRetry(id, envelopedMessage);
         JsonNode root = readTree(body);
         JsonNode errs = root.path("errorMessages");
         if (errs.isArray() && !errs.isEmpty()) {
             log.warn("PAF returned errorMessages (agentId={}): {}", id, errs);
             throw new ResponseStatusException(BAD_GATEWAY, "PAF returned errors: " + errs);
         }
+        String reply;
         try {
-            return Envelope.extractReply(root);
+            reply = Envelope.extractReply(root);
         } catch (IllegalStateException e) {
             log.warn("PAF reply shape not recognized (agentId={}): {}", id, body, e);
             throw new ResponseStatusException(BAD_GATEWAY, "PAF reply shape not recognized", e);
         }
+        return new Result(reply, root.path("roomId").asText(null));
+    }
+
+    /**
+     * POST the run, transparently re-authenticating once if the cached cookie has expired.
+     * PAF signals expiry two ways: a 401, or a 303 redirect to /agentFactory/login whose
+     * (auto-followed) body is the HTML login page rather than JSON. Both are handled here so
+     * a long-lived backend doesn't 502 every turn once its session ages out (~30 min).
+     */
+    private String postRunWithSessionRetry(String id, String envelopedMessage) {
+        String body;
+        try {
+            body = postRun(id, envelopedMessage);
+        } catch (org.springframework.web.client.RestClientResponseException e) {
+            if (e.getStatusCode().value() != 401) {
+                log.warn("PAF run returned HTTP {} (agentId={}): {}",
+                        e.getStatusCode().value(), id, e.getResponseBodyAsString(), e);
+                throw new ResponseStatusException(BAD_GATEWAY, "PAF run returned HTTP error", e);
+            }
+            body = null; // 401 -> session expired; fall through to re-login + retry
+        } catch (org.springframework.web.client.RestClientException e) {
+            log.warn("PAF run failed (agentId={})", id, e);
+            throw new ResponseStatusException(BAD_GATEWAY, "PAF run failed", e);
+        }
+        if (body == null || !looksLikeJson(body)) {
+            // Cached cookie expired — drop it, re-login, and retry once.
+            this.cookie = null;
+            ensureCookie();
+            try {
+                return postRun(id, envelopedMessage);
+            } catch (org.springframework.web.client.RestClientException retry) {
+                log.warn("PAF run failed after re-login (agentId={})", id, retry);
+                throw new ResponseStatusException(BAD_GATEWAY, "PAF run failed after re-login", retry);
+            }
+        }
+        return body;
+    }
+
+    /**
+     * A valid run response is a JSON object. When the session cookie has expired PAF instead
+     * 303-redirects the run to its login/home pages and the followed body is HTML — so any
+     * non-JSON body means "re-authenticate", regardless of which page the redirect landed on.
+     */
+    private static boolean looksLikeJson(String body) {
+        return body != null && body.stripLeading().startsWith("{");
     }
 
     private String postRun(String id, String envelopedMessage) {

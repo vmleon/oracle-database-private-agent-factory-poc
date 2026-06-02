@@ -1,0 +1,21 @@
+databaseChangeLog:
+  # 013 — capture PAF's own roomId on each turn.
+  # The PAF run response carries a roomId (PAF's internal conversation thread,
+  # e.g. 5342C3039D...). It is distinct from chat_message.room_id, which the
+  # backend keys as "room-cust-<id>". Store PAF's value separately so a reply
+  # can be correlated back to the PAF run thread.
+
+  - changeSet:
+      id: 013-chat-message-add-paf-room-id
+      author: paf-poc
+      preconditions:
+        - onFail: MARK_RAN
+          sqlCheck:
+            expectedResult: "0"
+            sql: >-
+              SELECT COUNT(*) FROM all_tab_columns
+               WHERE owner='APP' AND table_name='CHAT_MESSAGE'
+                 AND column_name='PAF_ROOM_ID'
+      changes:
+        - sql:
+            sql: ALTER TABLE APP.chat_message ADD (paf_room_id VARCHAR2(60))

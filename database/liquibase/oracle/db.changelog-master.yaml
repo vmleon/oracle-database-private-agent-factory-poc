@@ -35,3 +35,6 @@ databaseChangeLog:
   - include:
       file: 012-origination-intake.yaml
       relativeToChangelogFile: true
+  - include:
+      file: 013-chat-paf-room-id.yaml
+      relativeToChangelogFile: true

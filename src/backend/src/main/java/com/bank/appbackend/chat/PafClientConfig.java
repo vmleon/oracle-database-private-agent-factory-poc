@@ -34,17 +34,21 @@ public class PafClientConfig {
                 .setSslContext(sslContext)
                 .setHostnameVerifier(NoopHostnameVerifier.INSTANCE)
                 .build();
-        // A CHAT_WORKFLOW run waits on the 72B vLLM, which can take 60-180s when cold.
-        // Without a generous socket read timeout the PAF call dies with "Read timed out"
-        // and the chat turn 502s. 4 min covers a cold generation.
+        // A CHAT_WORKFLOW run chains 4 agents on the 72B vLLM; observed runs are 200-240s and
+        // creep higher under load. The socket read timeout must sit well above that or the PAF
+        // call dies with "Read timed out" and the chat turn 502s. 8 min gives headroom.
         var connectionManager = PoolingHttpClientConnectionManagerBuilder.create()
                 .setSSLSocketFactory(sslSocketFactory)
                 .setDefaultSocketConfig(SocketConfig.custom()
-                        .setSoTimeout(Timeout.ofMinutes(4))
+                        .setSoTimeout(Timeout.ofMinutes(8))
                         .build())
                 .build();
+        // PafClient manages the session cookie explicitly (Cookie header it sets per request).
+        // Disable Apache's automatic cookie store so a stale cookie can't be auto-replayed and
+        // defeat a re-login after the session expires.
         CloseableHttpClient httpClient = HttpClients.custom()
                 .setConnectionManager(connectionManager)
+                .disableCookieManagement()
                 .build();
         var requestFactory = new HttpComponentsClientHttpRequestFactory(httpClient);
         return RestClient.builder()

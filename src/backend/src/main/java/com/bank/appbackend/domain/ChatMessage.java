@@ -44,6 +44,9 @@ public class ChatMessage {
     @Column(name = "AGENT_RUN_ID")
     private String agentRunId;
 
+    @Column(name = "PAF_ROOM_ID")
+    private String pafRoomId;
+
     @Column(name = "CREATED_AT", insertable = false, updatable = false)
     private Instant createdAt;
 }
