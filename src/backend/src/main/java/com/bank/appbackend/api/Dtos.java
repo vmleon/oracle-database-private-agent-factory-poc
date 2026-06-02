@@ -25,6 +25,18 @@ public final class Dtos {
     public record ChatResponse(String reply, String pafRoomId) {
     }
 
+    /** Returned by POST /v1/chat — the async turn id the SSE reply will reference. */
+    public record TurnAccepted(String turnId) {
+    }
+
+    /** SSE "agent" event payload: the completed reply for a turn. */
+    public record AgentEvent(String turnId, String reply, String pafRoomId) {
+    }
+
+    /** SSE "error" event payload: the turn failed. */
+    public record ErrorEvent(String turnId, String message) {
+    }
+
     public record ChatMessageView(String sender, String body, Instant createdAt) {
     }
 }
