@@ -67,6 +67,7 @@ The current `POST /v1/chat` is synchronous (blocks ~4 min, returns `{reply, pafR
 - **`GET /v1/chat/stream?token=<sessionToken>`** → a long-lived `SseEmitter`. The browser's native `EventSource` **cannot set custom headers**, so this endpoint takes the session token as a **query parameter** (the other calls keep using the `X-Session-Token` header). The token is still the opaque, server-issued credential — the only tradeoff is that it appears in URLs/server logs, acceptable for a local PoC; production should move to a header-capable SSE client or an `httpOnly` cookie. The emitter is registered in an in-memory `ConcurrentHashMap<sessionToken, SseEmitter>`; removed on completion/timeout/error. Opening a new stream for a session replaces and closes the previous emitter. Emitter timeout is set high (the channel lives for the chat session).
 - **`POST /v1/chat`** `{message}` (header `X-Session-Token`) → resolves the session, persists the CUSTOMER message, generates a `turnId` (UUID), submits the turn to the executor, and returns **`202 Accepted {turnId}`** immediately.
 - **`GET /v1/chat/history`** (header `X-Session-Token`) → unchanged; ordered `[{sender, body, createdAt}]` for replay.
+- **`POST /v1/logout`** (header `X-Session-Token`) → invalidates the session: deletes/expires the `auth_session` row (`SessionService.invalidate`) and drops any SSE emitter for that token (`ChatEventPublisher.remove`). Returns `204`. Idempotent — an unknown/expired token is a no-op `204`. Lives in `LoginController` alongside `/login`.
 
 ### Async worker
 
@@ -88,6 +89,7 @@ The emitter wrapper exposes a `pushSystem(sessionToken, ...)` method that is **n
 - **Login picker** — `GET /v1/customers` → cards (name, product, amount, `hasOpenApplication`); selecting one calls `POST /v1/login`; the returned `sessionToken` is kept in `sessionStorage` so a reload stays logged in. Users **select** a seeded customer — they never type an id (auth is by opaque server-issued token only).
 - **Chat screen (on mount)** — open the SSE channel via `new EventSource('/v1/chat/stream?token=' + sessionToken)`, then `GET /v1/chat/history` and render. Sending a message: `POST /v1/chat` → optimistically append the user bubble plus a "thinking" placeholder keyed by `turnId`; the SSE `agent` event with that `turnId` swaps the placeholder for the reply; an `error` event marks that turn failed and re-enables input. Input is disabled while a turn is in flight (one-at-a-time per session).
 - **The wait** — the pending turn shows a persistent indicator: _"The agent is reviewing your application — this can take a few minutes."_ This is the most important UX element, given multi-minute turns.
+- **Logout** — a control in the chat header calls `POST /v1/logout` (best-effort), then closes the `EventSource`, clears `sessionStorage`, and returns to the picker. Logout always completes for the user even if the call fails (the abandoned token still TTL-expires server-side).
 - **State** — a single `useReducer`-backed hook (`useChat`); no Redux. Components: `Login`, `Chat`, `MessageList`, `MessageBubble`, `Composer`.
 - **Vite dev proxy** — `/v1` → `http://localhost:8090` with `timeout`/`proxyTimeout` set to ~10 min so neither the long `POST` nor the SSE stream is cut off; SSE passes through unbuffered.
 
@@ -141,19 +143,20 @@ stateDiagram-v2
 - **SSE drop** → `EventSource` auto-reconnects; on (re)open the UI refetches `/v1/chat/history` to reconcile any reply pushed while disconnected (the AGENT row is always persisted).
 - **Backend restart mid-turn** → in-memory executor job and emitter are lost; on reconnect the UI refetches history; if the reply isn't there, the user resends. PoC-acceptable.
 - The post-retry apology sentence (rare) is rendered as a normal agent reply.
+- **Logout is best-effort** — the UI returns to the picker and clears storage even if `POST /v1/logout` errors.
 
 ## Testing
 
-- **Backend** — MockMvc: `POST /v1/chat` returns `202` + `turnId`; `GET /v1/chat/stream` returns `text/event-stream`. Unit tests: SSE registry (register / lookup / replace / remove), and the async worker reusing the existing apology-retry and `pafRoomId` assertions, now verifying the pushed `agent` / `error` event.
+- **Backend** — MockMvc: `POST /v1/chat` returns `202` + `turnId`; `GET /v1/chat/stream` returns `text/event-stream`; `POST /v1/logout` returns `204` and a subsequent call with that token is rejected (`401`). Unit tests: SSE registry (register / lookup / replace / remove), session invalidation, and the async worker reusing the existing apology-retry and `pafRoomId` assertions, now verifying the pushed `agent` / `error` event.
 - **Frontend** — light for a PoC: a couple of Vitest + React Testing Library tests for the `pending → reply` and `pending → error` transitions driven by mock SSE events. Otherwise manual end-to-end (`/run`-style): log in, send, observe the thinking state, receive the reply after the wait, reload → history intact.
 
 ## Scope
 
-**In:** customer-picker login; single conversation per customer (`room-cust-N`); async send + per-session SSE push of the turn reply; history replay on load; thinking/error states; Tailwind + shadcn/ui.
+**In:** customer-picker login; logout (client + server-side session revocation); single conversation per customer (`room-cust-N`); async send + per-session SSE push of the turn reply; history replay on load; thinking/error states; Tailwind + shadcn/ui.
 
 **Out (path laid, not built):** HITL `SYSTEM`-message push (emit point exists, uncalled); multiple conversations per customer; production CORS / static-serving (dev proxy only for now); horizontal scaling of the in-memory SSE/job registries; reducing PAF turn latency (separate flow/model concern).
 
 ## Files (rough)
 
-- **Backend:** extend `ChatController` (`POST` → 202, `GET /stream`, keep `/history`); new `ChatEventPublisher` (SSE registry + `pushAgent` / `pushError` / `pushSystem`); `ChatService` refactor (`startTurn` + async `runTurn`); an async executor `@Configuration`.
-- **Frontend:** new `src/frontend/` Vite app — `vite.config.ts` (proxy), `api.ts` (fetch + `EventSource` helpers), `useChat.ts`, `Login.tsx`, `Chat.tsx`, `MessageList.tsx`, `MessageBubble.tsx`, `Composer.tsx`, Tailwind + shadcn setup.
+- **Backend:** extend `ChatController` (`POST` → 202, `GET /stream`, keep `/history`); add `POST /v1/logout` to `LoginController`; `SessionService.invalidate(token)`; new `ChatEventPublisher` (SSE registry + `pushAgent` / `pushError` / `pushSystem` / `remove`); `ChatService` refactor (`startTurn` + async `runTurn`); an async executor `@Configuration`.
+- **Frontend:** new `src/frontend/` Vite app — `vite.config.ts` (proxy), `api.ts` (fetch + `EventSource` helpers, `logout`), `useChat.ts`, `Login.tsx`, `Chat.tsx` (header with logout), `MessageList.tsx`, `MessageBubble.tsx`, `Composer.tsx`, Tailwind + shadcn setup.
