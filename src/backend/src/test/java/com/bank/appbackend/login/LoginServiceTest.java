@@ -2,6 +2,7 @@ package com.bank.appbackend.login;
 
 import com.bank.appbackend.api.Dtos.CustomerSummary;
 import com.bank.appbackend.api.Dtos.LoginResponse;
+import com.bank.appbackend.chat.ChatEventPublisher;
 import com.bank.appbackend.domain.CustomerOption;
 import com.bank.appbackend.domain.CustomerRepository;
 import com.bank.appbackend.domain.LoanApplication;
@@ -12,6 +13,7 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class LoginServiceTest {
@@ -19,7 +21,8 @@ class LoginServiceTest {
     private final LoanApplicationRepository appRepo = mock(LoanApplicationRepository.class);
     private final SessionService sessionService = mock(SessionService.class);
     private final CustomerRepository customers = mock(CustomerRepository.class);
-    private final LoginService service = new LoginService(appRepo, sessionService, customers);
+    private final ChatEventPublisher events = mock(ChatEventPublisher.class);
+    private final LoginService service = new LoginService(appRepo, sessionService, customers, events);
 
     @Test
     void loginMintsTokenForOpenApplication() {
@@ -69,6 +72,14 @@ class LoginServiceTest {
             public java.math.BigDecimal getAmountRequested() { return appId == null ? null : new java.math.BigDecimal("10000"); }
             public Integer getTermMonths() { return appId == null ? null : 24; }
         };
+    }
+
+    @Test
+    void logoutInvalidatesSessionAndDropsEmitter() {
+        service.logout("sess_7");
+
+        verify(sessionService).invalidate("sess_7");
+        verify(events).remove("sess_7");
     }
 
     // LoanApplication has no public setters (read-only entity); build a stub via an anonymous subclass.

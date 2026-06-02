@@ -2,6 +2,7 @@ package com.bank.appbackend.login;
 
 import com.bank.appbackend.api.Dtos.CustomerSummary;
 import com.bank.appbackend.api.Dtos.LoginResponse;
+import com.bank.appbackend.chat.ChatEventPublisher;
 import com.bank.appbackend.domain.CustomerRepository;
 import com.bank.appbackend.domain.LoanApplication;
 import com.bank.appbackend.domain.LoanApplicationRepository;
@@ -15,13 +16,16 @@ public class LoginService {
     private final LoanApplicationRepository applications;
     private final SessionService sessionService;
     private final CustomerRepository customers;
+    private final ChatEventPublisher events;
 
     public LoginService(LoanApplicationRepository applications,
                         SessionService sessionService,
-                        CustomerRepository customers) {
+                        CustomerRepository customers,
+                        ChatEventPublisher events) {
         this.applications = applications;
         this.sessionService = sessionService;
         this.customers = customers;
+        this.events = events;
     }
 
     /** All customers for the mock-login dropdown, flagged by whether they have an open application. */
@@ -43,5 +47,11 @@ public class LoginService {
         String token = sessionService.mint(customerId, applicationId);
         String roomId = "room-cust-" + customerId;
         return new LoginResponse(token, customerId, applicationId, roomId);
+    }
+
+    /** Revoke the session and drop its SSE channel. Idempotent / best-effort. */
+    public void logout(String token) {
+        sessionService.invalidate(token);
+        events.remove(token);
     }
 }
