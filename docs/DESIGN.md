@@ -40,8 +40,8 @@ The deployment is one logical system with several cooperating components. Their 
 
 ```mermaid
 flowchart TB
-    mobile["Customer Mobile UI<br/>(Angular)"]
-    backoffice["Backoffice UI<br/>(Angular)"]
+    customer["Customer Chat UI<br/>(React / Vite SPA)"]
+    backoffice["Backoffice UI<br/>(React / Vite SPA)"]
     appsvc["Application Service<br/>(Java / Spring Boot)<br/>UCP, wallet, drivers"]
     ai["AI Services (Python)<br/>- PAF caller<br/>- OPA MCP<br/>- OCR MCP"]
     registry["Company Registry API<br/>(FastAPI, OpenAPI 3.1)<br/>employer verification"]
@@ -50,7 +50,7 @@ flowchart TB
     vllm["vLLM (gen + embed)<br/>(self-hosted GPU host)"]
     db[("Oracle AI Database 26ai<br/>schemas + vector + TxEventQ")]
 
-    mobile -- chat --> appsvc
+    customer -- chat --> appsvc
     backoffice -- "CRUD / HITL" --> appsvc
     backoffice -- "research chat" --> appsvc
     appsvc --> ai
@@ -112,13 +112,14 @@ Mapping the use case to PAF's component types:
 
 ### 6.1 Custom application code (`src/`)
 
-| Component                  | Tech                  | Responsibility                                                                                                                                                                                                                                                            |
-| -------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/backend/`             | Java 21 / Spring Boot | Application Service. Application CRUD, document upload to Object Storage, OPA pre-check fast-path, agent invocation, sanitised decision read-back. Uses **UCP** (Universal Connection Pool) for pooling and Oracle Wallet for **ADB** (Autonomous Database).              |
-| `src/ai/`                  | Python                | Three sub-services: (a) PAF caller (acquires session cookie, calls Agent Builder run URL, handles `roomId` continuity); (b) OPA MCP server (FastMCP, wraps OPA REST); (c) OCR MCP server (FastMCP, wraps YOLO + PaddleOCR/Tesseract). All exposed under `/mcp` or `/api`. |
-| `src/api/registry/`        | Python / FastAPI      | Synthetic Company Registry API. One service, one endpoint group; auto-generated OpenAPI 3.1 spec served at `/openapi.json`. Data is a JSON file shipped with the service — no real bureau integration. Registered with PAF as an HTTP datasource for `CHAT_WORKFLOW`.     |
-| `src/frontend-backoffice/` | Angular               | HITL queue, decision browser, parameter management (`system_config` editor with reason capture), rule view (read-only Rego browser), risk dashboard, fair-lending review, customer search.                                                                                |
-| `src/frontend-mobile/`     | Angular               | Simulated mobile chat for the loan applicant: conversation, document upload widget with quality-tier status, decision delivery, "why was I declined" follow-up.                                                                                                           |
+| Component                 | Tech                  | Responsibility                                                                                                                                                                                                                                                            |
+| ------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/backend/`            | Java 21 / Spring Boot | Application Service. Application CRUD, document upload to Object Storage, OPA pre-check fast-path, agent invocation, sanitised decision read-back. Uses **UCP** (Universal Connection Pool) for pooling and Oracle Wallet for **ADB** (Autonomous Database).              |
+| `src/ai/`                 | Python                | Three sub-services: (a) PAF caller (acquires session cookie, calls Agent Builder run URL, handles `roomId` continuity); (b) OPA MCP server (FastMCP, wraps OPA REST); (c) OCR MCP server (FastMCP, wraps YOLO + PaddleOCR/Tesseract). All exposed under `/mcp` or `/api`. |
+| `src/api/registry/`       | Python / FastAPI      | Synthetic Company Registry API. One service, one endpoint group; auto-generated OpenAPI 3.1 spec served at `/openapi.json`. Data is a JSON file shipped with the service — no real bureau integration. Registered with PAF as an HTTP datasource for `CHAT_WORKFLOW`.     |
+| `src/customer-ui/`        | React / Vite (TS)     | Customer chat SPA — mock login picker, conversation, history replay. Served at `/` behind the Caddy front door.                                                                                                                                                           |
+| `src/backoffice-ui/`      | React / Vite (TS)     | Backoffice reviewer SPA — HITL review queue and the decision-history / audit view (recommendation packet, human decision, per-tool trace via `EvidencePanel`). Served at `/backoffice` behind the Caddy front door.                                                       |
+| `deploy/podman/Caddyfile` | Caddy                 | Single front-door reverse proxy: `/` → `customer-ui`, `/backoffice` → `backoffice-ui`, `/v1` → the Application Service, re-resolving upstream container names per request so a backend restart no longer 502s.                                                            |
 
 ### 6.2 Database (`database/`)
 
@@ -190,8 +191,8 @@ oracle-database-private-agent-factory-poc/
 │   ├── ai/                   # Python services: PAF caller, OPA MCP, OCR MCP
 │   ├── api/
 │   │   └── registry/         # FastAPI Company Registry — PAF HTTP datasource
-│   ├── frontend-backoffice/  # Angular
-│   └── frontend-mobile/      # Angular
+│   ├── customer-ui/          # React/Vite SPA — customer chat, served at /
+│   └── backoffice-ui/        # React/Vite SPA — reviewer, served at /backoffice
 ├── database/
 │   └── liquibase/
 │       ├── oracle/           # local Oracle Free 26ai changelog
@@ -207,14 +208,14 @@ oracle-database-private-agent-factory-poc/
 ├── ocr/
 │   └── models/               # YOLO weights + OCR config; not committed
 ├── deploy/
-│   ├── podman/               # compose / quadlet files, .env templates
+│   ├── podman/               # compose / Caddyfile / quadlet files, .env templates
 │   ├── tf/
 │   │   ├── app/              # root module; renders tfvars from .env
 │   │   └── modules/
 │   │       ├── paf/
 │   │       ├── model/        # vLLM (gen + embed) + OCR on a GPU shape
 │   │       ├── app/          # Spring Boot + Python services + OPA
-│   │       ├── front/        # both Angular frontends behind LB paths
+│   │       ├── front/        # both React SPAs + Caddy front door behind LB paths
 │   │       ├── ops/          # bastion + utilities
 │   │       └── adbs/         # Autonomous Database 26ai
 │   └── ansible/
@@ -261,19 +262,19 @@ Four layers, all inspectable from the Backoffice UI:
 
 ## 10. Security boundary
 
-| Concern                                | Mechanism                                                                                                                                                                                                                                          |
-| -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Identity at the edge                   | Out of scope for the PoC. UIs ship a mock login picker (customer dropdown on mobile, role dropdown on backoffice) and a logout to swap session; production assumes the host core-banking system provides auth in front of the Application Service. |
-| Identity inside the agents             | `AGENT_FACTORY` user owns PAF metadata only; tool execution maps to least-privilege schemas, per agent.                                                                                                                                            |
-| NL2SQL guardrail (`CHAT_WORKFLOW`)     | `chat_profile` object list pinned to the customer-safe `REPORTING.*` view set; no access to `decision_audit`, `policy_parameter_history`, or `customer_protected_attrs`.                                                                           |
-| NL2SQL guardrail (`RESEARCH_WORKFLOW`) | `research_profile` object list scoped to the broader backoffice `REPORTING.*` view set (full transactions, `decision_audit`, `policy_parameter_history`, deeper `case_history`). Still read-only; no base tables.                                  |
-| Side-effects                           | `CHAT_WORKFLOW`'s only side-effect tool is `create_hitl_task`, plus OPA/OCR MCP calls. `RESEARCH_WORKFLOW` is read-only — no write tools, no enqueue. Enforced by `AGENT_TOOLS` grants and by which MCP servers are wired to which flow.           |
-| HTTP datasource (Company Registry)     | Read-only by contract — the FastAPI service exposes only `GET` lookups in its OpenAPI spec. Wired to `CHAT_WORKFLOW` only. The service is internal to the VCN; the customer chat UI cannot reach it directly.                                      |
-| Decision write                         | Only the Application Service writes the `decision` Blockchain row, on HITL close. Neither agent has `INSERT` on `decision`.                                                                                                                        |
-| Agent reachability                     | `CHAT_WORKFLOW` published URL is consumed by the mobile UI only; `RESEARCH_WORKFLOW` published URL is consumed by the backoffice UI only. The Application Service enforces routing — the customer chat path cannot invoke the research agent.      |
-| Sensitive attributes                   | `customer_protected_attrs` kept separate; access logged; not passed to either LLM unless explicitly needed (and never to `CHAT_WORKFLOW`).                                                                                                         |
-| Audit                                  | Blockchain Table for the decision; standard tables for `decision_audit` and `research_audit` with archive-to-blockchain option.                                                                                                                    |
-| Wallet / connection                    | Oracle Wallet for ADB; UCP pool sizing pinned per service.                                                                                                                                                                                         |
+| Concern                                | Mechanism                                                                                                                                                                                                                                                       |
+| -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Identity at the edge                   | Out of scope for the PoC. UIs ship a mock login picker (customer dropdown in the customer UI, role dropdown in the backoffice) and a logout to swap session; production assumes the host core-banking system provides auth in front of the Application Service. |
+| Identity inside the agents             | `AGENT_FACTORY` user owns PAF metadata only; tool execution maps to least-privilege schemas, per agent.                                                                                                                                                         |
+| NL2SQL guardrail (`CHAT_WORKFLOW`)     | `chat_profile` object list pinned to the customer-safe `REPORTING.*` view set; no access to `decision_audit`, `policy_parameter_history`, or `customer_protected_attrs`.                                                                                        |
+| NL2SQL guardrail (`RESEARCH_WORKFLOW`) | `research_profile` object list scoped to the broader backoffice `REPORTING.*` view set (full transactions, `decision_audit`, `policy_parameter_history`, deeper `case_history`). Still read-only; no base tables.                                               |
+| Side-effects                           | `CHAT_WORKFLOW`'s only side-effect tool is `create_hitl_task`, plus OPA/OCR MCP calls. `RESEARCH_WORKFLOW` is read-only — no write tools, no enqueue. Enforced by `AGENT_TOOLS` grants and by which MCP servers are wired to which flow.                        |
+| HTTP datasource (Company Registry)     | Read-only by contract — the FastAPI service exposes only `GET` lookups in its OpenAPI spec. Wired to `CHAT_WORKFLOW` only. The service is internal to the VCN; the customer chat UI cannot reach it directly.                                                   |
+| Decision write                         | Only the Application Service writes the `decision` Blockchain row, on HITL close. Neither agent has `INSERT` on `decision`.                                                                                                                                     |
+| Agent reachability                     | `CHAT_WORKFLOW` published URL is consumed by the customer UI only; `RESEARCH_WORKFLOW` published URL is consumed by the backoffice UI only. The Application Service enforces routing — the customer chat path cannot invoke the research agent.                 |
+| Sensitive attributes                   | `customer_protected_attrs` kept separate; access logged; not passed to either LLM unless explicitly needed (and never to `CHAT_WORKFLOW`).                                                                                                                      |
+| Audit                                  | Blockchain Table for the decision; standard tables for `decision_audit` and `research_audit` with archive-to-blockchain option.                                                                                                                                 |
+| Wallet / connection                    | Oracle Wallet for ADB; UCP pool sizing pinned per service.                                                                                                                                                                                                      |
 
 ## 11. Locked decisions
 
@@ -291,7 +292,7 @@ Four layers, all inspectable from the Backoffice UI:
 - **SQL tooling**: queries against `REPORTING.*` views are exposed as **Select AI In-Database Tools** referenced from PAF flows via the Select AI Bridge node, not as plain SQL Query nodes. (Per [PAF §14.5](PAF.md#145-agent-builder-select-ai-nodes).)
 - **OPA bundle reload on parameter change**: planned for **v1**. Currently OPA loads its bundle once at boot; parameter edits in the Backoffice still write `policy_parameter_history` but require an OPA restart to take effect.
 - **PAF bootstrap automation**: `manage.py paf bootstrap` prints an ordered checklist of manual UI steps (LLM Management entries, data sources, Select AI profiles, MCP servers, Agent Builder flow imports — `CHAT_WORKFLOW` → `RESEARCH_WORKFLOW`). API automation is added later when the PAF admin endpoints are stable enough to drive headlessly. Playwright-driven UI automation is explicitly out of scope (too fragile across PAF versions).
-- **Auth — out of scope; mock login on both UIs.** The audience (host core-banking system) is assumed to provide auth in production, so no SSO/OAuth/JWT/API Gateway is wired into the PoC. The mobile UI shows a dropdown of demo customers (selection sets the active `customer_id`); the backoffice shows a dropdown of roles (HITL reviewer, admin, fair-lending reviewer, risk analyst — which gates visible sections). Both UIs offer logout to swap user or role mid-demo.
+- **Auth — out of scope; mock login on both UIs.** The audience (host core-banking system) is assumed to provide auth in production, so no SSO/OAuth/JWT/API Gateway is wired into the PoC. The customer UI shows a dropdown of demo customers (selection sets the active `customer_id`); the backoffice shows a dropdown of roles (HITL reviewer, admin, fair-lending reviewer, risk analyst — which gates visible sections). Both UIs offer logout to swap user or role mid-demo.
 - **Async messaging — Oracle Database TxEventQ.** All async/offline work (HITL claim, OCR pipeline, retries, future fan-out) runs through TxEventQ queues owned by `APP`. JSON payloads, single-consumer queues, idempotent DDL (catch `ORA-24006`/`ORA-24010`), per-schema `dbms_aqadm.grant_queue_privilege` rather than `aq_administrator_role`, and a dedicated exception queue for poison messages. Initial inventory: `HITL_REQUEST`, `OCR_REQUEST`, `OCR_EXCEPTION_Q`. Future queues (`NOTIFICATION`, `OPA_BUNDLE_RELOAD`, `FAIR_LENDING_SAMPLING`, `ARCHIVE`) follow the same pattern. See [DECISIONING-ENGINE-USE-CASE.md §Async messaging](DECISIONING-ENGINE-USE-CASE.md#async-messaging--txeventq-queues).
 - **Select AI is a cloud / ADB feature in this PoC, not local.** Oracle Database Free 26ai (23.26.x) rejects every custom-endpoint variant of a `DBMS_CLOUD_AI` profile: `provider: ollama` / `openai-compatible` fail validation (`ORA-20046`), `provider: openai` with an HTTP `provider_endpoint` fails (`ORA-20047`), and with an HTTPS `provider_endpoint` (via a TLS proxy) fails pre-flight (`ORA-20401`) — the request never leaves the DB. Plain `UTL_HTTP` through a wallet to the same HTTPS endpoint succeeds, so the constraint is in `DBMS_CLOUD_AI`'s validator. On ADB the same `CREATE_PROFILE` calls succeed (different release stream; no TLS proxy is needed since ADB endpoints are HTTPS-native and PAF reaches the vLLM endpoint directly on `/v1` over a private VCN). Locally, `CHAT_WORKFLOW` reads the customer's context through `banking-mcp.get_context` (cx_Oracle bind variables, fail-secure) — **not** a SQL Query node, which ignores `:name` binds and fails open ([`issues/01`](../issues/01-sql-query-no-bind-variables.md)). PAF's LLM Management config calls the vLLM endpoint directly — no Select AI Bridge node in the loop. Because Select AI never worked locally, the earlier Caddy TLS proxy + Oracle SSL wallet + network ACL (the HTTPS-from-DB scaffolding) have been **removed** to cut inconsistency; wiring Select AI locally later would mean re-introducing TLS termination in front of vLLM, trusting its CA in the Oracle wallet, and granting the ACL. See [DEPLOYMENT.md §7](DEPLOYMENT.md#7-operational-notes) for the operational detail.
 
