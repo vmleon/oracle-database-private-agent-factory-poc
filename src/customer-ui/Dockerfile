@@ -6,9 +6,8 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
-# Serve stage: nginx serves the static bundle and reverse-proxies /v1 to the
-# backend, so the browser loads the app and calls the API from the same origin
-# (no CORS, and SSE streams through nginx).
+# Serve stage: nginx serves the static bundle. The proxy front door publishes
+# the public port and routes / here; this container does no API proxying.
 FROM docker.io/library/nginx:alpine
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/dist /usr/share/nginx/html

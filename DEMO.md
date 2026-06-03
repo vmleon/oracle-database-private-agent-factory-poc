@@ -12,7 +12,8 @@ The single source of truth is the **human's** call — the AI only recommends.
 ## 0. Before you start
 
 Stack must be running (`python manage.py local up`; `podman ps` shows
-`application-backend`, `application-ui`, `paf-*`, `paf-oracle-free-26ai`).
+`application-backend`, `customer-ui`, `backoffice-ui`, `paf-proxy`, `paf-*`,
+`paf-oracle-free-26ai`).
 
 URLs (same host, path-routed for now):
 

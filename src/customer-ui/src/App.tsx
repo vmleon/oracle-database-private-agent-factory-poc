@@ -1,8 +1,6 @@
 import { useState } from "react";
 import { Login } from "@/components/Login";
 import { Chat } from "@/components/Chat";
-import { Backoffice } from "@/components/backoffice/Backoffice";
-import { isBackofficePath } from "@/lib/route";
 import type { Session } from "@/useChat";
 
 interface StoredSession extends Session {
@@ -46,8 +44,14 @@ function CustomerApp() {
 }
 
 export default function App() {
-  if (isBackofficePath(window.location.pathname)) {
-    return <Backoffice />;
-  }
-  return <CustomerApp />;
+  return (
+    <div className="min-h-screen bg-white">
+      <header className="bg-blue-600">
+        <div className="mx-auto max-w-2xl px-8 py-3 text-sm font-semibold text-white">
+          Loan Assistant
+        </div>
+      </header>
+      <CustomerApp />
+    </div>
+  );
 }

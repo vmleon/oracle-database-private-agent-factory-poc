@@ -1,0 +1,19 @@
+# Single front door for the browser-facing surface. Caddy re-resolves each
+# upstream container name on every request, so recreating application-backend
+# (manage.py does this on every `local up`) no longer 502s the way the
+# per-UI nginx did. /v1 -> backend, /backoffice -> reviewer SPA, everything
+# else -> customer SPA.
+:80 {
+	handle /v1/* {
+		reverse_proxy application-backend:8090 {
+			# Stream chat SSE through without buffering.
+			flush_interval -1
+		}
+	}
+	handle /backoffice* {
+		reverse_proxy backoffice-ui:80
+	}
+	handle {
+		reverse_proxy customer-ui:80
+	}
+}

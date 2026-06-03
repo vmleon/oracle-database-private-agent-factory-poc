@@ -203,18 +203,41 @@ services:
       PAF_ADMIN_USER: "${PAF_ADMIN_USER}"
       PAF_ADMIN_PASS: "${PAF_ADMIN_PASS}"
 
-  # React SPA built to static assets and served by nginx, which also reverse-
-  # proxies /v1 to the application-backend — so the browser loads the app and
-  # calls the API from the same origin (no CORS; chat SSE streams through nginx).
-  application-ui:
+  # Customer chat SPA (React/Vite, nginx static). Internal-only — the proxy
+  # front door publishes the public port and routes / here.
+  customer-ui:
     build:
-      context: ../../src/frontend
-    container_name: application-ui
+      context: ../../src/customer-ui
+    container_name: customer-ui
     restart: unless-stopped
     depends_on:
       - application-backend
+
+  # Backoffice reviewer SPA (React/Vite, nginx static, built with base
+  # /backoffice/). Internal-only — the proxy routes /backoffice here.
+  backoffice-ui:
+    build:
+      context: ../../src/backoffice-ui
+    container_name: backoffice-ui
+    restart: unless-stopped
+    depends_on:
+      - application-backend
+
+  # Single front door for the browser-facing surface. Routes / -> customer-ui,
+  # /backoffice -> backoffice-ui, /v1 -> application-backend, re-resolving each
+  # container name per request so a backend restart no longer 502s. See Caddyfile.
+  proxy:
+    image: docker.io/library/caddy:2-alpine
+    container_name: paf-proxy
+    restart: unless-stopped
+    depends_on:
+      - customer-ui
+      - backoffice-ui
+      - application-backend
     ports:
       - "5173:80"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
 
 volumes:
   oradata:
