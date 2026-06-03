@@ -37,6 +37,14 @@ public class ChatEventPublisher {
         emitter.onCompletion(() -> emitters.remove(token, emitter));
         emitter.onTimeout(() -> emitters.remove(token, emitter));
         emitter.onError(e -> emitters.remove(token, emitter));
+        // Flush an initial comment so the response commits immediately and the browser's
+        // EventSource fires 'open' right away — otherwise headers aren't sent until the first
+        // real event (minutes later) and the client sits in "connecting" for the whole turn.
+        try {
+            emitter.send(SseEmitter.event().comment("connected"));
+        } catch (IOException e) {
+            emitters.remove(token, emitter);
+        }
         return emitter;
     }
 
