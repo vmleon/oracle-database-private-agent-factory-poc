@@ -45,6 +45,9 @@ ocr/models/
 # PAF kit — extracted from the vendor tarball; ~6 GB on disk, never commit
 paf-kit/
 
+# Playwright (browser-driven verification artifacts)
+.playwright-mcp/
+
 # IDE / OS
 .idea/
 .vscode/
