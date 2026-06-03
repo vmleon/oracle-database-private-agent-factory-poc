@@ -834,7 +834,7 @@ def local_up() -> None:
     if paf_ready and not _paf_image_present(paf_tag):
         console.print(f"[bold]PAF image {paf_tag} missing — building from kit...[/bold]")
         _run(["bash", str(PAF_BUILD_SCRIPT), "aai"], cwd=str(PAF_KIT_DIR))
-    services = ["oracle-free-26ai", "opa", "opa-mcp", "ocr-mcp", "hitl-mcp", "application-mcp", "banking-mcp", "registry-api", "application-backend"]
+    services = ["oracle-free-26ai", "opa", "opa-mcp", "ocr-mcp", "hitl-mcp", "application-mcp", "banking-mcp", "registry-api", "application-backend", "application-ui"]
     # Always export so compose substitution succeeds even when paf isn't started.
     os.environ["PAF_APP_VERSION"] = _paf_app_version() or "unset"
     os.environ.setdefault("HOST_OS", platform.system())
@@ -972,7 +972,7 @@ def info() -> None:
         console.print(f"HITL MCP:       http://hitl-mcp:8502/mcp/ (compose-internal — wire as PAF MCP server; create_hitl_task side effect)")
         console.print(f"Registry API:   http://registry-api:8600/openapi.json (compose-internal — wire as PAF HTTP datasource)")
         console.print(f"Application API:http://localhost:8090 (application-backend — /v1/customers, /v1/login, /v1/chat)")
-        console.print(f"Chat UI:        http://localhost:5173 (Vite dev server — run `cd src/frontend && npm run dev`)")
+        console.print(f"Chat UI:        http://localhost:5173 (application-ui — nginx serving the SPA, proxies /v1 to backend)")
         paf_version = _paf_app_version()
         if paf_version:
             console.print(f"PAF installer:  https://localhost:8080/agentFactory/installation")

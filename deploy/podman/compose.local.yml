@@ -203,6 +203,19 @@ services:
       PAF_ADMIN_USER: "${PAF_ADMIN_USER}"
       PAF_ADMIN_PASS: "${PAF_ADMIN_PASS}"
 
+  # React SPA built to static assets and served by nginx, which also reverse-
+  # proxies /v1 to the application-backend — so the browser loads the app and
+  # calls the API from the same origin (no CORS; chat SSE streams through nginx).
+  application-ui:
+    build:
+      context: ../../src/frontend
+    container_name: application-ui
+    restart: unless-stopped
+    depends_on:
+      - application-backend
+    ports:
+      - "5173:80"
+
 volumes:
   oradata:
     name: paf-oradata
