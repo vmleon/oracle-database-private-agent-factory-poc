@@ -7,10 +7,6 @@ features, and platform hardening.
 
 Clone the `CHAT_WORKFLOW` pattern into a second PAF Agent Builder flow over the same `REPORTING.*` view set, with a different agent prompt + tool surface + signal weights, writing to a recommendation queue rather than `hitl_task`. Reuses the existing backbone (HITL, audit, OPA grounding, RAG citations, configurable signal weights) for a recommendation surface alongside the decisioning surface.
 
-## 2. Customer 360 curated view
-
-Finish `REPORTING.cust_360` — one well-named view joining demographics, balances, products held, recent transactions, bureau snapshot, employer-verification. Consumed by both the existing `CHAT_WORKFLOW` and the future product-recommendation workflow, and the feature source for the XGBoost training in §3.
-
 ## 3. XGBoost credit-scoring tool
 
 A separate Python component that trains an **XGBoost** model in **OML4Py** (Oracle Machine Learning for Python, runs in-database) on the existing synthetic data, registers it in the OML model registry, and exposes it as an additional tool the agent calls during evidence gathering:
@@ -55,7 +51,6 @@ Outcome: TOON encoding happens either inside the PAF flow (clean, one place to l
 ## Execution order
 
 1. Finish the current loan-decisioning end-to-end (OCR real pipeline, Application Service, Angular UIs, Blockchain write at HITL close).
-2. §2 — `REPORTING.cust_360`. Feature source for step 3.
-3. §3 — XGBoost credit-scoring tool.
-4. §1 — product-recommendation workflow. Consumes the credit-score tool from step 3 as one of its signals.
-5. §4 — TOON spike. Independent of steps 1–4, can happen in parallel.
+2. §3 — XGBoost credit-scoring tool (reads the shipped `REPORTING.cust_360`).
+3. §1 — product-recommendation workflow. Consumes the credit-score tool from §3 as one of its signals.
+4. §4 — TOON spike. Independent of steps 1–3, can happen in parallel.

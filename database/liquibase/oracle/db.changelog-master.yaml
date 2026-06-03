@@ -41,3 +41,6 @@ databaseChangeLog:
   - include:
       file: 014-decision-audit-application-key.yaml
       relativeToChangelogFile: true
+  - include:
+      file: 015-customer-360-view.yaml
+      relativeToChangelogFile: true
