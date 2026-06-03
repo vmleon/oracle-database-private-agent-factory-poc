@@ -972,6 +972,7 @@ def info() -> None:
         console.print(f"HITL MCP:       http://hitl-mcp:8502/mcp/ (compose-internal — wire as PAF MCP server; create_hitl_task side effect)")
         console.print(f"Registry API:   http://registry-api:8600/openapi.json (compose-internal — wire as PAF HTTP datasource)")
         console.print(f"Application API:http://localhost:8090 (application-backend — /v1/customers, /v1/login, /v1/chat)")
+        console.print(f"Chat UI:        http://localhost:5173 (Vite dev server — run `cd src/frontend && npm run dev`)")
         paf_version = _paf_app_version()
         if paf_version:
             console.print(f"PAF installer:  https://localhost:8080/agentFactory/installation")
