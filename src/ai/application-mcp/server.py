@@ -36,24 +36,20 @@ def _now():
     return datetime.now(timezone.utc)
 
 
-def _audit(tool_name, status, started, ended, tool_input, tool_output, *,
-           session_token=None, application_id=None):
-    """Best-effort per-tool audit to the Application Service. Never raises — an
-    audit failure must not break the live tool call."""
+def _audit(tool_name, status, started, ended, tool_input, tool_output, *, session_token):
+    """Best-effort per-tool audit to the Application Service. The application is resolved
+    server-side from session_token — never sent as a raw id. Never raises — an audit
+    failure must not break the live tool call."""
     try:
-        payload = {
+        httpx.post(_AUDIT_URL, json={
+            "sessionToken": session_token,
             "toolName": tool_name,
             "status": status,
             "startedAt": started.isoformat(),
             "endedAt": ended.isoformat(),
             "toolInput": json.dumps(tool_input, default=str),
             "toolOutput": json.dumps(tool_output, default=str),
-        }
-        if application_id is not None:
-            payload["applicationId"] = application_id
-        if session_token is not None:
-            payload["sessionToken"] = session_token
-        httpx.post(_AUDIT_URL, json=payload, timeout=5.0)
+        }, timeout=5.0)
     except Exception as exc:  # noqa: BLE001 — audit is fire-and-forget
         print(f"[audit] skipped ({tool_name}): {exc}", flush=True)
 

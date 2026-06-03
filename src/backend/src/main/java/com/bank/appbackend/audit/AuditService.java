@@ -13,9 +13,11 @@ import java.time.Instant;
 
 /**
  * Collects per-tool CHAT_WORKFLOW audit rows posted by the MCP tool wrappers and writes
- * them to APP.decision_audit, keyed by application_id (resolved from the session token when
- * the tool doesn't carry the id directly). Best-effort: any failure here is swallowed so an
- * audit problem can never break the live decisioning run.
+ * them to APP.decision_audit. The application is resolved server-side from the opaque
+ * session token only — never from a caller-supplied field — so a row can only ever be
+ * written for the application that token authenticates (no cross-application forgery).
+ * Best-effort: any failure here is swallowed so an audit problem can never break the live
+ * decisioning run.
  */
 @Service
 public class AuditService {
@@ -32,11 +34,12 @@ public class AuditService {
 
     public void record(ToolCallAudit req) {
         try {
-            Long applicationId = req.applicationId() != null
-                    ? req.applicationId()
-                    : resolveQuietly(req.sessionToken());
+            // Authoritative: the application is whatever the session token resolves to.
+            // Never trust a caller-supplied id — that would let a tool forge audit rows
+            // for another customer's application.
+            Long applicationId = resolveQuietly(req.sessionToken());
             if (applicationId == null) {
-                log.warn("tool-call audit skipped: no application correlation (tool={})", req.toolName());
+                log.warn("tool-call audit skipped: no valid session token (tool={})", req.toolName());
                 return;
             }
 

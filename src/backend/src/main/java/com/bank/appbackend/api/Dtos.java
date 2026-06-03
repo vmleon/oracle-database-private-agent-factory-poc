@@ -66,9 +66,10 @@ public final class Dtos {
                                    Long durationMs, String status) {
     }
 
-    /** Posted by an MCP tool wrapper after each CHAT_WORKFLOW tool call. Correlated to a
-     *  decision by applicationId (resolved from sessionToken when not supplied directly). */
-    public record ToolCallAudit(Long applicationId, String sessionToken, String toolName,
+    /** Posted by an MCP tool wrapper after each CHAT_WORKFLOW tool call. The application is
+     *  resolved server-side from the opaque sessionToken — never trusted from the caller, so
+     *  a row can only be written for the application the token authenticates. */
+    public record ToolCallAudit(String sessionToken, String toolName,
                                 String status, Instant startedAt, Instant endedAt,
                                 String toolInput, String toolOutput) {
     }

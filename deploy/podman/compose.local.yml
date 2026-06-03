@@ -104,8 +104,6 @@ services:
       DB_SERVICE: "FREEPDB1"
       DB_USER: "AGENT_FACTORY"
       DB_PASSWORD: "${DB_PASSWORD}"
-      # Best-effort per-tool audit -> APP.decision_audit via the Application Service.
-      BACKEND_URL: "http://application-backend:8090"
 
   # Application MCP — write surface for conversational loan intake.
   # Exposes upsert_draft_application as an MCP tool so the Concierge agent
