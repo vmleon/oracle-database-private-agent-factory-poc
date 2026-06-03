@@ -281,4 +281,4 @@ Policy values (DTI cap, score floor, OCR thresholds, fair-lending bucketing, rec
 
 ## 9. Current state
 
-The live status of the stack — schema changesets, the tool/MCP inventory, the flow, and the forward plan — is tracked in **one** place: [`README.md` § Current state](../README.md#current-state) and its "What's next" list. Future-feature detail is in [`ENHANCEMENTS.md`](../ENHANCEMENTS.md). This document owns the _deployment strategy_ (§1–§7) — options, the `manage.py` surface, Liquibase, env config, and operational notes — not the running status.
+The live status of the stack — schema changesets, the tool/MCP inventory, the flow, and the forward plan — is tracked in **one** place: [`README.md` § Current state](../README.md#current-state) and its "What's next" list. Future-feature detail is in [`BACKLOG.md`](../BACKLOG.md). This document owns the _deployment strategy_ (§1–§7) — options, the `manage.py` surface, Liquibase, env config, and operational notes — not the running status.

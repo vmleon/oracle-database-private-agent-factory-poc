@@ -878,4 +878,4 @@ The test bench is for **functionality and observability**, not performance. Each
 
 ## Next steps
 
-The prioritised forward plan is maintained in one place — [`README.md` § What's next](../README.md#current-state) — with the future-feature detail in [`ENHANCEMENTS.md`](../ENHANCEMENTS.md).
+The prioritised forward plan is maintained in one place — [`README.md` § What's next](../README.md#current-state) — with the future-feature detail in [`BACKLOG.md`](../BACKLOG.md).

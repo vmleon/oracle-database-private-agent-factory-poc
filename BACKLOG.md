@@ -1,6 +1,42 @@
-# Enhancements
+# Backlog
 
-Three features and one feasibility spike to integrate with the broader plan.
+The prioritised backlog for the PoC: near-term backoffice work, broader-plan
+features, and platform hardening.
+
+## Top priority — Backoffice decision history & audit view
+
+The backoffice today shows only the **pending** queue. Add a second page: a
+**decision history / audit view** where a reviewer or an auditor can look up any
+loan request for a customer and see the full, defensible record in one place —
+the reasons, the decision, and the information behind it.
+
+What it surfaces per request:
+
+- the **human decision** from the `decision` Blockchain Table (outcome,
+  reviewer, note, timestamp) — the tamper-evident record of the bank's call;
+- the **agent recommendation packet** that informed it (tier, reasoning,
+  evidence — already copied onto the `decision` row);
+- the **tools the agent called**, with inputs / outputs / timing, from
+  `decision_audit`;
+- the **customer + loan** context.
+
+Searchable / filterable by customer and application, with drill-down per
+decision (reuse the existing `EvidencePanel` to render the packet).
+
+Shape:
+
+- **Backend:** read-only endpoints over `APP.decision` joined to customer /
+  application — e.g. `GET /v1/hitl/decisions` (list + filter by
+  customer/application) and `GET /v1/hitl/decisions/{decisionId}` (full record).
+  The blockchain table is queried, never mutated.
+- **Frontend:** a new backoffice route/page (e.g. `/backoffice/history`) — a
+  decisions list, a per-decision detail reusing `EvidencePanel`, and a per-tool
+  trace table.
+
+**Dependency:** the _tools-called_ section needs Platform follow-up **A** done
+first (`decision_audit` is currently empty). Everything else — the decision
+record, recommendation, reasoning, and evidence — can be built now straight from
+the `decision` row.
 
 ## 1. Proactive product recommendation as a second workflow
 
@@ -53,6 +89,7 @@ Outcome: TOON encoding happens either inside the PAF flow (clean, one place to l
 
 ## Execution order
 
+0. **Top priority** — Backoffice decision history & audit view (section above), extending the shipped review loop.
 1. Finish the current loan-decisioning end-to-end (OCR real pipeline, Application Service, Angular UIs, Blockchain write at HITL close).
 2. §2 — `REPORTING.cust_360`. Feature source for step 3.
 3. §3 — XGBoost credit-scoring tool.
