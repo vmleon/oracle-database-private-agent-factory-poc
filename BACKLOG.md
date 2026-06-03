@@ -59,21 +59,3 @@ Outcome: TOON encoding happens either inside the PAF flow (clean, one place to l
 3. §3 — XGBoost credit-scoring tool.
 4. §1 — product-recommendation workflow. Consumes the credit-score tool from step 3 as one of its signals.
 5. §4 — TOON spike. Independent of steps 1–4, can happen in parallel.
-
----
-
-## Platform follow-ups (hardening)
-
-Operational/structural next steps surfaced while building the backoffice review
-loop.
-
-### A. Investigate the empty `decision_audit`
-
-`APP.decision_audit` is empty — the per-tool agent trace (every `CHAT_WORKFLOW`
-tool call with step / timing / status; test-bench assertion (c)) is never
-written, even though the tool _outputs_ do land in `hitl_task.agent_evidence`.
-Find which component is responsible (MCP tool wrappers, the PAF flow, or the
-backend) and why it never fires, then decide whether to implement the per-tool
-write. Investigation first; no architectural change. (Note: the human decision
-audit — the immutable `decision` blockchain row with outcome, reviewer, and
-note — already works and is tamper-verified.)

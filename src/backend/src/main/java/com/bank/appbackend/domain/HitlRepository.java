@@ -127,7 +127,8 @@ public interface HitlRepository extends JpaRepository<HitlTask, Long> {
             """, nativeQuery = true)
     Optional<DecisionDetailRow> findDecision(@Param("decisionId") Long decisionId);
 
-    /** Per-tool agent trace for a decision, by its agent run id. */
+    /** Per-tool agent trace for a decision, by application id (the per-call rows are written
+     *  by the tool wrappers at run time and keyed on application_id). Ordered by start time. */
     @Query(value = """
             SELECT a.audit_id      AS auditId,
                    a.step_no       AS stepNo,
@@ -139,8 +140,8 @@ public interface HitlRepository extends JpaRepository<HitlTask, Long> {
                    a.duration_ms   AS durationMs,
                    a.status        AS status
               FROM APP.decision_audit a
-             WHERE a.agent_run_id = :agentRunId
-             ORDER BY a.step_no
+             WHERE a.application_id = :applicationId
+             ORDER BY a.started_at, a.audit_id
             """, nativeQuery = true)
-    List<DecisionAuditRow> findDecisionAudit(@Param("agentRunId") String agentRunId);
+    List<DecisionAuditRow> findDecisionAudit(@Param("applicationId") Long applicationId);
 }

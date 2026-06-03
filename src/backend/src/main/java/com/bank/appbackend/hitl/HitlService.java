@@ -79,7 +79,7 @@ public class HitlService {
     public DecisionView getDecision(Long decisionId) {
         DecisionDetailRow d = repo.findDecision(decisionId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "decision not found"));
-        List<DecisionToolCall> toolCalls = repo.findDecisionAudit(d.getAgentRunId()).stream()
+        List<DecisionToolCall> toolCalls = repo.findDecisionAudit(d.getApplicationId()).stream()
                 .map(a -> new DecisionToolCall(a.getAuditId(), a.getStepNo(), a.getToolName(),
                         a.getToolInput(), a.getToolOutput(), a.getStartedAt(), a.getEndedAt(),
                         a.getDurationMs(), a.getStatus()))

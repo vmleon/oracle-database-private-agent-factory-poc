@@ -1,0 +1,28 @@
+databaseChangeLog:
+  # decision_audit is written by the Application Service (POST /v1/audit/tool-call),
+  # one row per CHAT_WORKFLOW tool call, keyed by application_id — the nexus the tool
+  # calls and the decision already share. It's available at run time (the backend
+  # resolves it from the session token) and stable across the run -> HITL-close gap.
+  # agent_run_id is only minted at the end by create_hitl_task, so it can't key the
+  # per-call rows; make it optional and correlate by application_id instead.
+  #
+  # Independent stateless tools can't coordinate a sequential step_no, so the unique
+  # (agent_run_id, step_no) index is dropped; the trace is ordered by started_at.
+
+  - changeSet:
+      id: 014-decision-audit-add-application
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              ALTER TABLE APP.decision_audit ADD (application_id NUMBER)
+        - sql:
+            sql: |-
+              ALTER TABLE APP.decision_audit MODIFY (agent_run_id NULL)
+        - sql:
+            sql: |-
+              DROP INDEX APP.uq_decision_audit_step
+        - sql:
+            sql: |-
+              CREATE INDEX APP.ix_decision_audit_application
+                ON APP.decision_audit(application_id)

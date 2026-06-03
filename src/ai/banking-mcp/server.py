@@ -32,15 +32,42 @@ views and is granted SELECT on APP.auth_session by Liquibase changeset 011.
 
 from __future__ import annotations
 
+import json
 import os
 from datetime import datetime, timezone
 
+import httpx
 import oracledb
 from fastmcp import FastMCP
 
 
 def _now_utc() -> datetime:
     return datetime.now(timezone.utc)
+
+
+_AUDIT_URL = os.getenv("BACKEND_URL", "http://application-backend:8090").rstrip("/") + "/v1/audit/tool-call"
+
+
+def _audit(tool_name, status, started, ended, tool_input, tool_output, *,
+           session_token=None, application_id=None):
+    """Best-effort per-tool audit to the Application Service. Never raises — an
+    audit failure must not break the live tool call."""
+    try:
+        payload = {
+            "toolName": tool_name,
+            "status": status,
+            "startedAt": started.isoformat(),
+            "endedAt": ended.isoformat(),
+            "toolInput": json.dumps(tool_input, default=str),
+            "toolOutput": json.dumps(tool_output, default=str),
+        }
+        if application_id is not None:
+            payload["applicationId"] = application_id
+        if session_token is not None:
+            payload["sessionToken"] = session_token
+        httpx.post(_AUDIT_URL, json=payload, timeout=5.0)
+    except Exception as exc:  # noqa: BLE001 — audit is fire-and-forget
+        print(f"[audit] skipped ({tool_name}): {exc}", flush=True)
 
 
 def _f(v):
@@ -220,6 +247,14 @@ def get_context(session_token: str) -> dict:
         credit:{...}, facilities:{...}, derived:{dti,pti}|None }
     or {"error": "invalid_or_expired_session"} for a bad/expired token.
     """
+    started = _now_utc()
+    result = _get_context_impl(session_token)
+    status = "FAILED" if isinstance(result, dict) and "error" in result else "SUCCESS"
+    _audit("get_context", status, started, _now_utc(), {}, result, session_token=session_token)
+    return result
+
+
+def _get_context_impl(session_token: str) -> dict:
     print(f"[get_context] called session_token={session_token!r}", flush=True)
     with oracledb.connect(user=DB_USER, password=DB_PASSWORD, dsn=DB_DSN) as conn:
         with conn.cursor() as cur:

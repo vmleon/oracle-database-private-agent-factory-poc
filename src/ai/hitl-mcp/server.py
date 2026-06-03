@@ -24,10 +24,13 @@ side-effect tools).
 
 from __future__ import annotations
 
+import json
 import os
 import uuid
+from datetime import datetime, timezone
 from typing import Literal
 
+import httpx
 import oracledb
 from fastmcp import FastMCP
 
@@ -39,6 +42,35 @@ DB_DSN = (
 )
 DB_USER = os.environ["DB_USER"]
 DB_PASSWORD = os.environ["DB_PASSWORD"]
+
+
+_AUDIT_URL = os.getenv("BACKEND_URL", "http://application-backend:8090").rstrip("/") + "/v1/audit/tool-call"
+
+
+def _now():
+    return datetime.now(timezone.utc)
+
+
+def _audit(tool_name, status, started, ended, tool_input, tool_output, *,
+           session_token=None, application_id=None):
+    """Best-effort per-tool audit to the Application Service. Never raises — an
+    audit failure must not break the live tool call."""
+    try:
+        payload = {
+            "toolName": tool_name,
+            "status": status,
+            "startedAt": started.isoformat(),
+            "endedAt": ended.isoformat(),
+            "toolInput": json.dumps(tool_input, default=str),
+            "toolOutput": json.dumps(tool_output, default=str),
+        }
+        if application_id is not None:
+            payload["applicationId"] = application_id
+        if session_token is not None:
+            payload["sessionToken"] = session_token
+        httpx.post(_AUDIT_URL, json=payload, timeout=5.0)
+    except Exception as exc:  # noqa: BLE001 — audit is fire-and-forget
+        print(f"[audit] skipped ({tool_name}): {exc}", flush=True)
 
 
 Recommendation = Literal["APPROVE", "REVIEW", "DECLINE"]
@@ -85,6 +117,7 @@ def create_hitl_task(
     produce a UUID.
     """
     print(f"[create_hitl_task] called application_id={application_id} recommendation={recommendation!r} reasoning={reasoning!r:.120s}", flush=True)
+    started = _now()
     agent_run_id = str(uuid.uuid4())
     with oracledb.connect(user=DB_USER, password=DB_PASSWORD, dsn=DB_DSN) as conn:
         with conn.cursor() as cur:
@@ -102,6 +135,10 @@ def create_hitl_task(
             )
         conn.commit()
     print(f"[create_hitl_task] -> success task_id={task_id} agent_run_id={agent_run_id}", flush=True)
+    _audit("create_hitl_task", "SUCCESS", started, _now(),
+           {"application_id": application_id, "recommendation": recommendation, "reasoning": reasoning},
+           {"task_id": task_id, "agent_run_id": agent_run_id, "state": "OPEN"},
+           application_id=application_id)
     return {
         "task_id": task_id,
         "agent_run_id": agent_run_id,

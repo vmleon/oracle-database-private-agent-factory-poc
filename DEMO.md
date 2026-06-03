@@ -35,8 +35,11 @@ Good to know:
 - If a turn returns _"Sorry — we couldn't process your application right now"_
   in ~20s, that's the known streaming `session_token` bug — just send the
   message again (the backend also auto-retries).
-- `decision_audit` (the per-tool agent trace) is currently **empty** — a known
-  gap. Verify via `hitl_task` and `decision` instead (below).
+- `decision_audit` (the per-tool agent trace) is populated live: each
+  CHAT_WORKFLOW tool (`get_context`, `upsert_application`, `create_hitl_task`)
+  POSTs to the Application Service after it runs, which writes one row keyed by
+  `application_id`. It surfaces in the backoffice decision-history detail under
+  "Tools called". Retries log repeat rows (each attempt is real audit signal).
 
 ---
 
