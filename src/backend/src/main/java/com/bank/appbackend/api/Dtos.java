@@ -54,4 +54,24 @@ public final class Dtos {
 
     public record DecisionResponse(Long taskId, String state, String humanOutcome, String humanUser) {
     }
+
+    public record DecisionListItem(Long decisionId, Long applicationId, String customerName,
+                                   String humanOutcome, String humanUser, Instant decidedAt,
+                                   String agentRecommendation, java.math.BigDecimal amountRequested,
+                                   Integer termMonths) {
+    }
+
+    public record DecisionToolCall(Long auditId, Integer stepNo, String toolName, String toolInput,
+                                   String toolOutput, Instant startedAt, Instant endedAt,
+                                   Long durationMs, String status) {
+    }
+
+    public record DecisionView(Long decisionId, Long applicationId, String customerName,
+                               java.math.BigDecimal amountRequested, Integer termMonths, String purpose,
+                               String humanOutcome, String humanUser, String humanNote, Instant decidedAt,
+                               String agentRecommendation, String agentReasoning, String agentExploreHints,
+                               String agentEvidence, String agentRunId, String pricingOffer,
+                               String reasonCodes, java.math.BigDecimal computedDti,
+                               java.math.BigDecimal computedPti, java.util.List<DecisionToolCall> toolCalls) {
+    }
 }

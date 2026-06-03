@@ -1,9 +1,13 @@
 package com.bank.appbackend.hitl;
 
+import com.bank.appbackend.api.Dtos.DecisionListItem;
 import com.bank.appbackend.api.Dtos.DecisionRequest;
 import com.bank.appbackend.api.Dtos.DecisionResponse;
+import com.bank.appbackend.api.Dtos.DecisionToolCall;
+import com.bank.appbackend.api.Dtos.DecisionView;
 import com.bank.appbackend.api.Dtos.HitlQueueItem;
 import com.bank.appbackend.api.Dtos.HitlTaskView;
+import com.bank.appbackend.domain.DecisionDetailRow;
 import com.bank.appbackend.domain.HitlRepository;
 import com.bank.appbackend.domain.HitlTaskRow;
 import org.springframework.http.HttpStatus;
@@ -60,6 +64,31 @@ public class HitlService {
         }
         repo.insertDecision(taskId, outcome, req.note(), reviewer);
         return new DecisionResponse(taskId, "CLOSED", outcome, reviewer);
+    }
+
+    /** Decision history, newest first. Both filters optional. */
+    public List<DecisionListItem> listDecisions(Long customerId, Long applicationId) {
+        return repo.findDecisions(customerId, applicationId).stream()
+                .map(r -> new DecisionListItem(r.getDecisionId(), r.getApplicationId(),
+                        r.getCustomerName(), r.getHumanOutcome(), r.getHumanUser(), r.getDecidedAt(),
+                        r.getAgentRecommendation(), r.getAmountRequested(), r.getTermMonths()))
+                .toList();
+    }
+
+    /** Full decision record with the agent tool trace. 404 if unknown. */
+    public DecisionView getDecision(Long decisionId) {
+        DecisionDetailRow d = repo.findDecision(decisionId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "decision not found"));
+        List<DecisionToolCall> toolCalls = repo.findDecisionAudit(d.getAgentRunId()).stream()
+                .map(a -> new DecisionToolCall(a.getAuditId(), a.getStepNo(), a.getToolName(),
+                        a.getToolInput(), a.getToolOutput(), a.getStartedAt(), a.getEndedAt(),
+                        a.getDurationMs(), a.getStatus()))
+                .toList();
+        return new DecisionView(d.getDecisionId(), d.getApplicationId(), d.getCustomerName(),
+                d.getAmountRequested(), d.getTermMonths(), d.getPurpose(), d.getHumanOutcome(),
+                d.getHumanUser(), d.getHumanNote(), d.getDecidedAt(), d.getAgentRecommendation(),
+                d.getAgentReasoning(), d.getAgentExploreHints(), d.getAgentEvidence(), d.getAgentRunId(),
+                d.getPricingOffer(), d.getReasonCodes(), d.getComputedDti(), d.getComputedPti(), toolCalls);
     }
 
     private HitlTaskView toView(HitlTaskRow r) {

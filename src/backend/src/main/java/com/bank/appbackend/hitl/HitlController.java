@@ -1,7 +1,9 @@
 package com.bank.appbackend.hitl;
 
+import com.bank.appbackend.api.Dtos.DecisionListItem;
 import com.bank.appbackend.api.Dtos.DecisionRequest;
 import com.bank.appbackend.api.Dtos.DecisionResponse;
+import com.bank.appbackend.api.Dtos.DecisionView;
 import com.bank.appbackend.api.Dtos.HitlQueueItem;
 import com.bank.appbackend.api.Dtos.HitlTaskView;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -37,5 +39,16 @@ public class HitlController {
     @PostMapping("/tasks/{taskId}/decision")
     public DecisionResponse decide(@PathVariable Long taskId, @RequestBody DecisionRequest request) {
         return service.decide(taskId, request);
+    }
+
+    @GetMapping("/decisions")
+    public List<DecisionListItem> decisions(@RequestParam(required = false) Long customerId,
+                                            @RequestParam(required = false) Long applicationId) {
+        return service.listDecisions(customerId, applicationId);
+    }
+
+    @GetMapping("/decisions/{decisionId}")
+    public DecisionView decision(@PathVariable Long decisionId) {
+        return service.getDecision(decisionId);
     }
 }

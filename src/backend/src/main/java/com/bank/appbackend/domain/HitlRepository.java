@@ -77,4 +77,70 @@ public interface HitlRepository extends JpaRepository<HitlTask, Long> {
             """, nativeQuery = true)
     void insertDecision(@Param("taskId") Long taskId, @Param("outcome") String outcome,
                         @Param("note") String note, @Param("reviewer") String reviewer);
+
+    /** Decision-history list. Both filters are optional (null = no filter). */
+    @Query(value = """
+            SELECT d.decision_id        AS decisionId,
+                   d.application_id      AS applicationId,
+                   c.full_name          AS customerName,
+                   d.human_outcome      AS humanOutcome,
+                   d.human_user         AS humanUser,
+                   d.decided_at         AS decidedAt,
+                   d.agent_recommendation AS agentRecommendation,
+                   la.amount_requested  AS amountRequested,
+                   la.term_months       AS termMonths
+              FROM APP.decision d
+              JOIN APP.loan_application la ON la.application_id = d.application_id
+              JOIN APP.customer c          ON c.customer_id = la.customer_id
+             WHERE (:customerId IS NULL OR c.customer_id = :customerId)
+               AND (:applicationId IS NULL OR d.application_id = :applicationId)
+             ORDER BY d.decided_at DESC
+            """, nativeQuery = true)
+    List<DecisionRow> findDecisions(@Param("customerId") Long customerId,
+                                    @Param("applicationId") Long applicationId);
+
+    /** Full record for one decision. */
+    @Query(value = """
+            SELECT d.decision_id        AS decisionId,
+                   d.application_id      AS applicationId,
+                   c.full_name          AS customerName,
+                   la.amount_requested  AS amountRequested,
+                   la.term_months       AS termMonths,
+                   la.purpose           AS purpose,
+                   d.human_outcome      AS humanOutcome,
+                   d.human_user         AS humanUser,
+                   TO_CHAR(d.human_note) AS humanNote,
+                   d.decided_at         AS decidedAt,
+                   d.agent_recommendation AS agentRecommendation,
+                   TO_CHAR(d.agent_reasoning) AS agentReasoning,
+                   JSON_SERIALIZE(d.agent_explore_hints RETURNING VARCHAR2) AS agentExploreHints,
+                   JSON_SERIALIZE(d.agent_evidence RETURNING VARCHAR2)      AS agentEvidence,
+                   d.agent_run_id       AS agentRunId,
+                   JSON_SERIALIZE(d.pricing_offer RETURNING VARCHAR2) AS pricingOffer,
+                   JSON_SERIALIZE(d.reason_codes RETURNING VARCHAR2)  AS reasonCodes,
+                   d.computed_dti       AS computedDti,
+                   d.computed_pti       AS computedPti
+              FROM APP.decision d
+              JOIN APP.loan_application la ON la.application_id = d.application_id
+              JOIN APP.customer c          ON c.customer_id = la.customer_id
+             WHERE d.decision_id = :decisionId
+            """, nativeQuery = true)
+    Optional<DecisionDetailRow> findDecision(@Param("decisionId") Long decisionId);
+
+    /** Per-tool agent trace for a decision, by its agent run id. */
+    @Query(value = """
+            SELECT a.audit_id      AS auditId,
+                   a.step_no       AS stepNo,
+                   a.tool_name     AS toolName,
+                   JSON_SERIALIZE(a.tool_input RETURNING VARCHAR2)  AS toolInput,
+                   JSON_SERIALIZE(a.tool_output RETURNING VARCHAR2) AS toolOutput,
+                   a.started_at    AS startedAt,
+                   a.ended_at      AS endedAt,
+                   a.duration_ms   AS durationMs,
+                   a.status        AS status
+              FROM APP.decision_audit a
+             WHERE a.agent_run_id = :agentRunId
+             ORDER BY a.step_no
+            """, nativeQuery = true)
+    List<DecisionAuditRow> findDecisionAudit(@Param("agentRunId") String agentRunId);
 }
