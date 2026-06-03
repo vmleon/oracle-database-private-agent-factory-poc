@@ -111,3 +111,59 @@ export function openStream(
   });
   return es;
 }
+
+export interface HitlQueueItem {
+  taskId: number;
+  applicationId: number;
+  customerName: string;
+  agentRecommendation: "APPROVE" | "REVIEW" | "DECLINE";
+  amountRequested: number | null;
+  termMonths: number | null;
+  createdAt: string | null;
+}
+
+export interface HitlTaskView {
+  taskId: number;
+  applicationId: number;
+  customerName: string;
+  amountRequested: number | null;
+  termMonths: number | null;
+  purpose: string | null;
+  state: string;
+  agentRecommendation: "APPROVE" | "REVIEW" | "DECLINE";
+  agentReasoning: string | null;
+  agentExploreHints: string | null; // raw JSON text
+  agentEvidence: string | null; // raw JSON text
+  agentRunId: string;
+  humanOutcome: string | null;
+  createdAt: string | null;
+  closedAt: string | null;
+}
+
+export interface DecisionResponse {
+  taskId: number;
+  state: string;
+  humanOutcome: string;
+  humanUser: string;
+}
+
+export function listHitlTasks(): Promise<HitlQueueItem[]> {
+  return fetch("/v1/hitl/tasks?state=OPEN").then((r) =>
+    json<HitlQueueItem[]>(r),
+  );
+}
+
+export function getHitlTask(taskId: number): Promise<HitlTaskView> {
+  return fetch(`/v1/hitl/tasks/${taskId}`).then((r) => json<HitlTaskView>(r));
+}
+
+export function decideHitlTask(
+  taskId: number,
+  body: { outcome: "APPROVE" | "REJECT"; note: string; reviewer: string },
+): Promise<DecisionResponse> {
+  return fetch(`/v1/hitl/tasks/${taskId}/decision`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  }).then((r) => json<DecisionResponse>(r));
+}

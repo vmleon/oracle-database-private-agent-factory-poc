@@ -58,3 +58,42 @@ Outcome: TOON encoding happens either inside the PAF flow (clean, one place to l
 3. §3 — XGBoost credit-scoring tool.
 4. §1 — product-recommendation workflow. Consumes the credit-score tool from step 3 as one of its signals.
 5. §4 — TOON spike. Independent of steps 1–4, can happen in parallel.
+
+---
+
+## Platform follow-ups (hardening)
+
+Operational/structural next steps surfaced while building the backoffice review
+loop. Recommended order: **A → B → C** (A is independent; B is the foundation
+that also fixes the 502; C is built on B).
+
+### A. Investigate the empty `decision_audit`
+
+`APP.decision_audit` is empty — the per-tool agent trace (every `CHAT_WORKFLOW`
+tool call with step / timing / status; test-bench assertion (c)) is never
+written, even though the tool _outputs_ do land in `hitl_task.agent_evidence`.
+Find which component is responsible (MCP tool wrappers, the PAF flow, or the
+backend) and why it never fires, then decide whether to implement the per-tool
+write. Investigation first; no architectural change. (Note: the human decision
+audit — the immutable `decision` blockchain row with outcome, reviewer, and
+note — already works and is tamper-verified.)
+
+### B. Single reverse proxy / front door
+
+Frontends and backend run as separate containers and call each other by name;
+when the backend container is recreated it gets a new IP and the caller's nginx
+keeps the stale one → 502 (see [[project-backend-deploy-stale-jar]]). Introduce
+one reverse proxy as the single entry point routing to all components, with
+upstream DNS re-resolution so backend restarts no longer 502. Research
+nginx vs Caddy vs Traefik for this setup (single host, podman compose, multiple
+frontends + backend) and recommend; **decision pending** (initial lean: Caddy
+for auto DNS re-resolve + simple config, or Traefik for label-based live
+discovery).
+
+### C. Split the customer and backoffice frontends
+
+Today both live in one SPA/container under one site (same title, same styling).
+Split into **two separate apps + containers** (`customer-ui`, `backoffice-ui`),
+each with its own title and visual style, served behind the proxy from B by
+**path prefix on one host** (`/` → customer chat, `/backoffice` → reviewer). Do
+after B so the proxy routes the two apps and the DNS issue is solved once.

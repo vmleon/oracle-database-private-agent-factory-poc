@@ -36,4 +36,22 @@ public final class Dtos {
 
     public record ChatMessageView(String sender, String body, Instant createdAt) {
     }
+
+    public record HitlQueueItem(Long taskId, Long applicationId, String customerName,
+                                String agentRecommendation, java.math.BigDecimal amountRequested,
+                                Integer termMonths, Instant createdAt) {
+    }
+
+    public record HitlTaskView(Long taskId, Long applicationId, String customerName,
+                               java.math.BigDecimal amountRequested, Integer termMonths, String purpose,
+                               String state, String agentRecommendation, String agentReasoning,
+                               String agentExploreHints, String agentEvidence, String agentRunId,
+                               String humanOutcome, Instant createdAt, Instant closedAt) {
+    }
+
+    public record DecisionRequest(String outcome, String note, String reviewer) {
+    }
+
+    public record DecisionResponse(Long taskId, String state, String humanOutcome, String humanUser) {
+    }
 }

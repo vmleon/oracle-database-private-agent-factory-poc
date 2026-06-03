@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Login } from "@/components/Login";
 import { Chat } from "@/components/Chat";
+import { Backoffice } from "@/components/backoffice/Backoffice";
+import { isBackofficePath } from "@/lib/route";
 import type { Session } from "@/useChat";
 
 interface StoredSession extends Session {
@@ -12,7 +14,7 @@ function load(): StoredSession | null {
   return raw ? (JSON.parse(raw) as StoredSession) : null;
 }
 
-export default function App() {
+function CustomerApp() {
   const [session, setSession] = useState<StoredSession | null>(load);
 
   if (!session) {
@@ -41,4 +43,11 @@ export default function App() {
       onLoggedOut={() => setSession(null)}
     />
   );
+}
+
+export default function App() {
+  if (isBackofficePath(window.location.pathname)) {
+    return <Backoffice />;
+  }
+  return <CustomerApp />;
 }
