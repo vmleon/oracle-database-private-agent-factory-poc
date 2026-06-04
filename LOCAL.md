@@ -68,8 +68,6 @@ Then extract the kit — with no argument, `paf prepare` reads the path from `PA
 python manage.py paf prepare
 ```
 
-(You can still pass an explicit path to override the `.env` value: `python manage.py paf prepare ~/Downloads/oracle_agent_factory_arm64_26.4.0.tar.gz`.)
-
 This extracts the kit into `./paf-kit/` (gitignored, ~6 GB on disk), reads `app_version` from the kit's `version.json`, writes `PAF_APP_VERSION=…` into `.env`, and snapshots the kit's pristine bind-mount state so `local down --purge` can restore it. Required once, plus once per kit upgrade.
 
 ## 2. Boot the stack
