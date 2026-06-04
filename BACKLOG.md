@@ -5,25 +5,21 @@ features, and platform hardening.
 
 **Maintenance convention.** When an item is done and implemented successfully, **remove it from this backlog and delete the related `issues/` file(s)** — keep the repo describing the final state, not the history. If an issue is only **partially** improved (a workaround, not a real fix), **refresh that issue** so it stays accurate instead of deleting it.
 
-## 0. PAF 26.4 adoption — HIGHEST PRIORITY
+## 0. PAF 26.4 — residual follow-ups
 
-We've moved the kit to **26.4** (`PAF_TARBALL` in `.env`, `paf prepare` reads it). Two of our `issues/` are genuinely closed by 26.4, and two more get strong native alternatives. Verdicts are code-confirmed against `./paf-kit/` @ `26.4.0.0.0` (see `PAF-26.4-REVIEW.md`). Adopt the fixes first, then the alternatives.
+**Shipped (26.4 fully adopted this session):** kit on 26.4 (`PAF_TARBALL`); **TCPS** DB connection + client wallet; the **`mcp-proxy` HTTPS gateway** for the MCP servers + PAF cert-trust (`SSL_CERT_FILE` + certifi injection); **`AAI_RO_AGENT_FACTORY`** pre-creation; **`paf allow-internal-mcp`**; the **deterministic `get_context`** entry (read path — closes the streamed-token corruption; built, validated end-to-end, the former `issues/09` deleted; spec: `docs/superpowers/specs/2026-06-04-deterministic-get-context-design.md`); the rewritten 23-step `CHAT_WORKFLOW` blueprint; and the flow **`.paf` export/import** round-trip (`LOCAL.md §5`, committed `paf/flows/chat_flow.paf`). What remains is optional or an alternative — **none are blocking**.
 
-Prereq for all of 0.x: a clean local bring-up on the 26.4 kit (`local down --purge` → `local up` → `paf bootstrap`), confirming the install wizard, LLM registration, and the existing tool/datasource registrations still behave on the new version.
+### 0.1 Script flow export/import in `manage.py` + doc cleanup (optional)
 
-### 0.1 Native flow export/import — closes `issues/05`
+The UI export/import round-trip works and is documented (`LOCAL.md §5`). Nice-to-haves:
 
-26.4 ships a real export route (`/v1/agentBuilder/customFlows/exportAll`) producing a password-protected `.paf` archive; import re-links shared resources (MCP/datasource/LLM) **by name** instead of the old integer-ID hard-fail. This replaces the DevTools Network-tab scrape and the non-portable JSON snapshot.
+- Thin `manage.py paf flow export` / `flow import` wrappers around `/v1/agentBuilder/customFlows/exportAll` (password from a new `.env` `PAF_FLOW_EXPORT_PASS`) so a clean redeploy skips the manual UI steps.
+- **Refresh `issues/05`** — 26.4's native export/import works now; keep only the residuals (deps re-link by hand on import, imports arrive unpublished, `.paf` is binary so not git-diffable).
+- Update `paf/flows/CHAT_WORKFLOW.md §Export` — it still describes the old "no Export button / Network-tab scrape" path.
 
-- **Code.** Add thin `manage.py paf flow export` / `paf flow import` commands wrapping the export/import endpoints (password sourced from `.env`, e.g. a new `PAF_FLOW_EXPORT_PASS`). Save artifacts under `paf/flows/`. Retire the `chat_workflow.flow.json` scrape workflow.
-- **Docs.** Rewrite `LOCAL.md §5 Export` (drop the DevTools/Network-tab + `GET /v1/agents/<id>` scrape) and `paf/flows/CHAT_WORKFLOW.md §Export`. Mark `issues/05` resolved-in-26.4, keeping the residual notes: deps re-link by hand, **imports arrive unpublished** (must re-publish), and `.paf` is a password-protected binary so it does **not** give clean git diffs.
-- **Guide steps.** New runbook steps: "export the published flow to `paf/flows/chat_workflow.paf`" and, on a clean redeploy, "import the `.paf`, re-link the MCP servers + Company Registry datasource by name, then re-publish."
+### 0.2 Deterministic `upsert` via marker — only if needed
 
-### 0.2 Deterministic `upsert` via marker — optional follow-up
-
-The deterministic **read** path (`get_context` via the Deterministic MCP node) is **done and validated** — see `docs/superpowers/specs/2026-06-04-deterministic-get-context-design.md`; the `ChatService` retry is now belt-and-suspenders. The **write** path (`upsert_application`) is left agentic on purpose: its token corruption is fail-closed and idempotent (a corrupted token just fails and the agent retries), and it wasn't the original repro.
-
-Only if write-path corruption ever shows up in testing: make `upsert` deterministic too — Concierge emits an `[[UPSERT …]]` marker, a RegexExtractor + Type Convert build the JSON, a Deterministic MCP node calls `upsert_application` with the token wired. Cost: reopens the fail-open string-interpolation hazard (`issues/01`), a write-or-skip Condition (`issues/08`), and reliance on structured marker emission (`issues/07`). Not worth it unless the symptom appears.
+The deterministic **read** path is shipped; `upsert_application` is left **agentic on purpose** (its token corruption is fail-closed + idempotent, and it wasn't the repro). Only if write-path corruption ever appears in testing: Concierge emits an `[[UPSERT …]]` marker → RegexExtractor + Type Convert build the JSON → a Deterministic MCP node calls `upsert_application` with the token wired. Cost: reopens the fail-open string-interpolation hazard (`issues/01`), a write-or-skip Condition (`issues/08`), and structured marker emission (`issues/07`). Parked.
 
 ### 0.3 PL/SQL Executor node — safe in-DB calls (alternative for `issues/01`)
 
@@ -88,8 +84,9 @@ Outcome: TOON encoding happens either inside the PAF flow (clean, one place to l
 
 ## Execution order
 
-1. §0 — PAF 26.4 adoption. Deterministic `get_context` is done; remaining: 0.1 export/import, then 0.3 PL/SQL node spike and 0.4 tracing (the alternatives). 0.2 (deterministic `upsert`) only if needed.
-2. Finish the current loan-decisioning end-to-end (OCR real pipeline, Application Service, Angular UIs, Blockchain write at HITL close).
+1. **End-to-end test the built `CHAT_WORKFLOW`** across the seeded scenarios (the deterministic flow is built, published, and exported; the `get_context` entry is validated). Run `tests/test_chat_workflow.py` + the tier table in `paf/flows/CHAT_WORKFLOW.md §Test prompts`.
+2. Finish the loan-decisioning end-to-end: real OCR pipeline, the remaining Application Service bits, the two Angular UIs, Blockchain `decision` write at HITL close.
 3. §3 — XGBoost credit-scoring tool (reads the shipped `REPORTING.cust_360`).
 4. §1 — product-recommendation workflow. Consumes the credit-score tool from §3 as one of its signals.
 5. §4 — TOON spike. Independent of the steps above, can happen in parallel.
+6. §0 residuals — all optional/alternative (0.1 export-import scripting + doc cleanup, 0.3 PL/SQL-node spike, 0.4 tracing); 0.2 only if write-path corruption appears.
