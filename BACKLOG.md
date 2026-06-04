@@ -3,6 +3,44 @@
 The prioritised backlog for the PoC: near-term backoffice work, broader-plan
 features, and platform hardening.
 
+**Maintenance convention.** When an item is done and implemented successfully, **remove it from this backlog and delete the related `issues/` file(s)** — keep the repo describing the final state, not the history. If an issue is only **partially** improved (a workaround, not a real fix), **refresh that issue** so it stays accurate instead of deleting it.
+
+## 0. PAF 26.4 adoption — HIGHEST PRIORITY
+
+We've moved the kit to **26.4** (`PAF_TARBALL` in `.env`, `paf prepare` reads it). Two of our `issues/` are genuinely closed by 26.4, and two more get strong native alternatives. Verdicts are code-confirmed against `./paf-kit/` @ `26.4.0.0.0` (see `PAF-26.4-REVIEW.md`). Adopt the fixes first, then the alternatives.
+
+Prereq for all of 0.x: a clean local bring-up on the 26.4 kit (`local down --purge` → `local up` → `paf bootstrap`), confirming the install wizard, LLM registration, and the existing tool/datasource registrations still behave on the new version.
+
+### 0.1 Native flow export/import — closes `issues/05`
+
+26.4 ships a real export route (`/v1/agentBuilder/customFlows/exportAll`) producing a password-protected `.paf` archive; import re-links shared resources (MCP/datasource/LLM) **by name** instead of the old integer-ID hard-fail. This replaces the DevTools Network-tab scrape and the non-portable JSON snapshot.
+
+- **Code.** Add thin `manage.py paf flow export` / `paf flow import` commands wrapping the export/import endpoints (password sourced from `.env`, e.g. a new `PAF_FLOW_EXPORT_PASS`). Save artifacts under `paf/flows/`. Retire the `chat_workflow.flow.json` scrape workflow.
+- **Docs.** Rewrite `LOCAL.md §5 Export` (drop the DevTools/Network-tab + `GET /v1/agents/<id>` scrape) and `paf/flows/CHAT_WORKFLOW.md §Export`. Mark `issues/05` resolved-in-26.4, keeping the residual notes: deps re-link by hand, **imports arrive unpublished** (must re-publish), and `.paf` is a password-protected binary so it does **not** give clean git diffs.
+- **Guide steps.** New runbook steps: "export the published flow to `paf/flows/chat_workflow.paf`" and, on a clean redeploy, "import the `.paf`, re-link the MCP servers + Company Registry datasource by name, then re-publish."
+
+### 0.2 Deterministic `upsert` via marker — optional follow-up
+
+The deterministic **read** path (`get_context` via the Deterministic MCP node) is **done and validated** — see `docs/superpowers/specs/2026-06-04-deterministic-get-context-design.md`; the `ChatService` retry is now belt-and-suspenders. The **write** path (`upsert_application`) is left agentic on purpose: its token corruption is fail-closed and idempotent (a corrupted token just fails and the agent retries), and it wasn't the original repro.
+
+Only if write-path corruption ever shows up in testing: make `upsert` deterministic too — Concierge emits an `[[UPSERT …]]` marker, a RegexExtractor + Type Convert build the JSON, a Deterministic MCP node calls `upsert_application` with the token wired. Cost: reopens the fail-open string-interpolation hazard (`issues/01`), a write-or-skip Condition (`issues/08`), and reliance on structured marker emission (`issues/07`). Not worth it unless the symptom appears.
+
+### 0.3 PL/SQL Executor node — safe in-DB calls (alternative for `issues/01`)
+
+The new **Oracle PL/SQL Executor node** runs only routines visible in the connected schema metadata, with bound named/positional args, overloads, `OUT`/`IN OUT`, and an optional auto-commit toggle — a first-class, fail-secure DB path. It does not fix the unsafe SQL Query node (`issues/01` stays open as a platform caveat), but our flow can stop depending on MCP shims for DB access.
+
+- **Code.** Spike: call `AGENT_TOOLS.PKG_AGENT_TOOLS.*` (grants already in Liquibase 011/012) directly from a PL/SQL Executor node and evaluate retiring the `banking-mcp` / `application-mcp` wrapper containers (fewer moving parts). Keep MCP if the node can't resolve the token-keyed read/write cleanly — decide from the spike, don't rip out MCP blind.
+- **Docs.** If adopted: trim the `banking-mcp` / `application-mcp` registrations from `LOCAL.md §4`, update the tool-channel description in `docs/DESIGN.md`, and note in `issues/01` that the flow no longer touches the SQL Query node.
+- **Guide steps.** Register a Database datasource for the node, select the approved routines, map the bound arguments; document the auto-commit setting for the `upsert` write.
+
+### 0.4 Agent observability / OTel tracing — mitigates `issues/03` and `issues/06`
+
+26.4 adds OTel tracing (Arize Phoenix / Comet Opik / Langfuse) capturing spans for flow steps, LLM calls, and tool executions, plus a Collect-Diagnostics ZIP. This is the missing diagnostic surface for the `max_iterations=5` cliff and the ID-only validator errors (neither root cause is fixed in code).
+
+- **Code.** Optional: add a local trace-collector service (e.g. Phoenix or Langfuse) to `deploy/podman/compose.local.yml` if we want traces without a cloud account; otherwise no code.
+- **Docs.** Add an "enable tracing" recipe to `docs/TROUBLESHOOT.md` and an optional step in `LOCAL.md`. Note in `issues/03` / `issues/06` that 26.4 makes the conditions observable even though the messages/cap are unchanged.
+- **Guide steps.** PAF Settings → tracing provider → point at the collector, enable masking; show where a `CHAT_WORKFLOW` run's per-tool spans land.
+
 ## 1. Proactive product recommendation as a second workflow
 
 Clone the `CHAT_WORKFLOW` pattern into a second PAF Agent Builder flow over the same `REPORTING.*` view set, with a different agent prompt + tool surface + signal weights, writing to a recommendation queue rather than `hitl_task`. Reuses the existing backbone (HITL, audit, OPA grounding, RAG citations, configurable signal weights) for a recommendation surface alongside the decisioning surface.
@@ -50,7 +88,8 @@ Outcome: TOON encoding happens either inside the PAF flow (clean, one place to l
 
 ## Execution order
 
-1. Finish the current loan-decisioning end-to-end (OCR real pipeline, Application Service, Angular UIs, Blockchain write at HITL close).
-2. §3 — XGBoost credit-scoring tool (reads the shipped `REPORTING.cust_360`).
-3. §1 — product-recommendation workflow. Consumes the credit-score tool from §3 as one of its signals.
-4. §4 — TOON spike. Independent of steps 1–3, can happen in parallel.
+1. §0 — PAF 26.4 adoption. Deterministic `get_context` is done; remaining: 0.1 export/import, then 0.3 PL/SQL node spike and 0.4 tracing (the alternatives). 0.2 (deterministic `upsert`) only if needed.
+2. Finish the current loan-decisioning end-to-end (OCR real pipeline, Application Service, Angular UIs, Blockchain write at HITL close).
+3. §3 — XGBoost credit-scoring tool (reads the shipped `REPORTING.cust_360`).
+4. §1 — product-recommendation workflow. Consumes the credit-score tool from §3 as one of its signals.
+5. §4 — TOON spike. Independent of the steps above, can happen in parallel.

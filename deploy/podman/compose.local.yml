@@ -38,6 +38,9 @@ services:
     volumes:
       - ../../paf-kit/applied-ai/dev-shared:/dev-shared
       - ../../paf-kit/applied-ai/volume:/mount
+      # CA bundle = certifi + the self-signed MCP-gateway cert. Lets PAF's httpx
+      # (which honors SSL_CERT_FILE) trust https://mcp-proxy:8443 MCP URLs.
+      - ../../mcp-tls/paf-ca-bundle.pem:/etc/ssl/paf-ca-bundle.pem:ro
     # PAF can't do mDNS / Bonjour, so when VLLM_HOST is a .local name we
     # resolve it on the host (which does mDNS) at `local up` and inject the
     # mapping here. Falls back to a no-op loopback entry when not needed.
@@ -50,6 +53,7 @@ services:
       TAKE_SNAPSHOT: "false"
       USE_WALLET: "false"
       INCLUDE_KA_DATA: "false"
+      SSL_CERT_FILE: "/etc/ssl/paf-ca-bundle.pem"
 
   # Open Policy Agent — runs in server mode loading every .rego file
   # in ./packages. PAF reaches it via the OPA MCP server (below); no
@@ -240,6 +244,26 @@ services:
       - "5173:80"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+
+  # TLS gateway for the MCP servers. PAF 26.4 rejects http:// MCP URLs, so this
+  # terminates TLS (self-signed cert, SAN=mcp-proxy) on :8443 and reverse-proxies
+  # each path prefix to the plain-HTTP MCP app (/banking/mcp/ -> banking-mcp:8503/mcp/).
+  # PAF reaches it over the compose network and trusts the cert via SSL_CERT_FILE
+  # (see the paf service). Cert built by `manage.py local mcp-tls` (also run by `local up`).
+  mcp-proxy:
+    image: docker.io/library/caddy:2-alpine
+    container_name: paf-mcp-proxy
+    restart: unless-stopped
+    depends_on:
+      - banking-mcp
+      - opa-mcp
+      - ocr-mcp
+      - hitl-mcp
+      - application-mcp
+    volumes:
+      - ./Caddyfile.mcp:/etc/caddy/Caddyfile:ro
+      - ../../mcp-tls/mcp-proxy.crt:/etc/caddy/certs/mcp-proxy.crt:ro
+      - ../../mcp-tls/mcp-proxy.key:/etc/caddy/certs/mcp-proxy.key:ro
 
 volumes:
   oradata:

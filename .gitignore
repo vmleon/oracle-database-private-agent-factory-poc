@@ -24,6 +24,9 @@ out/
 wallets/
 *.wallet
 **/wallet/
+tcps-wallet/
+tcps-wallet.zip
+mcp-tls/
 
 # Terraform
 **/.terraform/

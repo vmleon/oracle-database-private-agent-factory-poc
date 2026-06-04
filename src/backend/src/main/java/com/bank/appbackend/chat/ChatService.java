@@ -21,8 +21,11 @@ public class ChatService {
 
     private static final Logger log = LoggerFactory.getLogger(ChatService.class);
 
-    // The fixed fail-secure apology the flow returns when get_context can't resolve the session
-    // (in practice: PAF's streamed tool-call corrupted the token). Used to detect-and-retry.
+    // The fixed fail-secure apology the flow returns when get_context can't resolve the session.
+    // Belt-and-suspenders: CHAT_WORKFLOW now loads get_context through a deterministic MCP node
+    // (token wired, never transcribed), so streamed-token corruption can't happen on the read
+    // path — this retry only still matters while a flow build predates that node. On a genuinely
+    // invalid/expired token, retrying changes nothing (it stays the apology); it's not a failure.
     private static final String PAF_APOLOGY =
             "Sorry — we couldn't process your application right now. Please try again in a moment.";
     private static final int MAX_PAF_ATTEMPTS = 3; // 1 try + 2 retries
@@ -63,8 +66,8 @@ public class ChatService {
         try {
             String enveloped = Envelope.build(token, message);
             PafClient.Result result = paf.run(enveloped);
-            // PAF streams agent tool-calls; vLLM occasionally corrupts the session_token, so
-            // get_context fails and the flow returns the fixed apology. Re-run a couple of times.
+            // Belt-and-suspenders retry (see PAF_APOLOGY): inert once the deployed flow loads
+            // get_context via the deterministic MCP node; harmless to keep during the transition.
             for (int attempt = 2; attempt <= MAX_PAF_ATTEMPTS && PAF_APOLOGY.equals(result.reply()); attempt++) {
                 result = paf.run(enveloped);
             }

@@ -32,6 +32,43 @@ PAF_VERSION_FILE = PAF_KIT_DIR / "applied-ai" / "kit" / "agent_factory" / "inter
 PAF_BUILD_SCRIPT = PAF_KIT_DIR / "build-image.sh"
 PAF_IMAGE_REPO = "localhost/applied-ai-label"
 
+# TCPS (encrypted SQL*Net) for the PAF → Oracle connection. The Free image's
+# /opt/oracle/configTcps.sh generates a self-signed server cert (CN = the host
+# PAF dials) plus a ready client wallet; we export that wallet for the PAF
+# install wizard's "Wallet" connection type. TCP/1521 stays up alongside, so
+# Liquibase / grants / sqlcl keep working unchanged.
+DB_HOST_DNS = "oracle-free-26ai"          # compose service DNS = the cert CN
+TCPS_PORT = "2484"
+TCPS_CLIENT_WALLET = "/opt/oracle/oradata/clientWallet/FREE"   # in the container
+TCPS_WALLET_DIR = PROJECT_ROOT / "tcps-wallet"                 # exported to host
+TCPS_WALLET_ZIP = PROJECT_ROOT / "tcps-wallet.zip"            # upload into PAF
+
+# TLS gateway for the MCP servers. PAF 26.4 rejects http:// MCP URLs, so a Caddy
+# proxy (mcp-proxy) terminates TLS and forwards to each plain-HTTP MCP app. PAF
+# trusts the self-signed cert via SSL_CERT_FILE = certifi + our cert.
+MCP_TLS_DIR = PROJECT_ROOT / "mcp-tls"
+MCP_PROXY_HOST = "mcp-proxy"
+MCP_PROXY_PORT = "8443"
+KIT_CERTIFI = (
+    PAF_KIT_DIR / "applied-ai" / "kit" / "agent_factory" / "third_party"
+    / "python3" / "lib" / "python3.12" / "site-packages" / "certifi" / "cacert.pem"
+)
+# certifi bundle *inside the paf container* (image path). SSL_CERT_FILE doesn't
+# reach all of PAF's worker processes, so we also append our cert here — the
+# bundle every httpx client falls back to via certifi.where().
+PAF_CERTIFI = (
+    "/home/aaiuser/install/agent_factory/third_party/python3/lib/python3.12"
+    "/site-packages/certifi/cacert.pem"
+)
+# path-prefix -> internal MCP app, used both by Caddyfile.mcp and the URL hints.
+MCP_ROUTES = {
+    "banking": "banking-mcp:8503",
+    "opa": "opa-mcp:8500",
+    "ocr": "ocr-mcp:8501",
+    "hitl": "hitl-mcp:8502",
+    "application": "application-mcp:8504",
+}
+
 # Snapshot of the kit-shipped initial state of `applied-ai/{volume,dev-shared}`,
 # captured at `paf prepare` time. `local down --purge` restores from this so
 # runtime accretions (admin user records, .config_complete.marker, /mount/data)
@@ -247,20 +284,174 @@ def _grant_sysdba_post_liquibase(container: str = "paf-oracle-free-26ai") -> Non
     Also grants EXECUTE on DBMS_CLOUD / DBMS_CLOUD_AI to AGENT_FACTORY
     (the packages are installed by `_install_dbms_cloud` earlier).
 
+    Also creates the read-only worker user AAI_RO_AGENT_FACTORY. PAF 26.4
+    requires this user to pre-exist before the install wizard's DB step
+    (25.3.9 created it during install); without it the DB step fails with
+    "Required read-only user AAI_RO_AGENT_FACTORY does not exist". It needs
+    only CREATE SESSION and a password equal to the runtime user's
+    (AGENT_FACTORY = DB_PASSWORD); PAF grants the read-only SELECTs itself.
+
     Note: Select AI is not wired locally, so no outbound-HTTPS network ACL
     is added here. Wiring Select AI locally would also need an ACL to the
     HTTPS endpoint fronting vLLM — see the note in `_bootstrap_select_ai_profiles`.
     """
+    db_password = os.getenv("DB_PASSWORD", "")
     sql_lines = [
+        "SET DEFINE OFF",
         "ALTER SESSION SET CONTAINER=FREEPDB1;",
         "GRANT SELECT ON SYS.V_$PARAMETER TO AGENT_FACTORY;",
         "GRANT EXECUTE ON DBMS_CLOUD TO AGENT_FACTORY;",
         "GRANT EXECUTE ON DBMS_CLOUD_AI TO AGENT_FACTORY;",
+        "DECLARE n NUMBER; BEGIN",
+        "  SELECT COUNT(*) INTO n FROM dba_users WHERE username = 'AAI_RO_AGENT_FACTORY';",
+        f"  IF n = 0 THEN EXECUTE IMMEDIATE 'CREATE USER AAI_RO_AGENT_FACTORY IDENTIFIED BY \"{db_password}\"';",
+        f"  ELSE EXECUTE IMMEDIATE 'ALTER USER AAI_RO_AGENT_FACTORY IDENTIFIED BY \"{db_password}\"'; END IF;",
+        "  EXECUTE IMMEDIATE 'GRANT CREATE SESSION TO AAI_RO_AGENT_FACTORY';",
+        "END;",
+        "/",
         "EXIT;",
     ]
     sql = "\n".join(sql_lines) + "\n"
     _run_sysdba_sql(sql, "Post-Liquibase sysdba grant", container)
-    console.print("[green]✓[/green] SYS-only grants applied to AGENT_FACTORY.")
+    console.print("[green]✓[/green] SYS-only grants applied to AGENT_FACTORY; AAI_RO_AGENT_FACTORY ensured.")
+
+
+def _tcps_configured(container: str = "paf-oracle-free-26ai") -> bool:
+    """True if the Free image's TCPS client wallet already exists in the DB."""
+    return subprocess.run(
+        ["podman", "exec", container, "bash", "-lc",
+         f"test -f {TCPS_CLIENT_WALLET}/cwallet.sso"],
+        capture_output=True,
+    ).returncode == 0
+
+
+def _export_tcps_wallet(container: str = "paf-oracle-free-26ai") -> None:
+    """Copy the in-container client wallet to the host and zip it for the PAF
+    install wizard's Wallet upload. The wallet carries tnsnames aliases (FREE /
+    FREEPDB1) pointing at oracle-free-26ai:2484 plus the trusted server cert."""
+    if TCPS_WALLET_DIR.exists():
+        shutil.rmtree(TCPS_WALLET_DIR)
+    TCPS_WALLET_DIR.mkdir()
+    _run(["podman", "cp", f"{container}:{TCPS_CLIENT_WALLET}/.", str(TCPS_WALLET_DIR)])
+    if TCPS_WALLET_ZIP.exists():
+        TCPS_WALLET_ZIP.unlink()
+    shutil.make_archive(str(TCPS_WALLET_ZIP.with_suffix("")), "zip", TCPS_WALLET_DIR)
+    # Both are an auto-login (SSO) wallet = a private-key store. Keep them
+    # owner-only and out of git (.gitignore) — never commit a wallet.
+    TCPS_WALLET_DIR.chmod(0o700)
+    TCPS_WALLET_ZIP.chmod(0o600)
+
+
+def _configure_tcps(container: str = "paf-oracle-free-26ai") -> None:
+    """Enable TCPS on the Oracle Free listener and export a client wallet.
+
+    Idempotent: the server-side config (self-signed cert, listener endpoint on
+    2484, sqlnet/listener edits) is generated once by `configTcps.sh` and lives
+    in the persistent oradata volume. Re-running would mint a *new* cert and
+    invalidate a wallet PAF already holds, so we skip the regen when the client
+    wallet is already present — but always refresh the host-side export.
+    """
+    if _tcps_configured(container):
+        console.print("[dim]TCPS already configured in the DB; reusing existing wallet.[/dim]")
+    else:
+        console.print(f"[bold]Configuring TCPS (port {TCPS_PORT}, cert CN={DB_HOST_DNS})...[/bold]")
+        # Positional args: <tcps_port> <hostname-for-cert-CN-and-tnsnames>.
+        _run(["podman", "exec", container, "bash", "-lc",
+              f"/opt/oracle/configTcps.sh {TCPS_PORT} {DB_HOST_DNS}"])
+    _export_tcps_wallet(container)
+    console.print(
+        f"[green]✓[/green] TCPS ready on {DB_HOST_DNS}:{TCPS_PORT}; "
+        f"wallet → [cyan]{TCPS_WALLET_ZIP.name}[/cyan] (upload it in the PAF wizard)."
+    )
+
+
+def _configure_mcp_tls() -> None:
+    """Generate the self-signed cert for the MCP TLS gateway (mcp-proxy) and
+    build the PAF trust bundle (certifi + our cert).
+
+    Idempotent: the cert is generated once and reused (regenerating would
+    invalidate the bundle PAF already mounted); the bundle is always rebuilt
+    (cheap). Runs before `podman compose up` because the files are bind-mounted
+    into mcp-proxy and paf at container start.
+    """
+    crt = MCP_TLS_DIR / "mcp-proxy.crt"
+    key = MCP_TLS_DIR / "mcp-proxy.key"
+    bundle = MCP_TLS_DIR / "paf-ca-bundle.pem"
+    MCP_TLS_DIR.mkdir(exist_ok=True)
+
+    if crt.exists() and key.exists():
+        console.print("[dim]MCP TLS cert already present; reusing.[/dim]")
+    else:
+        console.print(f"[bold]Generating self-signed MCP TLS cert (SAN={MCP_PROXY_HOST})...[/bold]")
+        cfg = MCP_TLS_DIR / "openssl.cnf"
+        cfg.write_text(
+            "[req]\n"
+            "distinguished_name = dn\n"
+            "x509_extensions = v3_req\n"
+            "prompt = no\n"
+            "[dn]\n"
+            f"CN = {MCP_PROXY_HOST}\n"
+            "[v3_req]\n"
+            "basicConstraints = critical, CA:false\n"
+            "keyUsage = critical, digitalSignature, keyEncipherment\n"
+            "extendedKeyUsage = serverAuth\n"
+            "subjectAltName = @alt\n"
+            "[alt]\n"
+            f"DNS.1 = {MCP_PROXY_HOST}\n"
+            "DNS.2 = localhost\n"
+        )
+        _run([
+            "openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+            "-keyout", str(key), "-out", str(crt),
+            "-days", "825", "-config", str(cfg),
+        ])
+        cfg.unlink()
+
+    if not KIT_CERTIFI.exists():
+        console.print(
+            f"[red]certifi bundle not found at {KIT_CERTIFI}.[/red] "
+            "Run `python manage.py paf prepare` first."
+        )
+        sys.exit(1)
+    # SSL_CERT_FILE replaces (not augments) the default trust store, so the
+    # bundle must carry the public CAs *and* our cert.
+    bundle.write_text(KIT_CERTIFI.read_text() + "\n" + crt.read_text())
+    key.chmod(0o600)
+    bundle.chmod(0o600)
+    console.print(
+        f"[green]✓[/green] MCP TLS ready: gateway [cyan]{MCP_PROXY_HOST}:{MCP_PROXY_PORT}[/cyan], "
+        f"PAF trust bundle → [cyan]{bundle.name}[/cyan]."
+    )
+
+
+def _inject_mcp_ca_into_paf(container: str = "paf-agent-factory") -> None:
+    """Append the MCP-gateway cert to PAF's in-container certifi bundle.
+
+    SSL_CERT_FILE (set in compose) only reaches some of PAF's processes — its
+    async MCP-discovery worker falls back to certifi.where(), which lacks our
+    self-signed cert, so the connection test fails with CERTIFICATE_VERIFY_FAILED.
+    certifi's cacert.pem is the one bundle every httpx client trusts, so we
+    append our cert there. It lives in the image (not a bind mount), so this
+    re-runs every `local up` (the container is recreated). Idempotent: the prior
+    appended block is stripped and the current cert re-appended (handles a
+    regenerated cert too).
+    """
+    crt = MCP_TLS_DIR / "mcp-proxy.crt"
+    if not crt.exists():
+        return
+    if subprocess.run(["podman", "exec", container, "true"], capture_output=True).returncode != 0:
+        console.print("[dim]PAF container not running; skipping certifi injection.[/dim]")
+        return
+    subprocess.run(["podman", "cp", str(crt), f"{container}:/tmp/mcp-proxy.crt"], capture_output=True)
+    script = (
+        f"sed -i '/# mcp-proxy-self-signed/,$d' {PAF_CERTIFI} && "
+        f"{{ echo; echo '# mcp-proxy-self-signed'; cat /tmp/mcp-proxy.crt; }} >> {PAF_CERTIFI}"
+    )
+    rc = subprocess.run(["podman", "exec", container, "bash", "-lc", script], capture_output=True)
+    if rc.returncode == 0:
+        console.print("[green]✓[/green] MCP gateway cert injected into PAF's certifi trust bundle.")
+    else:
+        console.print(f"[yellow]Could not inject cert into PAF certifi:[/yellow] {rc.stderr.decode().strip()}")
 
 
 def _is_dbms_cloud_installed(container: str = "paf-oracle-free-26ai") -> bool:
@@ -762,6 +953,11 @@ def setup_local() -> None:
         default=existing.get("OCR_PORT", "8500"),
     ).execute()
 
+    paf_tarball = inquirer.text(
+        message="Path to the PAF kit tarball (e.g. ~/Downloads/oracle_agent_factory_arm64_26.4.0.tar.gz):",
+        default=existing.get("PAF_TARBALL", ""),
+    ).execute()
+
     # PAF admin creds — used by the test harness for programmatic login via
     # /v1/loginValidation. Manual install-wizard input, no auto-generation;
     # leave blank to keep whatever's already in .env on a re-run.
@@ -800,6 +996,9 @@ def setup_local() -> None:
         f"OCR_HOST={ocr_host}\n"
         f"OCR_PORT={ocr_port}\n"
         "\n"
+        "# PAF kit tarball (read by `manage.py paf prepare` when no path is given)\n"
+        f"PAF_TARBALL={paf_tarball}\n"
+        "\n"
         "# PAF admin login (used by the pytest harness for programmatic\n"
         "# /v1/loginValidation against PAF — NOT for runtime services)\n"
         f"PAF_ADMIN_USER={paf_admin_user}\n"
@@ -834,7 +1033,11 @@ def local_up() -> None:
     if paf_ready and not _paf_image_present(paf_tag):
         console.print(f"[bold]PAF image {paf_tag} missing — building from kit...[/bold]")
         _run(["bash", str(PAF_BUILD_SCRIPT), "aai"], cwd=str(PAF_KIT_DIR))
-    services = ["oracle-free-26ai", "opa", "opa-mcp", "ocr-mcp", "hitl-mcp", "application-mcp", "banking-mcp", "registry-api", "application-backend", "customer-ui", "backoffice-ui", "proxy"]
+    services = ["oracle-free-26ai", "opa", "opa-mcp", "ocr-mcp", "hitl-mcp", "application-mcp", "banking-mcp", "registry-api", "application-backend", "customer-ui", "backoffice-ui", "proxy", "mcp-proxy"]
+    # The MCP TLS cert + PAF trust bundle are bind-mounted into mcp-proxy and
+    # paf, so they must exist before compose starts those containers.
+    console.print("[bold]Preparing MCP TLS gateway cert + PAF trust bundle...[/bold]")
+    _configure_mcp_tls()
     # Always export so compose substitution succeeds even when paf isn't started.
     os.environ["PAF_APP_VERSION"] = _paf_app_version() or "unset"
     os.environ.setdefault("HOST_OS", platform.system())
@@ -869,9 +1072,13 @@ def local_up() -> None:
     _grant_sysdba_post_liquibase()
     console.print("[bold]Bootstrapping Select AI profiles...[/bold]")
     _bootstrap_select_ai_profiles()
+    console.print("[bold]Configuring TCPS (encrypted SQL*Net) + exporting client wallet...[/bold]")
+    _configure_tcps()
     if paf_ready:
         console.print("[bold]Configuring PAF container (post-start handshake)...[/bold]")
         _paf_post_start()
+        console.print("[bold]Injecting MCP gateway cert into PAF's trust bundle...[/bold]")
+        _inject_mcp_ca_into_paf()
     # `up --build` rebuilds the application-backend image when src/backend
     # changed, but podman leaves the already-running container on the old
     # image — so code changes were silently ignored. Force-recreate just the
@@ -900,6 +1107,34 @@ def local_up() -> None:
         console.print(
             "Anytime: [cyan]python manage.py info[/cyan] for DB connection details."
         )
+
+
+@local.command("tcps")
+def local_tcps() -> None:
+    """(Re)configure TCPS on the Oracle listener and export the client wallet.
+
+    Runs automatically as part of `local up`; use this to regenerate the wallet
+    on demand (e.g. after a `local down --purge` if you skipped a full up)."""
+    _ensure_env()
+    _configure_tcps()
+
+
+@local.command("mcp-tls")
+def local_mcp_tls() -> None:
+    """(Re)generate the MCP TLS gateway cert + PAF trust bundle.
+
+    Runs automatically as part of `local up`. The cert is reused if present —
+    delete ./mcp-tls/ first to force a fresh one. After regenerating, restart
+    the affected containers to pick it up:
+        podman restart paf-mcp-proxy paf-agent-factory
+    """
+    _ensure_env()
+    _configure_mcp_tls()
+    _inject_mcp_ca_into_paf()
+    console.print(
+        "[dim]If the cert changed, restart the gateway to serve it: "
+        "[cyan]podman restart paf-mcp-proxy[/cyan][/dim]"
+    )
 
 
 @local.command("down")
@@ -991,9 +1226,27 @@ def paf() -> None:
 
 
 @paf.command("prepare")
-@click.argument("tarball", type=click.Path(exists=True, dir_okay=False, path_type=Path))
-def paf_prepare(tarball: Path) -> None:
-    """Extract the PAF kit tarball into ./paf-kit/ and record its version in .env."""
+@click.argument("tarball", required=False, type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def paf_prepare(tarball: Path | None) -> None:
+    """Extract the PAF kit tarball into ./paf-kit/ and record its version in .env.
+
+    With no argument, reads the path from PAF_TARBALL in .env (set by `setup local`).
+    """
+    if tarball is None:
+        if ENV_FILE.exists():
+            load_dotenv(ENV_FILE)
+        env_path = os.getenv("PAF_TARBALL", "").strip()
+        if not env_path:
+            console.print(
+                "[red]No tarball given and PAF_TARBALL not set in .env.[/red] "
+                "Pass a path or run `python manage.py setup local`."
+            )
+            sys.exit(1)
+        tarball = Path(env_path).expanduser()
+        if not tarball.is_file():
+            console.print(f"[red]PAF_TARBALL points at a missing file:[/red] {tarball}")
+            sys.exit(1)
+        console.print(f"[dim]Using PAF_TARBALL from .env: {tarball}[/dim]")
     if PAF_KIT_DIR.exists():
         console.print(f"[yellow]Removing existing {PAF_KIT_DIR}...[/yellow]")
         shutil.rmtree(PAF_KIT_DIR)
@@ -1062,6 +1315,45 @@ def _resolve_vllm_host() -> tuple[str, str | None]:
         )
 
 
+@paf.command("allow-internal-mcp")
+def paf_allow_internal_mcp() -> None:
+    """Relax PAF's outbound-URL SSRF guard so the internal MCP gateway can be
+    registered: sets BLOCK_PRIVATE_OUTBOUND_URLS=false in PAF's app settings.
+
+    Required because mcp-proxy (and every MCP) resolves to a private podman IP,
+    which PAF 26.4 blocks by default — even over https. ALLOW_INSECURE_HTTP_URLS
+    is left false: MCPs are served over https via mcp-proxy. Run once after the
+    PAF install wizard completes; re-run after a `local down --purge` reinstall
+    (the setting resets to the secure default on a fresh install).
+    """
+    _ensure_env()
+    db_password = os.getenv("DB_PASSWORD", "")
+    sql = (
+        "SET DEFINE OFF\n"
+        "UPDATE AGENT_FACTORY.AAI_APPLICATION_SETTINGS SET value='false' "
+        "WHERE field='BLOCK_PRIVATE_OUTBOUND_URLS';\n"
+        "COMMIT;\n"
+        "SET PAGESIZE 0 FEEDBACK OFF\n"
+        "SELECT field||'='||value FROM AGENT_FACTORY.AAI_APPLICATION_SETTINGS "
+        "WHERE field IN ('BLOCK_PRIVATE_OUTBOUND_URLS','ALLOW_INSECURE_HTTP_URLS');\n"
+        "EXIT;\n"
+    )
+    proc = subprocess.run(
+        ["podman", "exec", "-i", "paf-oracle-free-26ai", "bash", "-lc",
+         f'sqlplus -s SYSTEM/"{db_password}"@localhost:1521/FREEPDB1'],
+        input=sql, capture_output=True, text=True,
+    )
+    out = (proc.stdout or "") + (proc.stderr or "")
+    if "BLOCK_PRIVATE_OUTBOUND_URLS=false" not in out:
+        console.print(
+            "[red]Could not confirm the setting change.[/red] Is PAF installed yet "
+            "(the settings table exists only after the install wizard)?\n" + out.strip()
+        )
+        sys.exit(1)
+    console.print("[green]✓[/green] BLOCK_PRIVATE_OUTBOUND_URLS=false — internal MCP URLs allowed.")
+    console.print("[dim]Register MCP servers as https://mcp-proxy:8443/<svc>/mcp/ (see LOCAL.md §4a).[/dim]")
+
+
 @paf.command("bootstrap")
 def paf_bootstrap() -> None:
     """Print the PAF UI installer URL and the connection details to paste into it."""
@@ -1074,20 +1366,33 @@ def paf_bootstrap() -> None:
     console.print("[bold]Step 1 — admin user[/bold]")
     console.print("  Create an admin user (username + password — record them yourself).\n")
 
-    console.print("[bold]Step 2 — database configuration[/bold]")
-    console.print(f"  Connection type:  [cyan]Basic[/cyan]")
-    console.print(f"  Protocol:         [cyan]TCP[/cyan]")
-    console.print(f"  Host:             [cyan]oracle-free-26ai[/cyan]   (compose service DNS)")
-    console.print(f"  Port:             [cyan]1521[/cyan]")
-    console.print(f"  Service name:     [cyan]{os.getenv('DB_SERVICE')}[/cyan]")
+    wallet_ready = TCPS_WALLET_ZIP.exists()
+    console.print("[bold]Step 2 — database configuration[/bold] (TCPS / encrypted)")
+    console.print(f"  Connection type:  [cyan]Wallet[/cyan]")
+    if wallet_ready:
+        console.print(f"  Wallet file:      drop [cyan]{TCPS_WALLET_ZIP}[/cyan]")
+    else:
+        console.print(f"  Wallet file:      [yellow]missing[/yellow] — run "
+                      f"[cyan]python manage.py local tcps[/cyan] to generate it")
+    console.print(f"  Network alias:    [cyan]{str(os.getenv('DB_SERVICE')).lower()}[/cyan]"
+                  f"   (from the wallet's tnsnames — selects TCPS {DB_HOST_DNS}:{TCPS_PORT})")
     console.print(f"  Username:         [cyan]AGENT_FACTORY[/cyan]")
     console.print(f"  Password:         same as DB_PASSWORD in .env")
-    console.print(f"  Air-gapped?       [cyan]No[/cyan]   (DB has outbound NAT via podman)")
-    console.print(f"  Uses a wallet?    [cyan]No[/cyan]   (TCP listener, not ADB mTLS)\n")
+    console.print(f"  [dim]The wallet carries the TCPS host/port + trusted self-signed cert,[/dim]")
+    console.print(f"  [dim]so host/port/protocol are not entered by hand. TCP/1521 also still works[/dim]")
+    console.print(f"  [dim]if PAF rejects the self-signed wallet: Basic / TCP / {DB_HOST_DNS} / 1521 / no wallet.[/dim]")
+    console.print(f"  [bold]After the connection succeeds, PAF asks two more questions:[/bold]")
+    console.print(f"    Air-gapped environment?            [cyan]No[/cyan]   (DB has outbound NAT via podman)")
+    console.print(f"    OCI certificates added to wallet?  [cyan]No[/cyan]   (this is a local self-signed TCPS")
+    console.print(f"        wallet, not an OCI/ADB wallet — it has no OCI certs)")
+    console.print(f"  [yellow]Expected:[/yellow] PAF then warns the [bold]Knowledge Assistant won't be installed[/bold]")
+    console.print(f"  (it needs OCI certs in the wallet). [green]That is fine here[/green] — CHAT_WORKFLOW /")
+    console.print(f"  RESEARCH_WORKFLOW don't use the Knowledge Assistant, and we run vLLM locally,")
+    console.print(f"  not OCI services. The DB connection still succeeds and install continues.\n")
 
     console.print("[bold]Step 3 — installation[/bold]")
     console.print("  Click Install. PAF creates its metadata tables under AGENT_FACTORY")
-    console.print("  and a read-only user AAI_RO_AGENT_FACTORY.\n")
+    console.print("  and uses the read-only user AAI_RO_AGENT_FACTORY (pre-created by `local up`).\n")
 
     vllm_host, advisory = _resolve_vllm_host()
     console.print("[bold]Step 4 — LLM configuration[/bold]")
