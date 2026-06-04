@@ -132,6 +132,14 @@ After install completes, sign in as the admin user.
 
 Six post-install registrations in the PAF admin area — five MCP servers and one HTTP datasource. (A Database datasource is no longer required by `CHAT_WORKFLOW` — the agents read through `banking-mcp.get_context`, not a SQL Query node; see §4b.) All target the `CHAT_WORKFLOW` flow; the `RESEARCH_WORKFLOW` flow has no external tools by design.
 
+> ⚠️ **Run this once before any registration below — every install, including after `--purge`:**
+>
+> ```bash
+> python manage.py paf allow-internal-mcp
+> ```
+>
+> PAF 26.4 blocks private-network URLs by default. Skip this and the **first** MCP server (or the Company Registry datasource) fails with _"400 Bad Request: MCP server URL resolves to a private or non-routable network address and is not allowed"_. The setting lives in PAF's metadata DB and **resets to the secure default on every reinstall**, so re-run it after each fresh install.
+
 ### 4a. MCP servers
 
 Admin → **MCP Servers** → **Add MCP server**, five times. The form has three fields each time; use the same `Direct` authentication mode for all (no auth — the wrappers are internal to the compose network, not published to the host).
