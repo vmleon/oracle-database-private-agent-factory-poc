@@ -1,7 +1,7 @@
 {
   "data": {
-    "agentId": "53425A6D7E0F2F64E0630200590A272E",
-    "createdAt": "2026-06-02T08:46:55",
+    "agentId": "5370448532D923D5E0630200590A5746",
+    "createdAt": "2026-06-04T15:33:36",
     "data": {
       "edges": [
         {
@@ -9,1320 +9,399 @@
             "sourceHandleId": "user_provided_input",
             "targetHandleId": "input_text"
           },
-          "id": "xy-edge__node-1780390051006-87bdbb9d-efec-4b97-8c39-dc14b410ce4euser_provided_input-node-1780390051006-87bdbb9d-efec-4b97-8c39-dc14b410ce4e-node-1780390053870-d4cb09a7-4dcd-4e71-8ee3-81ed6be6b04dinput_text-node-1780390053870-d4cb09a7-4dcd-4e71-8ee3-81ed6be6b04d",
-          "source": "node-1780390051006-87bdbb9d-efec-4b97-8c39-dc14b410ce4e",
-          "sourceHandle": "user_provided_input-node-1780390051006-87bdbb9d-efec-4b97-8c39-dc14b410ce4e",
-          "target": "node-1780390053870-d4cb09a7-4dcd-4e71-8ee3-81ed6be6b04d",
-          "targetHandle": "input_text-node-1780390053870-d4cb09a7-4dcd-4e71-8ee3-81ed6be6b04d"
+          "id": "xy-edge__node-1780587216146-af06b25a-40fd-4753-81ae-352ec1612fa5user_provided_input-node-1780587216146-af06b25a-40fd-4753-81ae-352ec1612fa5-node-1780587224320-5a24d645-1de2-4906-8518-d4a575d78bb1input_text-node-1780587224320-5a24d645-1de2-4906-8518-d4a575d78bb1",
+          "source": "node-1780587216146-af06b25a-40fd-4753-81ae-352ec1612fa5",
+          "sourceHandle": "user_provided_input-node-1780587216146-af06b25a-40fd-4753-81ae-352ec1612fa5",
+          "target": "node-1780587224320-5a24d645-1de2-4906-8518-d4a575d78bb1",
+          "targetHandle": "input_text-node-1780587224320-5a24d645-1de2-4906-8518-d4a575d78bb1"
         },
         {
           "data": {
             "sourceHandleId": "user_provided_input",
             "targetHandleId": "input_text"
           },
-          "id": "xy-edge__node-1780390051006-87bdbb9d-efec-4b97-8c39-dc14b410ce4euser_provided_input-node-1780390051006-87bdbb9d-efec-4b97-8c39-dc14b410ce4e-node-1780390056727-64dcaacc-4a94-4af3-9d7d-3fb3cc3045fcinput_text-node-1780390056727-64dcaacc-4a94-4af3-9d7d-3fb3cc3045fc",
-          "source": "node-1780390051006-87bdbb9d-efec-4b97-8c39-dc14b410ce4e",
-          "sourceHandle": "user_provided_input-node-1780390051006-87bdbb9d-efec-4b97-8c39-dc14b410ce4e",
-          "target": "node-1780390056727-64dcaacc-4a94-4af3-9d7d-3fb3cc3045fc",
-          "targetHandle": "input_text-node-1780390056727-64dcaacc-4a94-4af3-9d7d-3fb3cc3045fc"
-        },
-        {
-          "data": {
-            "sourceHandleId": "message",
-            "targetHandleId": "session_token"
-          },
-          "id": "xy-edge__node-1780390053870-d4cb09a7-4dcd-4e71-8ee3-81ed6be6b04dmessage-node-1780390053870-d4cb09a7-4dcd-4e71-8ee3-81ed6be6b04d-node-1780390035436-d0708e29-070c-45c3-8a47-aa5c72133301session_token-node-1780390035436-d0708e29-070c-45c3-8a47-aa5c72133301",
-          "source": "node-1780390053870-d4cb09a7-4dcd-4e71-8ee3-81ed6be6b04d",
-          "sourceHandle": "message-node-1780390053870-d4cb09a7-4dcd-4e71-8ee3-81ed6be6b04d",
-          "target": "node-1780390035436-d0708e29-070c-45c3-8a47-aa5c72133301",
-          "targetHandle": "session_token-node-1780390035436-d0708e29-070c-45c3-8a47-aa5c72133301"
-        },
-        {
-          "data": {
-            "sourceHandleId": "message",
-            "targetHandleId": "input"
-          },
-          "id": "xy-edge__node-1780390056727-64dcaacc-4a94-4af3-9d7d-3fb3cc3045fcmessage-node-1780390056727-64dcaacc-4a94-4af3-9d7d-3fb3cc3045fc-node-1780390035436-d0708e29-070c-45c3-8a47-aa5c72133301input-node-1780390035436-d0708e29-070c-45c3-8a47-aa5c72133301",
-          "source": "node-1780390056727-64dcaacc-4a94-4af3-9d7d-3fb3cc3045fc",
-          "sourceHandle": "message-node-1780390056727-64dcaacc-4a94-4af3-9d7d-3fb3cc3045fc",
-          "target": "node-1780390035436-d0708e29-070c-45c3-8a47-aa5c72133301",
-          "targetHandle": "input-node-1780390035436-d0708e29-070c-45c3-8a47-aa5c72133301"
-        },
-        {
-          "data": {
-            "sourceHandleId": "output",
-            "targetHandleId": "prompt"
-          },
-          "id": "xy-edge__node-1780390035436-d0708e29-070c-45c3-8a47-aa5c72133301output-node-1780390035436-d0708e29-070c-45c3-8a47-aa5c72133301-node-1780390015193-53fa6090-d999-4c71-b923-23283048a069prompt-node-1780390015193-53fa6090-d999-4c71-b923-23283048a069",
-          "source": "node-1780390035436-d0708e29-070c-45c3-8a47-aa5c72133301",
-          "sourceHandle": "output-node-1780390035436-d0708e29-070c-45c3-8a47-aa5c72133301",
-          "target": "node-1780390015193-53fa6090-d999-4c71-b923-23283048a069",
-          "targetHandle": "prompt-node-1780390015193-53fa6090-d999-4c71-b923-23283048a069"
+          "id": "xy-edge__node-1780587216146-af06b25a-40fd-4753-81ae-352ec1612fa5user_provided_input-node-1780587216146-af06b25a-40fd-4753-81ae-352ec1612fa5-node-1780587242875-dbaa924a-5e34-472b-bf70-e24347e4f588input_text-node-1780587242875-dbaa924a-5e34-472b-bf70-e24347e4f588",
+          "source": "node-1780587216146-af06b25a-40fd-4753-81ae-352ec1612fa5",
+          "sourceHandle": "user_provided_input-node-1780587216146-af06b25a-40fd-4753-81ae-352ec1612fa5",
+          "target": "node-1780587242875-dbaa924a-5e34-472b-bf70-e24347e4f588",
+          "targetHandle": "input_text-node-1780587242875-dbaa924a-5e34-472b-bf70-e24347e4f588"
         },
         {
           "data": {
             "sourceHandleId": "tools",
             "targetHandleId": "tools"
           },
-          "id": "xy-edge__node-1780390228721-5e53bfda-4f99-4a27-ba62-0e57bb429aa2tools-node-1780390228721-5e53bfda-4f99-4a27-ba62-0e57bb429aa2-node-1780390015193-53fa6090-d999-4c71-b923-23283048a069tools-node-1780390015193-53fa6090-d999-4c71-b923-23283048a069",
-          "source": "node-1780390228721-5e53bfda-4f99-4a27-ba62-0e57bb429aa2",
-          "sourceHandle": "tools-node-1780390228721-5e53bfda-4f99-4a27-ba62-0e57bb429aa2",
-          "target": "node-1780390015193-53fa6090-d999-4c71-b923-23283048a069",
-          "targetHandle": "tools-node-1780390015193-53fa6090-d999-4c71-b923-23283048a069"
-        },
-        {
-          "data": {
-            "sourceHandleId": "tools",
-            "targetHandleId": "tools"
-          },
-          "id": "xy-edge__node-1780390240682-4f442d6e-47f3-439b-80de-df20476d4297tools-node-1780390240682-4f442d6e-47f3-439b-80de-df20476d4297-node-1780390015193-53fa6090-d999-4c71-b923-23283048a069tools-node-1780390015193-53fa6090-d999-4c71-b923-23283048a069",
-          "source": "node-1780390240682-4f442d6e-47f3-439b-80de-df20476d4297",
-          "sourceHandle": "tools-node-1780390240682-4f442d6e-47f3-439b-80de-df20476d4297",
-          "target": "node-1780390015193-53fa6090-d999-4c71-b923-23283048a069",
-          "targetHandle": "tools-node-1780390015193-53fa6090-d999-4c71-b923-23283048a069"
+          "id": "xy-edge__node-1780588185944-dbcc1ce8-39f2-4c88-881b-c3755e57318btools-node-1780588185944-dbcc1ce8-39f2-4c88-881b-c3755e57318b-node-1780588094439-56422560-d057-43bb-81d9-478924cd449btools-node-1780588094439-56422560-d057-43bb-81d9-478924cd449b",
+          "source": "node-1780588185944-dbcc1ce8-39f2-4c88-881b-c3755e57318b",
+          "sourceHandle": "tools-node-1780588185944-dbcc1ce8-39f2-4c88-881b-c3755e57318b",
+          "target": "node-1780588094439-56422560-d057-43bb-81d9-478924cd449b",
+          "targetHandle": "tools-node-1780588094439-56422560-d057-43bb-81d9-478924cd449b"
         },
         {
           "data": {
             "sourceHandleId": "tool_output",
             "targetHandleId": "text_input"
           },
-          "id": "xy-edge__node-1780390015193-53fa6090-d999-4c71-b923-23283048a069tool_output-node-1780390015193-53fa6090-d999-4c71-b923-23283048a069-node-1780390059992-a274db3e-44f2-4438-bcf7-9c8b121e501etext_input-node-1780390059992-a274db3e-44f2-4438-bcf7-9c8b121e501e",
-          "source": "node-1780390015193-53fa6090-d999-4c71-b923-23283048a069",
-          "sourceHandle": "tool_output-node-1780390015193-53fa6090-d999-4c71-b923-23283048a069",
-          "target": "node-1780390059992-a274db3e-44f2-4438-bcf7-9c8b121e501e",
-          "targetHandle": "text_input-node-1780390059992-a274db3e-44f2-4438-bcf7-9c8b121e501e"
+          "id": "xy-edge__node-1780588094439-56422560-d057-43bb-81d9-478924cd449btool_output-node-1780588094439-56422560-d057-43bb-81d9-478924cd449b-node-1780588421930-d72f0457-8e03-43bf-8657-f7c36247359atext_input-node-1780588421930-d72f0457-8e03-43bf-8657-f7c36247359a",
+          "source": "node-1780588094439-56422560-d057-43bb-81d9-478924cd449b",
+          "sourceHandle": "tool_output-node-1780588094439-56422560-d057-43bb-81d9-478924cd449b",
+          "target": "node-1780588421930-d72f0457-8e03-43bf-8657-f7c36247359a",
+          "targetHandle": "text_input-node-1780588421930-d72f0457-8e03-43bf-8657-f7c36247359a"
         },
         {
           "data": {
             "sourceHandleId": "tool_output",
             "targetHandleId": "false_message"
           },
-          "id": "xy-edge__node-1780390015193-53fa6090-d999-4c71-b923-23283048a069tool_output-node-1780390015193-53fa6090-d999-4c71-b923-23283048a069-node-1780390059992-a274db3e-44f2-4438-bcf7-9c8b121e501efalse_message-node-1780390059992-a274db3e-44f2-4438-bcf7-9c8b121e501e",
-          "source": "node-1780390015193-53fa6090-d999-4c71-b923-23283048a069",
-          "sourceHandle": "tool_output-node-1780390015193-53fa6090-d999-4c71-b923-23283048a069",
-          "target": "node-1780390059992-a274db3e-44f2-4438-bcf7-9c8b121e501e",
-          "targetHandle": "false_message-node-1780390059992-a274db3e-44f2-4438-bcf7-9c8b121e501e"
+          "id": "xy-edge__node-1780588094439-56422560-d057-43bb-81d9-478924cd449btool_output-node-1780588094439-56422560-d057-43bb-81d9-478924cd449b-node-1780588421930-d72f0457-8e03-43bf-8657-f7c36247359afalse_message-node-1780588421930-d72f0457-8e03-43bf-8657-f7c36247359a",
+          "source": "node-1780588094439-56422560-d057-43bb-81d9-478924cd449b",
+          "sourceHandle": "tool_output-node-1780588094439-56422560-d057-43bb-81d9-478924cd449b",
+          "target": "node-1780588421930-d72f0457-8e03-43bf-8657-f7c36247359a",
+          "targetHandle": "false_message-node-1780588421930-d72f0457-8e03-43bf-8657-f7c36247359a"
         },
         {
           "data": {
             "sourceHandleId": "false_output",
             "targetHandleId": "message"
           },
-          "id": "xy-edge__node-1780390059992-a274db3e-44f2-4438-bcf7-9c8b121e501efalse_output-node-1780390059992-a274db3e-44f2-4438-bcf7-9c8b121e501e-node-1780390088330-ef36f945-9140-4e71-9e26-1e857d21c06bmessage-node-1780390088330-ef36f945-9140-4e71-9e26-1e857d21c06b",
-          "source": "node-1780390059992-a274db3e-44f2-4438-bcf7-9c8b121e501e",
-          "sourceHandle": "false_output-node-1780390059992-a274db3e-44f2-4438-bcf7-9c8b121e501e",
-          "target": "node-1780390088330-ef36f945-9140-4e71-9e26-1e857d21c06b",
-          "targetHandle": "message-node-1780390088330-ef36f945-9140-4e71-9e26-1e857d21c06b"
+          "id": "xy-edge__node-1780588421930-d72f0457-8e03-43bf-8657-f7c36247359afalse_output-node-1780588421930-d72f0457-8e03-43bf-8657-f7c36247359a-node-1780588627132-11c176a3-06e3-4d79-b509-64262972da0fmessage-node-1780588627132-11c176a3-06e3-4d79-b509-64262972da0f",
+          "source": "node-1780588421930-d72f0457-8e03-43bf-8657-f7c36247359a",
+          "sourceHandle": "false_output-node-1780588421930-d72f0457-8e03-43bf-8657-f7c36247359a",
+          "target": "node-1780588627132-11c176a3-06e3-4d79-b509-64262972da0f",
+          "targetHandle": "message-node-1780588627132-11c176a3-06e3-4d79-b509-64262972da0f"
         },
         {
           "data": {
-            "sourceHandleId": "true_output",
-            "targetHandleId": "session_token"
+            "sourceHandleId": "tools",
+            "targetHandleId": "tools"
           },
-          "id": "xy-edge__node-1780390059992-a274db3e-44f2-4438-bcf7-9c8b121e501etrue_output-node-1780390059992-a274db3e-44f2-4438-bcf7-9c8b121e501e-node-1780390038458-1d6d9327-7e10-4793-99e0-730082c82a9fsession_token-node-1780390038458-1d6d9327-7e10-4793-99e0-730082c82a9f",
-          "source": "node-1780390059992-a274db3e-44f2-4438-bcf7-9c8b121e501e",
-          "sourceHandle": "true_output-node-1780390059992-a274db3e-44f2-4438-bcf7-9c8b121e501e",
-          "target": "node-1780390038458-1d6d9327-7e10-4793-99e0-730082c82a9f",
-          "targetHandle": "session_token-node-1780390038458-1d6d9327-7e10-4793-99e0-730082c82a9f"
+          "id": "xy-edge__node-1780588772727-b3a5bd6d-4977-4ea5-8087-f23245974e56tools-node-1780588772727-b3a5bd6d-4977-4ea5-8087-f23245974e56-node-1780588731000-bcf5d930-6d29-44b8-81cd-4f1567f97d05tools-node-1780588731000-bcf5d930-6d29-44b8-81cd-4f1567f97d05",
+          "source": "node-1780588772727-b3a5bd6d-4977-4ea5-8087-f23245974e56",
+          "sourceHandle": "tools-node-1780588772727-b3a5bd6d-4977-4ea5-8087-f23245974e56",
+          "target": "node-1780588731000-bcf5d930-6d29-44b8-81cd-4f1567f97d05",
+          "targetHandle": "tools-node-1780588731000-bcf5d930-6d29-44b8-81cd-4f1567f97d05"
+        },
+        {
+          "data": {
+            "sourceHandleId": "tools",
+            "targetHandleId": "tools"
+          },
+          "id": "xy-edge__node-1780588802625-42c64651-64cf-44f7-86f9-97cf2f184093tools-node-1780588802625-42c64651-64cf-44f7-86f9-97cf2f184093-node-1780588731000-bcf5d930-6d29-44b8-81cd-4f1567f97d05tools-node-1780588731000-bcf5d930-6d29-44b8-81cd-4f1567f97d05",
+          "source": "node-1780588802625-42c64651-64cf-44f7-86f9-97cf2f184093",
+          "sourceHandle": "tools-node-1780588802625-42c64651-64cf-44f7-86f9-97cf2f184093",
+          "target": "node-1780588731000-bcf5d930-6d29-44b8-81cd-4f1567f97d05",
+          "targetHandle": "tools-node-1780588731000-bcf5d930-6d29-44b8-81cd-4f1567f97d05"
         },
         {
           "data": {
             "sourceHandleId": "output",
             "targetHandleId": "prompt"
           },
-          "id": "xy-edge__node-1780390038458-1d6d9327-7e10-4793-99e0-730082c82a9foutput-node-1780390038458-1d6d9327-7e10-4793-99e0-730082c82a9f-node-1780390020516-10b1059c-3e8b-4094-85f3-3f6a3946d76fprompt-node-1780390020516-10b1059c-3e8b-4094-85f3-3f6a3946d76f",
-          "source": "node-1780390038458-1d6d9327-7e10-4793-99e0-730082c82a9f",
-          "sourceHandle": "output-node-1780390038458-1d6d9327-7e10-4793-99e0-730082c82a9f",
-          "target": "node-1780390020516-10b1059c-3e8b-4094-85f3-3f6a3946d76f",
-          "targetHandle": "prompt-node-1780390020516-10b1059c-3e8b-4094-85f3-3f6a3946d76f"
-        },
-        {
-          "data": {
-            "sourceHandleId": "tools",
-            "targetHandleId": "tools"
-          },
-          "id": "xy-edge__node-1780390228721-5e53bfda-4f99-4a27-ba62-0e57bb429aa2tools-node-1780390228721-5e53bfda-4f99-4a27-ba62-0e57bb429aa2-node-1780390020516-10b1059c-3e8b-4094-85f3-3f6a3946d76ftools-node-1780390020516-10b1059c-3e8b-4094-85f3-3f6a3946d76f",
-          "source": "node-1780390228721-5e53bfda-4f99-4a27-ba62-0e57bb429aa2",
-          "sourceHandle": "tools-node-1780390228721-5e53bfda-4f99-4a27-ba62-0e57bb429aa2",
-          "target": "node-1780390020516-10b1059c-3e8b-4094-85f3-3f6a3946d76f",
-          "targetHandle": "tools-node-1780390020516-10b1059c-3e8b-4094-85f3-3f6a3946d76f"
-        },
-        {
-          "data": {
-            "sourceHandleId": "tools",
-            "targetHandleId": "tools"
-          },
-          "id": "xy-edge__node-1780390504234-066c008b-d12c-4403-96ec-f8b2ac7fb070tools-node-1780390504234-066c008b-d12c-4403-96ec-f8b2ac7fb070-node-1780390020516-10b1059c-3e8b-4094-85f3-3f6a3946d76ftools-node-1780390020516-10b1059c-3e8b-4094-85f3-3f6a3946d76f",
-          "source": "node-1780390504234-066c008b-d12c-4403-96ec-f8b2ac7fb070",
-          "sourceHandle": "tools-node-1780390504234-066c008b-d12c-4403-96ec-f8b2ac7fb070",
-          "target": "node-1780390020516-10b1059c-3e8b-4094-85f3-3f6a3946d76f",
-          "targetHandle": "tools-node-1780390020516-10b1059c-3e8b-4094-85f3-3f6a3946d76f"
-        },
-        {
-          "data": {
-            "sourceHandleId": "tools",
-            "targetHandleId": "tools"
-          },
-          "id": "xy-edge__node-1780390537727-fcc20e26-600c-4484-9159-823a855c40b4tools-node-1780390537727-fcc20e26-600c-4484-9159-823a855c40b4-node-1780390020516-10b1059c-3e8b-4094-85f3-3f6a3946d76ftools-node-1780390020516-10b1059c-3e8b-4094-85f3-3f6a3946d76f",
-          "source": "node-1780390537727-fcc20e26-600c-4484-9159-823a855c40b4",
-          "sourceHandle": "tools-node-1780390537727-fcc20e26-600c-4484-9159-823a855c40b4",
-          "target": "node-1780390020516-10b1059c-3e8b-4094-85f3-3f6a3946d76f",
-          "targetHandle": "tools-node-1780390020516-10b1059c-3e8b-4094-85f3-3f6a3946d76f"
+          "id": "xy-edge__node-1780588637568-b69840fd-c029-4ad0-b904-823e6648e04coutput-node-1780588637568-b69840fd-c029-4ad0-b904-823e6648e04c-node-1780588731000-bcf5d930-6d29-44b8-81cd-4f1567f97d05prompt-node-1780588731000-bcf5d930-6d29-44b8-81cd-4f1567f97d05",
+          "source": "node-1780588637568-b69840fd-c029-4ad0-b904-823e6648e04c",
+          "sourceHandle": "output-node-1780588637568-b69840fd-c029-4ad0-b904-823e6648e04c",
+          "target": "node-1780588731000-bcf5d930-6d29-44b8-81cd-4f1567f97d05",
+          "targetHandle": "prompt-node-1780588731000-bcf5d930-6d29-44b8-81cd-4f1567f97d05"
         },
         {
           "data": {
             "sourceHandleId": "tool_output",
             "targetHandleId": "text_input"
           },
-          "id": "xy-edge__node-1780390020516-10b1059c-3e8b-4094-85f3-3f6a3946d76ftool_output-node-1780390020516-10b1059c-3e8b-4094-85f3-3f6a3946d76f-node-1780390065824-26d7461b-be77-489c-9b4b-0af1539c5d8etext_input-node-1780390065824-26d7461b-be77-489c-9b4b-0af1539c5d8e",
-          "source": "node-1780390020516-10b1059c-3e8b-4094-85f3-3f6a3946d76f",
-          "sourceHandle": "tool_output-node-1780390020516-10b1059c-3e8b-4094-85f3-3f6a3946d76f",
-          "target": "node-1780390065824-26d7461b-be77-489c-9b4b-0af1539c5d8e",
-          "targetHandle": "text_input-node-1780390065824-26d7461b-be77-489c-9b4b-0af1539c5d8e"
+          "id": "xy-edge__node-1780588731000-bcf5d930-6d29-44b8-81cd-4f1567f97d05tool_output-node-1780588731000-bcf5d930-6d29-44b8-81cd-4f1567f97d05-node-1780588873323-2acf37fb-9d1c-4bb4-ae6f-e83b53575ef4text_input-node-1780588873323-2acf37fb-9d1c-4bb4-ae6f-e83b53575ef4",
+          "source": "node-1780588731000-bcf5d930-6d29-44b8-81cd-4f1567f97d05",
+          "sourceHandle": "tool_output-node-1780588731000-bcf5d930-6d29-44b8-81cd-4f1567f97d05",
+          "target": "node-1780588873323-2acf37fb-9d1c-4bb4-ae6f-e83b53575ef4",
+          "targetHandle": "text_input-node-1780588873323-2acf37fb-9d1c-4bb4-ae6f-e83b53575ef4"
         },
         {
           "data": {
             "sourceHandleId": "tool_output",
             "targetHandleId": "true_message"
           },
-          "id": "xy-edge__node-1780390020516-10b1059c-3e8b-4094-85f3-3f6a3946d76ftool_output-node-1780390020516-10b1059c-3e8b-4094-85f3-3f6a3946d76f-node-1780390065824-26d7461b-be77-489c-9b4b-0af1539c5d8etrue_message-node-1780390065824-26d7461b-be77-489c-9b4b-0af1539c5d8e",
-          "source": "node-1780390020516-10b1059c-3e8b-4094-85f3-3f6a3946d76f",
-          "sourceHandle": "tool_output-node-1780390020516-10b1059c-3e8b-4094-85f3-3f6a3946d76f",
-          "target": "node-1780390065824-26d7461b-be77-489c-9b4b-0af1539c5d8e",
-          "targetHandle": "true_message-node-1780390065824-26d7461b-be77-489c-9b4b-0af1539c5d8e"
+          "id": "xy-edge__node-1780588731000-bcf5d930-6d29-44b8-81cd-4f1567f97d05tool_output-node-1780588731000-bcf5d930-6d29-44b8-81cd-4f1567f97d05-node-1780588873323-2acf37fb-9d1c-4bb4-ae6f-e83b53575ef4true_message-node-1780588873323-2acf37fb-9d1c-4bb4-ae6f-e83b53575ef4",
+          "source": "node-1780588731000-bcf5d930-6d29-44b8-81cd-4f1567f97d05",
+          "sourceHandle": "tool_output-node-1780588731000-bcf5d930-6d29-44b8-81cd-4f1567f97d05",
+          "target": "node-1780588873323-2acf37fb-9d1c-4bb4-ae6f-e83b53575ef4",
+          "targetHandle": "true_message-node-1780588873323-2acf37fb-9d1c-4bb4-ae6f-e83b53575ef4"
         },
         {
           "data": {
             "sourceHandleId": "false_output",
             "targetHandleId": "message"
           },
-          "id": "xy-edge__node-1780390065824-26d7461b-be77-489c-9b4b-0af1539c5d8efalse_output-node-1780390065824-26d7461b-be77-489c-9b4b-0af1539c5d8e-node-1780390091598-f565667f-d162-4a3c-9ae7-dc30fa7a7d9bmessage-node-1780390091598-f565667f-d162-4a3c-9ae7-dc30fa7a7d9b",
-          "source": "node-1780390065824-26d7461b-be77-489c-9b4b-0af1539c5d8e",
-          "sourceHandle": "false_output-node-1780390065824-26d7461b-be77-489c-9b4b-0af1539c5d8e",
-          "target": "node-1780390091598-f565667f-d162-4a3c-9ae7-dc30fa7a7d9b",
-          "targetHandle": "message-node-1780390091598-f565667f-d162-4a3c-9ae7-dc30fa7a7d9b"
+          "id": "xy-edge__node-1780588873323-2acf37fb-9d1c-4bb4-ae6f-e83b53575ef4false_output-node-1780588873323-2acf37fb-9d1c-4bb4-ae6f-e83b53575ef4-node-1780588917145-ffeaaac4-8fed-479b-8bb7-2e4129ce5419message-node-1780588917145-ffeaaac4-8fed-479b-8bb7-2e4129ce5419",
+          "source": "node-1780588873323-2acf37fb-9d1c-4bb4-ae6f-e83b53575ef4",
+          "sourceHandle": "false_output-node-1780588873323-2acf37fb-9d1c-4bb4-ae6f-e83b53575ef4",
+          "target": "node-1780588917145-ffeaaac4-8fed-479b-8bb7-2e4129ce5419",
+          "targetHandle": "message-node-1780588917145-ffeaaac4-8fed-479b-8bb7-2e4129ce5419"
+        },
+        {
+          "data": {
+            "sourceHandleId": "tools",
+            "targetHandleId": "tools"
+          },
+          "id": "xy-edge__node-1780588997344-c8aa2221-fa30-4dab-b027-79535c375b86tools-node-1780588997344-c8aa2221-fa30-4dab-b027-79535c375b86-node-1780588953156-23d157b3-ec50-44dc-a3fa-81f7037631e2tools-node-1780588953156-23d157b3-ec50-44dc-a3fa-81f7037631e2",
+          "source": "node-1780588997344-c8aa2221-fa30-4dab-b027-79535c375b86",
+          "sourceHandle": "tools-node-1780588997344-c8aa2221-fa30-4dab-b027-79535c375b86",
+          "target": "node-1780588953156-23d157b3-ec50-44dc-a3fa-81f7037631e2",
+          "targetHandle": "tools-node-1780588953156-23d157b3-ec50-44dc-a3fa-81f7037631e2"
+        },
+        {
+          "data": {
+            "sourceHandleId": "output",
+            "targetHandleId": "prompt"
+          },
+          "id": "xy-edge__node-1780588927362-1968ce37-d6ad-4644-b7d8-f2ec6243d7a5output-node-1780588927362-1968ce37-d6ad-4644-b7d8-f2ec6243d7a5-node-1780588953156-23d157b3-ec50-44dc-a3fa-81f7037631e2prompt-node-1780588953156-23d157b3-ec50-44dc-a3fa-81f7037631e2",
+          "source": "node-1780588927362-1968ce37-d6ad-4644-b7d8-f2ec6243d7a5",
+          "sourceHandle": "output-node-1780588927362-1968ce37-d6ad-4644-b7d8-f2ec6243d7a5",
+          "target": "node-1780588953156-23d157b3-ec50-44dc-a3fa-81f7037631e2",
+          "targetHandle": "prompt-node-1780588953156-23d157b3-ec50-44dc-a3fa-81f7037631e2"
+        },
+        {
+          "data": {
+            "sourceHandleId": "tool_output",
+            "targetHandleId": "true_message"
+          },
+          "id": "xy-edge__node-1780588953156-23d157b3-ec50-44dc-a3fa-81f7037631e2tool_output-node-1780588953156-23d157b3-ec50-44dc-a3fa-81f7037631e2-node-1780589040732-a189ff15-fd3e-4047-bd04-dfe4627284d3true_message-node-1780589040732-a189ff15-fd3e-4047-bd04-dfe4627284d3",
+          "source": "node-1780588953156-23d157b3-ec50-44dc-a3fa-81f7037631e2",
+          "sourceHandle": "tool_output-node-1780588953156-23d157b3-ec50-44dc-a3fa-81f7037631e2",
+          "target": "node-1780589040732-a189ff15-fd3e-4047-bd04-dfe4627284d3",
+          "targetHandle": "true_message-node-1780589040732-a189ff15-fd3e-4047-bd04-dfe4627284d3"
+        },
+        {
+          "data": {
+            "sourceHandleId": "tool_output",
+            "targetHandleId": "text_input"
+          },
+          "id": "xy-edge__node-1780588953156-23d157b3-ec50-44dc-a3fa-81f7037631e2tool_output-node-1780588953156-23d157b3-ec50-44dc-a3fa-81f7037631e2-node-1780589040732-a189ff15-fd3e-4047-bd04-dfe4627284d3text_input-node-1780589040732-a189ff15-fd3e-4047-bd04-dfe4627284d3",
+          "source": "node-1780588953156-23d157b3-ec50-44dc-a3fa-81f7037631e2",
+          "sourceHandle": "tool_output-node-1780588953156-23d157b3-ec50-44dc-a3fa-81f7037631e2",
+          "target": "node-1780589040732-a189ff15-fd3e-4047-bd04-dfe4627284d3",
+          "targetHandle": "text_input-node-1780589040732-a189ff15-fd3e-4047-bd04-dfe4627284d3"
+        },
+        {
+          "data": {
+            "sourceHandleId": "false_output",
+            "targetHandleId": "message"
+          },
+          "id": "xy-edge__node-1780589040732-a189ff15-fd3e-4047-bd04-dfe4627284d3false_output-node-1780589040732-a189ff15-fd3e-4047-bd04-dfe4627284d3-node-1780589156629-a0c4b611-5c25-4218-b661-16dcf59e9300message-node-1780589156629-a0c4b611-5c25-4218-b661-16dcf59e9300",
+          "source": "node-1780589040732-a189ff15-fd3e-4047-bd04-dfe4627284d3",
+          "sourceHandle": "false_output-node-1780589040732-a189ff15-fd3e-4047-bd04-dfe4627284d3",
+          "target": "node-1780589156629-a0c4b611-5c25-4218-b661-16dcf59e9300",
+          "targetHandle": "message-node-1780589156629-a0c4b611-5c25-4218-b661-16dcf59e9300"
+        },
+        {
+          "data": {
+            "sourceHandleId": "output",
+            "targetHandleId": "prompt"
+          },
+          "id": "xy-edge__node-1780589180923-f81a3ffe-61d3-426b-a244-6c7abf942076output-node-1780589180923-f81a3ffe-61d3-426b-a244-6c7abf942076-node-1780589223402-bbd5ff02-a076-41da-99d9-3ef0f70ad7a1prompt-node-1780589223402-bbd5ff02-a076-41da-99d9-3ef0f70ad7a1",
+          "source": "node-1780589180923-f81a3ffe-61d3-426b-a244-6c7abf942076",
+          "sourceHandle": "output-node-1780589180923-f81a3ffe-61d3-426b-a244-6c7abf942076",
+          "target": "node-1780589223402-bbd5ff02-a076-41da-99d9-3ef0f70ad7a1",
+          "targetHandle": "prompt-node-1780589223402-bbd5ff02-a076-41da-99d9-3ef0f70ad7a1"
+        },
+        {
+          "data": {
+            "sourceHandleId": "tools",
+            "targetHandleId": "tools"
+          },
+          "id": "xy-edge__node-1780589258221-3b69abe8-4d3d-466f-9be8-e07fec443873tools-node-1780589258221-3b69abe8-4d3d-466f-9be8-e07fec443873-node-1780589223402-bbd5ff02-a076-41da-99d9-3ef0f70ad7a1tools-node-1780589223402-bbd5ff02-a076-41da-99d9-3ef0f70ad7a1",
+          "source": "node-1780589258221-3b69abe8-4d3d-466f-9be8-e07fec443873",
+          "sourceHandle": "tools-node-1780589258221-3b69abe8-4d3d-466f-9be8-e07fec443873",
+          "target": "node-1780589223402-bbd5ff02-a076-41da-99d9-3ef0f70ad7a1",
+          "targetHandle": "tools-node-1780589223402-bbd5ff02-a076-41da-99d9-3ef0f70ad7a1"
+        },
+        {
+          "data": {
+            "sourceHandleId": "tool_output",
+            "targetHandleId": "message"
+          },
+          "id": "xy-edge__node-1780589223402-bbd5ff02-a076-41da-99d9-3ef0f70ad7a1tool_output-node-1780589223402-bbd5ff02-a076-41da-99d9-3ef0f70ad7a1-node-1780589306390-ba4cdabf-de90-4592-9f34-ef122a15f3famessage-node-1780589306390-ba4cdabf-de90-4592-9f34-ef122a15f3fa",
+          "source": "node-1780589223402-bbd5ff02-a076-41da-99d9-3ef0f70ad7a1",
+          "sourceHandle": "tool_output-node-1780589223402-bbd5ff02-a076-41da-99d9-3ef0f70ad7a1",
+          "target": "node-1780589306390-ba4cdabf-de90-4592-9f34-ef122a15f3fa",
+          "targetHandle": "message-node-1780589306390-ba4cdabf-de90-4592-9f34-ef122a15f3fa"
+        },
+        {
+          "data": {
+            "sourceHandleId": "message",
+            "targetHandleId": "token"
+          },
+          "id": "xy-edge__node-1780587224320-5a24d645-1de2-4906-8518-d4a575d78bb1message-node-1780587224320-5a24d645-1de2-4906-8518-d4a575d78bb1-node-1780587256759-9ab69096-32d7-4b76-b46f-dc8bf4169d54token-node-1780587256759-9ab69096-32d7-4b76-b46f-dc8bf4169d54",
+          "source": "node-1780587224320-5a24d645-1de2-4906-8518-d4a575d78bb1",
+          "sourceHandle": "message-node-1780587224320-5a24d645-1de2-4906-8518-d4a575d78bb1",
+          "target": "node-1780587256759-9ab69096-32d7-4b76-b46f-dc8bf4169d54",
+          "targetHandle": "token-node-1780587256759-9ab69096-32d7-4b76-b46f-dc8bf4169d54"
+        },
+        {
+          "data": {
+            "sourceHandleId": "output",
+            "targetHandleId": "input_data"
+          },
+          "id": "xy-edge__node-1780587256759-9ab69096-32d7-4b76-b46f-dc8bf4169d54output-node-1780587256759-9ab69096-32d7-4b76-b46f-dc8bf4169d54-node-1780590156738-b8fb3356-5be3-4d16-a0fb-9f6489805c40input_data-node-1780590156738-b8fb3356-5be3-4d16-a0fb-9f6489805c40",
+          "source": "node-1780587256759-9ab69096-32d7-4b76-b46f-dc8bf4169d54",
+          "sourceHandle": "output-node-1780587256759-9ab69096-32d7-4b76-b46f-dc8bf4169d54",
+          "target": "node-1780590156738-b8fb3356-5be3-4d16-a0fb-9f6489805c40",
+          "targetHandle": "input_data-node-1780590156738-b8fb3356-5be3-4d16-a0fb-9f6489805c40"
+        },
+        {
+          "data": {
+            "sourceHandleId": "json",
+            "targetHandleId": "toolInputJson"
+          },
+          "id": "xy-edge__node-1780590156738-b8fb3356-5be3-4d16-a0fb-9f6489805c40json-node-1780590156738-b8fb3356-5be3-4d16-a0fb-9f6489805c40-node-1780590169578-392fd97d-7474-4c7f-aaa4-2733435f7fb9toolInputJson-node-1780590169578-392fd97d-7474-4c7f-aaa4-2733435f7fb9",
+          "source": "node-1780590156738-b8fb3356-5be3-4d16-a0fb-9f6489805c40",
+          "sourceHandle": "json-node-1780590156738-b8fb3356-5be3-4d16-a0fb-9f6489805c40",
+          "target": "node-1780590169578-392fd97d-7474-4c7f-aaa4-2733435f7fb9",
+          "targetHandle": "toolInputJson-node-1780590169578-392fd97d-7474-4c7f-aaa4-2733435f7fb9"
+        },
+        {
+          "data": {
+            "sourceHandleId": "message",
+            "targetHandleId": "text_input"
+          },
+          "id": "xy-edge__node-1780590169578-392fd97d-7474-4c7f-aaa4-2733435f7fb9message-node-1780590169578-392fd97d-7474-4c7f-aaa4-2733435f7fb9-node-1780590248868-e3db234e-1093-41cc-a572-8350ae931bf1text_input-node-1780590248868-e3db234e-1093-41cc-a572-8350ae931bf1",
+          "source": "node-1780590169578-392fd97d-7474-4c7f-aaa4-2733435f7fb9",
+          "sourceHandle": "message-node-1780590169578-392fd97d-7474-4c7f-aaa4-2733435f7fb9",
+          "target": "node-1780590248868-e3db234e-1093-41cc-a572-8350ae931bf1",
+          "targetHandle": "text_input-node-1780590248868-e3db234e-1093-41cc-a572-8350ae931bf1"
+        },
+        {
+          "data": {
+            "sourceHandleId": "message",
+            "targetHandleId": "true_message"
+          },
+          "id": "xy-edge__node-1780590169578-392fd97d-7474-4c7f-aaa4-2733435f7fb9message-node-1780590169578-392fd97d-7474-4c7f-aaa4-2733435f7fb9-node-1780590248868-e3db234e-1093-41cc-a572-8350ae931bf1true_message-node-1780590248868-e3db234e-1093-41cc-a572-8350ae931bf1",
+          "source": "node-1780590169578-392fd97d-7474-4c7f-aaa4-2733435f7fb9",
+          "sourceHandle": "message-node-1780590169578-392fd97d-7474-4c7f-aaa4-2733435f7fb9",
+          "target": "node-1780590248868-e3db234e-1093-41cc-a572-8350ae931bf1",
+          "targetHandle": "true_message-node-1780590248868-e3db234e-1093-41cc-a572-8350ae931bf1"
+        },
+        {
+          "data": {
+            "sourceHandleId": "true_output",
+            "targetHandleId": "context"
+          },
+          "id": "xy-edge__node-1780590248868-e3db234e-1093-41cc-a572-8350ae931bf1true_output-node-1780590248868-e3db234e-1093-41cc-a572-8350ae931bf1-node-1780590329109-d14b9f89-b20b-4fde-b575-40e3a7327d22context-node-1780590329109-d14b9f89-b20b-4fde-b575-40e3a7327d22",
+          "source": "node-1780590248868-e3db234e-1093-41cc-a572-8350ae931bf1",
+          "sourceHandle": "true_output-node-1780590248868-e3db234e-1093-41cc-a572-8350ae931bf1",
+          "target": "node-1780590329109-d14b9f89-b20b-4fde-b575-40e3a7327d22",
+          "targetHandle": "context-node-1780590329109-d14b9f89-b20b-4fde-b575-40e3a7327d22"
+        },
+        {
+          "data": {
+            "sourceHandleId": "message",
+            "targetHandleId": "token"
+          },
+          "id": "xy-edge__node-1780587224320-5a24d645-1de2-4906-8518-d4a575d78bb1message-node-1780587224320-5a24d645-1de2-4906-8518-d4a575d78bb1-node-1780590329109-d14b9f89-b20b-4fde-b575-40e3a7327d22token-node-1780590329109-d14b9f89-b20b-4fde-b575-40e3a7327d22",
+          "source": "node-1780587224320-5a24d645-1de2-4906-8518-d4a575d78bb1",
+          "sourceHandle": "message-node-1780587224320-5a24d645-1de2-4906-8518-d4a575d78bb1",
+          "target": "node-1780590329109-d14b9f89-b20b-4fde-b575-40e3a7327d22",
+          "targetHandle": "token-node-1780590329109-d14b9f89-b20b-4fde-b575-40e3a7327d22"
+        },
+        {
+          "data": {
+            "sourceHandleId": "false_output",
+            "targetHandleId": "message"
+          },
+          "id": "xy-edge__node-1780590248868-e3db234e-1093-41cc-a572-8350ae931bf1false_output-node-1780590248868-e3db234e-1093-41cc-a572-8350ae931bf1-node-1780590363026-0ae90fd2-1832-4021-a496-c8c7faab0863message-node-1780590363026-0ae90fd2-1832-4021-a496-c8c7faab0863",
+          "source": "node-1780590248868-e3db234e-1093-41cc-a572-8350ae931bf1",
+          "sourceHandle": "false_output-node-1780590248868-e3db234e-1093-41cc-a572-8350ae931bf1",
+          "target": "node-1780590363026-0ae90fd2-1832-4021-a496-c8c7faab0863",
+          "targetHandle": "message-node-1780590363026-0ae90fd2-1832-4021-a496-c8c7faab0863"
+        },
+        {
+          "data": {
+            "sourceHandleId": "message",
+            "targetHandleId": "true_message"
+          },
+          "id": "xy-edge__node-1780590169578-392fd97d-7474-4c7f-aaa4-2733435f7fb9message-node-1780590169578-392fd97d-7474-4c7f-aaa4-2733435f7fb9-node-1780588421930-d72f0457-8e03-43bf-8657-f7c36247359atrue_message-node-1780588421930-d72f0457-8e03-43bf-8657-f7c36247359a",
+          "source": "node-1780590169578-392fd97d-7474-4c7f-aaa4-2733435f7fb9",
+          "sourceHandle": "message-node-1780590169578-392fd97d-7474-4c7f-aaa4-2733435f7fb9",
+          "target": "node-1780588421930-d72f0457-8e03-43bf-8657-f7c36247359a",
+          "targetHandle": "true_message-node-1780588421930-d72f0457-8e03-43bf-8657-f7c36247359a"
+        },
+        {
+          "data": {
+            "sourceHandleId": "true_output",
+            "targetHandleId": "context"
+          },
+          "id": "xy-edge__node-1780588421930-d72f0457-8e03-43bf-8657-f7c36247359atrue_output-node-1780588421930-d72f0457-8e03-43bf-8657-f7c36247359a-node-1780588637568-b69840fd-c029-4ad0-b904-823e6648e04ccontext-node-1780588637568-b69840fd-c029-4ad0-b904-823e6648e04c",
+          "source": "node-1780588421930-d72f0457-8e03-43bf-8657-f7c36247359a",
+          "sourceHandle": "true_output-node-1780588421930-d72f0457-8e03-43bf-8657-f7c36247359a",
+          "target": "node-1780588637568-b69840fd-c029-4ad0-b904-823e6648e04c",
+          "targetHandle": "context-node-1780588637568-b69840fd-c029-4ad0-b904-823e6648e04c"
         },
         {
           "data": {
             "sourceHandleId": "true_output",
             "targetHandleId": "evidence"
           },
-          "id": "xy-edge__node-1780390065824-26d7461b-be77-489c-9b4b-0af1539c5d8etrue_output-node-1780390065824-26d7461b-be77-489c-9b4b-0af1539c5d8e-node-1780390042070-c4163e15-90d1-43a3-a1fc-c686ef557e1eevidence-node-1780390042070-c4163e15-90d1-43a3-a1fc-c686ef557e1e",
-          "source": "node-1780390065824-26d7461b-be77-489c-9b4b-0af1539c5d8e",
-          "sourceHandle": "true_output-node-1780390065824-26d7461b-be77-489c-9b4b-0af1539c5d8e",
-          "target": "node-1780390042070-c4163e15-90d1-43a3-a1fc-c686ef557e1e",
-          "targetHandle": "evidence-node-1780390042070-c4163e15-90d1-43a3-a1fc-c686ef557e1e"
+          "id": "xy-edge__node-1780588873323-2acf37fb-9d1c-4bb4-ae6f-e83b53575ef4true_output-node-1780588873323-2acf37fb-9d1c-4bb4-ae6f-e83b53575ef4-node-1780588927362-1968ce37-d6ad-4644-b7d8-f2ec6243d7a5evidence-node-1780588927362-1968ce37-d6ad-4644-b7d8-f2ec6243d7a5",
+          "source": "node-1780588873323-2acf37fb-9d1c-4bb4-ae6f-e83b53575ef4",
+          "sourceHandle": "true_output-node-1780588873323-2acf37fb-9d1c-4bb4-ae6f-e83b53575ef4",
+          "target": "node-1780588927362-1968ce37-d6ad-4644-b7d8-f2ec6243d7a5",
+          "targetHandle": "evidence-node-1780588927362-1968ce37-d6ad-4644-b7d8-f2ec6243d7a5"
+        },
+        {
+          "data": {
+            "sourceHandleId": "message",
+            "targetHandleId": "context"
+          },
+          "id": "xy-edge__node-1780590169578-392fd97d-7474-4c7f-aaa4-2733435f7fb9message-node-1780590169578-392fd97d-7474-4c7f-aaa4-2733435f7fb9-node-1780588927362-1968ce37-d6ad-4644-b7d8-f2ec6243d7a5context-node-1780588927362-1968ce37-d6ad-4644-b7d8-f2ec6243d7a5",
+          "source": "node-1780590169578-392fd97d-7474-4c7f-aaa4-2733435f7fb9",
+          "sourceHandle": "message-node-1780590169578-392fd97d-7474-4c7f-aaa4-2733435f7fb9",
+          "target": "node-1780588927362-1968ce37-d6ad-4644-b7d8-f2ec6243d7a5",
+          "targetHandle": "context-node-1780588927362-1968ce37-d6ad-4644-b7d8-f2ec6243d7a5"
+        },
+        {
+          "data": {
+            "sourceHandleId": "message",
+            "targetHandleId": "input"
+          },
+          "id": "xy-edge__node-1780587242875-dbaa924a-5e34-472b-bf70-e24347e4f588message-node-1780587242875-dbaa924a-5e34-472b-bf70-e24347e4f588-node-1780590329109-d14b9f89-b20b-4fde-b575-40e3a7327d22input-node-1780590329109-d14b9f89-b20b-4fde-b575-40e3a7327d22",
+          "source": "node-1780587242875-dbaa924a-5e34-472b-bf70-e24347e4f588",
+          "sourceHandle": "message-node-1780587242875-dbaa924a-5e34-472b-bf70-e24347e4f588",
+          "target": "node-1780590329109-d14b9f89-b20b-4fde-b575-40e3a7327d22",
+          "targetHandle": "input-node-1780590329109-d14b9f89-b20b-4fde-b575-40e3a7327d22"
         },
         {
           "data": {
             "sourceHandleId": "output",
             "targetHandleId": "prompt"
           },
-          "id": "xy-edge__node-1780390042070-c4163e15-90d1-43a3-a1fc-c686ef557e1eoutput-node-1780390042070-c4163e15-90d1-43a3-a1fc-c686ef557e1e-node-1780390022398-420a1048-0948-4fc6-a68d-154609979563prompt-node-1780390022398-420a1048-0948-4fc6-a68d-154609979563",
-          "source": "node-1780390042070-c4163e15-90d1-43a3-a1fc-c686ef557e1e",
-          "sourceHandle": "output-node-1780390042070-c4163e15-90d1-43a3-a1fc-c686ef557e1e",
-          "target": "node-1780390022398-420a1048-0948-4fc6-a68d-154609979563",
-          "targetHandle": "prompt-node-1780390022398-420a1048-0948-4fc6-a68d-154609979563"
-        },
-        {
-          "data": {
-            "sourceHandleId": "tools",
-            "targetHandleId": "tools"
-          },
-          "id": "xy-edge__node-1780390504234-066c008b-d12c-4403-96ec-f8b2ac7fb070tools-node-1780390504234-066c008b-d12c-4403-96ec-f8b2ac7fb070-node-1780390022398-420a1048-0948-4fc6-a68d-154609979563tools-node-1780390022398-420a1048-0948-4fc6-a68d-154609979563",
-          "source": "node-1780390504234-066c008b-d12c-4403-96ec-f8b2ac7fb070",
-          "sourceHandle": "tools-node-1780390504234-066c008b-d12c-4403-96ec-f8b2ac7fb070",
-          "target": "node-1780390022398-420a1048-0948-4fc6-a68d-154609979563",
-          "targetHandle": "tools-node-1780390022398-420a1048-0948-4fc6-a68d-154609979563"
-        },
-        {
-          "data": {
-            "sourceHandleId": "tools",
-            "targetHandleId": "tools"
-          },
-          "id": "xy-edge__node-1780390228721-5e53bfda-4f99-4a27-ba62-0e57bb429aa2tools-node-1780390228721-5e53bfda-4f99-4a27-ba62-0e57bb429aa2-node-1780390022398-420a1048-0948-4fc6-a68d-154609979563tools-node-1780390022398-420a1048-0948-4fc6-a68d-154609979563",
-          "source": "node-1780390228721-5e53bfda-4f99-4a27-ba62-0e57bb429aa2",
-          "sourceHandle": "tools-node-1780390228721-5e53bfda-4f99-4a27-ba62-0e57bb429aa2",
-          "target": "node-1780390022398-420a1048-0948-4fc6-a68d-154609979563",
-          "targetHandle": "tools-node-1780390022398-420a1048-0948-4fc6-a68d-154609979563"
-        },
-        {
-          "data": {
-            "sourceHandleId": "false_output",
-            "targetHandleId": "message"
-          },
-          "id": "xy-edge__node-1780390070403-0bf5401a-6dbd-41e5-b738-4457f86b2b6cfalse_output-node-1780390070403-0bf5401a-6dbd-41e5-b738-4457f86b2b6c-node-1780390094738-42d34306-c8a4-4909-8813-e8a15b995b43message-node-1780390094738-42d34306-c8a4-4909-8813-e8a15b995b43",
-          "source": "node-1780390070403-0bf5401a-6dbd-41e5-b738-4457f86b2b6c",
-          "sourceHandle": "false_output-node-1780390070403-0bf5401a-6dbd-41e5-b738-4457f86b2b6c",
-          "target": "node-1780390094738-42d34306-c8a4-4909-8813-e8a15b995b43",
-          "targetHandle": "message-node-1780390094738-42d34306-c8a4-4909-8813-e8a15b995b43"
-        },
-        {
-          "data": {
-            "sourceHandleId": "tool_output",
-            "targetHandleId": "text_input"
-          },
-          "id": "xy-edge__node-1780390022398-420a1048-0948-4fc6-a68d-154609979563tool_output-node-1780390022398-420a1048-0948-4fc6-a68d-154609979563-node-1780390070403-0bf5401a-6dbd-41e5-b738-4457f86b2b6ctext_input-node-1780390070403-0bf5401a-6dbd-41e5-b738-4457f86b2b6c",
-          "source": "node-1780390022398-420a1048-0948-4fc6-a68d-154609979563",
-          "sourceHandle": "tool_output-node-1780390022398-420a1048-0948-4fc6-a68d-154609979563",
-          "target": "node-1780390070403-0bf5401a-6dbd-41e5-b738-4457f86b2b6c",
-          "targetHandle": "text_input-node-1780390070403-0bf5401a-6dbd-41e5-b738-4457f86b2b6c"
-        },
-        {
-          "data": {
-            "sourceHandleId": "tool_output",
-            "targetHandleId": "true_message"
-          },
-          "id": "xy-edge__node-1780390022398-420a1048-0948-4fc6-a68d-154609979563tool_output-node-1780390022398-420a1048-0948-4fc6-a68d-154609979563-node-1780390070403-0bf5401a-6dbd-41e5-b738-4457f86b2b6ctrue_message-node-1780390070403-0bf5401a-6dbd-41e5-b738-4457f86b2b6c",
-          "source": "node-1780390022398-420a1048-0948-4fc6-a68d-154609979563",
-          "sourceHandle": "tool_output-node-1780390022398-420a1048-0948-4fc6-a68d-154609979563",
-          "target": "node-1780390070403-0bf5401a-6dbd-41e5-b738-4457f86b2b6c",
-          "targetHandle": "true_message-node-1780390070403-0bf5401a-6dbd-41e5-b738-4457f86b2b6c"
+          "id": "xy-edge__node-1780590329109-d14b9f89-b20b-4fde-b575-40e3a7327d22output-node-1780590329109-d14b9f89-b20b-4fde-b575-40e3a7327d22-node-1780588094439-56422560-d057-43bb-81d9-478924cd449bprompt-node-1780588094439-56422560-d057-43bb-81d9-478924cd449b",
+          "source": "node-1780590329109-d14b9f89-b20b-4fde-b575-40e3a7327d22",
+          "sourceHandle": "output-node-1780590329109-d14b9f89-b20b-4fde-b575-40e3a7327d22",
+          "target": "node-1780588094439-56422560-d057-43bb-81d9-478924cd449b",
+          "targetHandle": "prompt-node-1780588094439-56422560-d057-43bb-81d9-478924cd449b"
         },
         {
           "data": {
             "sourceHandleId": "true_output",
             "targetHandleId": "findings"
           },
-          "id": "xy-edge__node-1780390070403-0bf5401a-6dbd-41e5-b738-4457f86b2b6ctrue_output-node-1780390070403-0bf5401a-6dbd-41e5-b738-4457f86b2b6c-node-1780390045675-cddc4e1c-a5a3-4f92-915c-f4be961d16d5findings-node-1780390045675-cddc4e1c-a5a3-4f92-915c-f4be961d16d5",
-          "source": "node-1780390070403-0bf5401a-6dbd-41e5-b738-4457f86b2b6c",
-          "sourceHandle": "true_output-node-1780390070403-0bf5401a-6dbd-41e5-b738-4457f86b2b6c",
-          "target": "node-1780390045675-cddc4e1c-a5a3-4f92-915c-f4be961d16d5",
-          "targetHandle": "findings-node-1780390045675-cddc4e1c-a5a3-4f92-915c-f4be961d16d5"
-        },
-        {
-          "data": {
-            "sourceHandleId": "output",
-            "targetHandleId": "prompt"
-          },
-          "id": "xy-edge__node-1780390045675-cddc4e1c-a5a3-4f92-915c-f4be961d16d5output-node-1780390045675-cddc4e1c-a5a3-4f92-915c-f4be961d16d5-node-1780390024649-a2042aae-28b6-4c3f-82c3-74d6db1a809bprompt-node-1780390024649-a2042aae-28b6-4c3f-82c3-74d6db1a809b",
-          "source": "node-1780390045675-cddc4e1c-a5a3-4f92-915c-f4be961d16d5",
-          "sourceHandle": "output-node-1780390045675-cddc4e1c-a5a3-4f92-915c-f4be961d16d5",
-          "target": "node-1780390024649-a2042aae-28b6-4c3f-82c3-74d6db1a809b",
-          "targetHandle": "prompt-node-1780390024649-a2042aae-28b6-4c3f-82c3-74d6db1a809b"
-        },
-        {
-          "data": {
-            "sourceHandleId": "tools",
-            "targetHandleId": "tools"
-          },
-          "id": "xy-edge__node-1780390228721-5e53bfda-4f99-4a27-ba62-0e57bb429aa2tools-node-1780390228721-5e53bfda-4f99-4a27-ba62-0e57bb429aa2-node-1780390024649-a2042aae-28b6-4c3f-82c3-74d6db1a809btools-node-1780390024649-a2042aae-28b6-4c3f-82c3-74d6db1a809b",
-          "source": "node-1780390228721-5e53bfda-4f99-4a27-ba62-0e57bb429aa2",
-          "sourceHandle": "tools-node-1780390228721-5e53bfda-4f99-4a27-ba62-0e57bb429aa2",
-          "target": "node-1780390024649-a2042aae-28b6-4c3f-82c3-74d6db1a809b",
-          "targetHandle": "tools-node-1780390024649-a2042aae-28b6-4c3f-82c3-74d6db1a809b"
-        },
-        {
-          "data": {
-            "sourceHandleId": "tools",
-            "targetHandleId": "tools"
-          },
-          "id": "xy-edge__node-1780390778968-cf7467f2-acce-4d5a-8b82-6909b8af319btools-node-1780390778968-cf7467f2-acce-4d5a-8b82-6909b8af319b-node-1780390024649-a2042aae-28b6-4c3f-82c3-74d6db1a809btools-node-1780390024649-a2042aae-28b6-4c3f-82c3-74d6db1a809b",
-          "source": "node-1780390778968-cf7467f2-acce-4d5a-8b82-6909b8af319b",
-          "sourceHandle": "tools-node-1780390778968-cf7467f2-acce-4d5a-8b82-6909b8af319b",
-          "target": "node-1780390024649-a2042aae-28b6-4c3f-82c3-74d6db1a809b",
-          "targetHandle": "tools-node-1780390024649-a2042aae-28b6-4c3f-82c3-74d6db1a809b"
-        },
-        {
-          "data": {
-            "sourceHandleId": "tool_output",
-            "targetHandleId": "message"
-          },
-          "id": "xy-edge__node-1780390024649-a2042aae-28b6-4c3f-82c3-74d6db1a809btool_output-node-1780390024649-a2042aae-28b6-4c3f-82c3-74d6db1a809b-node-1780390097842-25962960-8d68-4b40-9923-41e479c96d45message-node-1780390097842-25962960-8d68-4b40-9923-41e479c96d45",
-          "source": "node-1780390024649-a2042aae-28b6-4c3f-82c3-74d6db1a809b",
-          "sourceHandle": "tool_output-node-1780390024649-a2042aae-28b6-4c3f-82c3-74d6db1a809b",
-          "target": "node-1780390097842-25962960-8d68-4b40-9923-41e479c96d45",
-          "targetHandle": "message-node-1780390097842-25962960-8d68-4b40-9923-41e479c96d45"
+          "id": "xy-edge__node-1780589040732-a189ff15-fd3e-4047-bd04-dfe4627284d3true_output-node-1780589040732-a189ff15-fd3e-4047-bd04-dfe4627284d3-node-1780589180923-f81a3ffe-61d3-426b-a244-6c7abf942076findings-node-1780589180923-f81a3ffe-61d3-426b-a244-6c7abf942076",
+          "source": "node-1780589040732-a189ff15-fd3e-4047-bd04-dfe4627284d3",
+          "sourceHandle": "true_output-node-1780589040732-a189ff15-fd3e-4047-bd04-dfe4627284d3",
+          "target": "node-1780589180923-f81a3ffe-61d3-426b-a244-6c7abf942076",
+          "targetHandle": "findings-node-1780589180923-f81a3ffe-61d3-426b-a244-6c7abf942076"
         },
         {
           "data": {
             "sourceHandleId": "message",
-            "targetHandleId": "session_token"
+            "targetHandleId": "context"
           },
-          "id": "xy-edge__node-1780390053870-d4cb09a7-4dcd-4e71-8ee3-81ed6be6b04dmessage-node-1780390053870-d4cb09a7-4dcd-4e71-8ee3-81ed6be6b04d-node-1780390042070-c4163e15-90d1-43a3-a1fc-c686ef557e1esession_token-node-1780390042070-c4163e15-90d1-43a3-a1fc-c686ef557e1e",
-          "source": "node-1780390053870-d4cb09a7-4dcd-4e71-8ee3-81ed6be6b04d",
-          "sourceHandle": "message-node-1780390053870-d4cb09a7-4dcd-4e71-8ee3-81ed6be6b04d",
-          "target": "node-1780390042070-c4163e15-90d1-43a3-a1fc-c686ef557e1e",
-          "targetHandle": "session_token-node-1780390042070-c4163e15-90d1-43a3-a1fc-c686ef557e1e"
-        },
-        {
-          "data": {
-            "sourceHandleId": "message",
-            "targetHandleId": "session_token"
-          },
-          "id": "xy-edge__node-1780390053870-d4cb09a7-4dcd-4e71-8ee3-81ed6be6b04dmessage-node-1780390053870-d4cb09a7-4dcd-4e71-8ee3-81ed6be6b04d-node-1780390045675-cddc4e1c-a5a3-4f92-915c-f4be961d16d5session_token-node-1780390045675-cddc4e1c-a5a3-4f92-915c-f4be961d16d5",
-          "source": "node-1780390053870-d4cb09a7-4dcd-4e71-8ee3-81ed6be6b04d",
-          "sourceHandle": "message-node-1780390053870-d4cb09a7-4dcd-4e71-8ee3-81ed6be6b04d",
-          "target": "node-1780390045675-cddc4e1c-a5a3-4f92-915c-f4be961d16d5",
-          "targetHandle": "session_token-node-1780390045675-cddc4e1c-a5a3-4f92-915c-f4be961d16d5"
+          "id": "xy-edge__node-1780590169578-392fd97d-7474-4c7f-aaa4-2733435f7fb9message-node-1780590169578-392fd97d-7474-4c7f-aaa4-2733435f7fb9-node-1780589180923-f81a3ffe-61d3-426b-a244-6c7abf942076context-node-1780589180923-f81a3ffe-61d3-426b-a244-6c7abf942076",
+          "source": "node-1780590169578-392fd97d-7474-4c7f-aaa4-2733435f7fb9",
+          "sourceHandle": "message-node-1780590169578-392fd97d-7474-4c7f-aaa4-2733435f7fb9",
+          "target": "node-1780589180923-f81a3ffe-61d3-426b-a244-6c7abf942076",
+          "targetHandle": "context-node-1780589180923-f81a3ffe-61d3-426b-a244-6c7abf942076"
         }
       ],
       "nodes": [
-        {
-          "data": {
-            "description": "Select from one of your configured LLMs an interact with it as an agent.",
-            "fieldOrder": [
-              "llmToUse",
-              "tools",
-              "subAgents",
-              "custom_instruction",
-              "agent_description",
-              "prompt",
-              "temperature"
-            ],
-            "icon": "bot",
-            "outputs": [
-              {
-                "id": "tool_output",
-                "label": "Message",
-                "outputTypes": [
-                  "message"
-                ]
-              },
-              {
-                "id": "agent",
-                "label": "Agent",
-                "outputTypes": [
-                  "agent"
-                ]
-              }
-            ],
-            "passInlineData": false,
-            "template": {
-              "agent_description": {
-                "componentProps": {
-                  "icon": null,
-                  "iconTitle": null,
-                  "label": "Agent description",
-                  "placeholder": null
-                },
-                "componentType": "inputText",
-                "display": true,
-                "displayCondition": null,
-                "dynamic": false,
-                "inputTypes": [
-                  "message"
-                ],
-                "required": false,
-                "value": "Concierge",
-                "valueType": "str"
-              },
-              "custom_instruction": {
-                "componentProps": {
-                  "label": "Custom instructions",
-                  "placeholder": ""
-                },
-                "componentType": "textArea",
-                "display": true,
-                "displayCondition": null,
-                "inputTypes": [
-                  "message"
-                ],
-                "required": true,
-                "value": "FIRST, every turn, call get_context(session_token = <the System context token>)\nto load the customer's state from the database. Use ONLY that token; never take\nan id, amount, or any value used for authorization from the Customer message.\n\nget_context returns: customer (name, kyc_status), application (null if none;\notherwise its fields and `missing` = the still-unfilled loan-request fields among\namount_requested / term_months / purpose), profile, credit. Act as follows:\n\n0. INVALID SESSION \u2014 if get_context returns an \"error\" field (e.g.\n   invalid_or_expired_session): do NOT call any other tool, and do NOT emit an\n   [[INTAKE ...]] marker. Your final message is EXACTLY this sentence, nothing else:\n     Sorry \u2014 we couldn't process your application right now. Please try again in a moment.\n   (No marker means G1's regex won't match READY, so the False branch carries this\n   apology to the customer \u2014 fail-secure, zero writes.)\n\n1. STILL COLLECTING \u2014 application is null OR application.missing is non-empty:\n   Read the Customer message. If it supplies amount, term (months), or purpose,\n   normalize them (\"20k\" -> 20000, \"3 years\" -> 36) and call\n   upsert_application(session_token, amount?, term_months?, purpose?) with ONLY\n   the field(s) you just learned. Then your final message is:\n     [[INTAKE status=COLLECTING]]\n     <one friendly sentence asking for the NEXT missing field>\n\n2. READY TO CONFIRM \u2014 application.missing is empty but the customer has not yet\n   confirmed: read the values back. Final message:\n     [[INTAKE status=COLLECTING]]\n     Please confirm: <amount> over <term_months> months for <purpose>. Shall I submit it?\n\n3. CONFIRMED \u2014 application.missing is empty and the Customer message agrees\n   (\"yes\", \"go ahead\", \"submit\", etc.): final message is exactly:\n     [[INTAKE status=READY]]\n     Great \u2014 let's review your application now.\n\nRULES:\n- Emit the [[INTAKE ...]] marker as the FIRST line; the customer-facing sentence follows. (Exception: the INVALID SESSION path above emits no marker, only the apology.)\n- Greet warmly on the first turn if there is no application yet, then ask for the amount.\n- Call ONLY get_context and upsert_application. Never more than once each per turn.\n- Never reveal ids, tool output, or internal fields to the customer.",
-                "valueType": "str"
-              },
-              "llmToUse": {
-                "componentProps": {
-                  "dependsOnValueKeys": null,
-                  "itemText": "label",
-                  "itemValue": "value",
-                  "label": "Select LLM to use",
-                  "options": null,
-                  "optionsEndPoint": {
-                    "url": "/agentFactory/v1/agentBuilderGetRegisteredLLMS"
-                  },
-                  "optionsToDisplayDependingOnValue": null
-                },
-                "componentType": "selectSingle",
-                "display": true,
-                "displayCondition": null,
-                "inputTypes": null,
-                "required": false,
-                "value": "gen-model",
-                "valueType": "str"
-              },
-              "prompt": {
-                "componentProps": {
-                  "label": "Prompt",
-                  "placeholder": ""
-                },
-                "componentType": "textArea",
-                "display": true,
-                "displayCondition": null,
-                "inputTypes": [
-                  "message"
-                ],
-                "required": true,
-                "value": "",
-                "valueType": "str"
-              },
-              "subAgents": {
-                "componentProps": {
-                  "connectionsAllowed": 10,
-                  "inlineValue": true,
-                  "label": "Sub-agents"
-                },
-                "componentType": "label",
-                "display": true,
-                "displayCondition": null,
-                "inputTypes": [
-                  "agent"
-                ],
-                "required": false,
-                "value": [],
-                "valueType": "list"
-              },
-              "temperature": {
-                "componentProps": {
-                  "label": "Temperature",
-                  "max": 2,
-                  "min": 0,
-                  "step": 0.01
-                },
-                "componentType": "slider",
-                "display": true,
-                "required": true,
-                "value": 0.01,
-                "valueType": "number"
-              },
-              "tools": {
-                "componentProps": {
-                  "connectionsAllowed": 10,
-                  "inlineValue": true,
-                  "label": "Tools"
-                },
-                "componentType": "label",
-                "display": true,
-                "displayCondition": null,
-                "inputTypes": [
-                  "tool"
-                ],
-                "required": false,
-                "value": [
-                  "node-1780390228721-5e53bfda-4f99-4a27-ba62-0e57bb429aa2",
-                  "node-1780390240682-4f442d6e-47f3-439b-80de-df20476d4297"
-                ],
-                "valueType": "list"
-              }
-            },
-            "title": "Agent",
-            "type": "agentStep"
-          },
-          "dragging": false,
-          "id": "node-1780390015193-53fa6090-d999-4c71-b923-23283048a069",
-          "measured": {
-            "height": 807,
-            "width": 284
-          },
-          "position": {
-            "x": -326.9289791695069,
-            "y": 1630.135224400461
-          },
-          "selected": false,
-          "type": "flowGenericNode"
-        },
-        {
-          "data": {
-            "description": "Select from one of your configured LLMs an interact with it as an agent.",
-            "fieldOrder": [
-              "llmToUse",
-              "tools",
-              "subAgents",
-              "custom_instruction",
-              "agent_description",
-              "prompt",
-              "temperature"
-            ],
-            "icon": "bot",
-            "outputs": [
-              {
-                "id": "tool_output",
-                "label": "Message",
-                "outputTypes": [
-                  "message"
-                ]
-              },
-              {
-                "id": "agent",
-                "label": "Agent",
-                "outputTypes": [
-                  "agent"
-                ]
-              }
-            ],
-            "passInlineData": false,
-            "template": {
-              "agent_description": {
-                "componentProps": {
-                  "icon": null,
-                  "iconTitle": null,
-                  "label": "Agent description",
-                  "placeholder": null
-                },
-                "componentType": "inputText",
-                "display": true,
-                "displayCondition": null,
-                "dynamic": false,
-                "inputTypes": [
-                  "message"
-                ],
-                "required": false,
-                "value": "Docs & Employer",
-                "valueType": "str"
-              },
-              "custom_instruction": {
-                "componentProps": {
-                  "label": "Custom instructions",
-                  "placeholder": ""
-                },
-                "componentType": "textArea",
-                "display": true,
-                "displayCondition": null,
-                "inputTypes": [
-                  "message"
-                ],
-                "required": true,
-                "value": "Call exactly three tools in order, then write the Evidence marker as your final message.\n\nStep 1. get_context(session_token = <System context token>). Bind the returned\n        fields (application.id, amount_requested, term_months, product_type;\n        profile.employment_type, profile.employer_name; customer.residency).\nStep 2. required_documents(product_type, employment_type, residency,\n        amount = amount_requested).\nStep 3. GET_v1_companies_verify(name = employer_name).\n        (That funky name is what PAF exposes the Company Registry REST tool as \u2014\n        its OpenAPI importer ignores operationId and auto-names from method+path,\n        see issues/04. Call this exact name; `verify_employer` does not exist.)\n\nFinal assistant message \u2014 exact format, no other text:\n  [[EVIDENCE\n  - application_id: <integer from get_context>\n  - required_documents: <required_documents result, verbatim JSON>\n  - verify_employer: <GET_v1_companies_verify result, verbatim JSON>\n  ]]\n\nIf get_context returned an \"error\" field, your final message is instead:\n  [[EVIDENCE\n  - error: <the error value>\n  ]]\nCall no other tools. Never call create_hitl_task or evaluate_eligibility.",
-                "valueType": "str"
-              },
-              "llmToUse": {
-                "componentProps": {
-                  "dependsOnValueKeys": null,
-                  "itemText": "label",
-                  "itemValue": "value",
-                  "label": "Select LLM to use",
-                  "options": null,
-                  "optionsEndPoint": {
-                    "url": "/agentFactory/v1/agentBuilderGetRegisteredLLMS"
-                  },
-                  "optionsToDisplayDependingOnValue": null
-                },
-                "componentType": "selectSingle",
-                "display": true,
-                "displayCondition": null,
-                "inputTypes": null,
-                "required": false,
-                "value": "gen-model",
-                "valueType": "str"
-              },
-              "prompt": {
-                "componentProps": {
-                  "label": "Prompt",
-                  "placeholder": ""
-                },
-                "componentType": "textArea",
-                "display": true,
-                "displayCondition": null,
-                "inputTypes": [
-                  "message"
-                ],
-                "required": true,
-                "value": "",
-                "valueType": "str"
-              },
-              "subAgents": {
-                "componentProps": {
-                  "connectionsAllowed": 10,
-                  "inlineValue": true,
-                  "label": "Sub-agents"
-                },
-                "componentType": "label",
-                "display": true,
-                "displayCondition": null,
-                "inputTypes": [
-                  "agent"
-                ],
-                "required": false,
-                "value": [],
-                "valueType": "list"
-              },
-              "temperature": {
-                "componentProps": {
-                  "label": "Temperature",
-                  "max": 2,
-                  "min": 0,
-                  "step": 0.01
-                },
-                "componentType": "slider",
-                "display": true,
-                "required": true,
-                "value": 0.01,
-                "valueType": "number"
-              },
-              "tools": {
-                "componentProps": {
-                  "connectionsAllowed": 10,
-                  "inlineValue": true,
-                  "label": "Tools"
-                },
-                "componentType": "label",
-                "display": true,
-                "displayCondition": null,
-                "inputTypes": [
-                  "tool"
-                ],
-                "required": false,
-                "value": [
-                  "node-1780390228721-5e53bfda-4f99-4a27-ba62-0e57bb429aa2",
-                  "node-1780390504234-066c008b-d12c-4403-96ec-f8b2ac7fb070",
-                  "node-1780390537727-fcc20e26-600c-4484-9159-823a855c40b4"
-                ],
-                "valueType": "list"
-              }
-            },
-            "title": "Agent",
-            "type": "agentStep"
-          },
-          "dragging": false,
-          "id": "node-1780390020516-10b1059c-3e8b-4094-85f3-3f6a3946d76f",
-          "measured": {
-            "height": 807,
-            "width": 284
-          },
-          "position": {
-            "x": 841.0245488338801,
-            "y": 369.72435575931945
-          },
-          "selected": false,
-          "type": "flowGenericNode"
-        },
-        {
-          "data": {
-            "description": "Select from one of your configured LLMs an interact with it as an agent.",
-            "fieldOrder": [
-              "llmToUse",
-              "tools",
-              "subAgents",
-              "custom_instruction",
-              "agent_description",
-              "prompt",
-              "temperature"
-            ],
-            "icon": "bot",
-            "outputs": [
-              {
-                "id": "tool_output",
-                "label": "Message",
-                "outputTypes": [
-                  "message"
-                ]
-              },
-              {
-                "id": "agent",
-                "label": "Agent",
-                "outputTypes": [
-                  "agent"
-                ]
-              }
-            ],
-            "passInlineData": false,
-            "template": {
-              "agent_description": {
-                "componentProps": {
-                  "icon": null,
-                  "iconTitle": null,
-                  "label": "Agent description",
-                  "placeholder": null
-                },
-                "componentType": "inputText",
-                "display": true,
-                "displayCondition": null,
-                "dynamic": false,
-                "inputTypes": [
-                  "message"
-                ],
-                "required": false,
-                "value": "Eligibility",
-                "valueType": "str"
-              },
-              "custom_instruction": {
-                "componentProps": {
-                  "label": "Custom instructions",
-                  "placeholder": ""
-                },
-                "componentType": "textArea",
-                "display": true,
-                "displayCondition": null,
-                "inputTypes": [
-                  "message"
-                ],
-                "required": true,
-                "value": "Step 1. get_context(session_token = <System context token>). Read customer.age_years,\n        profile.monthly_salary, credit.score, and derived.dti / derived.pti.\nStep 2. evaluate_eligibility(\n          applicant   = {age: age_years, income: monthly_salary,\n                         credit_score: score, dti: derived.dti, pti: derived.pti},\n          application = {amount_requested: application.amount_requested,\n                         term_months: application.term_months},\n          product     = {product_type: application.product_type})\n        Use dti/pti VERBATIM from get_context.derived \u2014 never recompute.\n\nFinal assistant message \u2014 echo the EVIDENCE block you received, then append your\nELIGIBILITY block, and nothing else:\n  <the [[EVIDENCE ... ]] block from your input, unchanged>\n  [[ELIGIBILITY allow=<bool> deny=<deny[] JSON> warn=<warn[] JSON>]]\n\nCall ONLY get_context and evaluate_eligibility, once each. Never call create_hitl_task.",
-                "valueType": "str"
-              },
-              "llmToUse": {
-                "componentProps": {
-                  "dependsOnValueKeys": null,
-                  "itemText": "label",
-                  "itemValue": "value",
-                  "label": "Select LLM to use",
-                  "options": null,
-                  "optionsEndPoint": {
-                    "url": "/agentFactory/v1/agentBuilderGetRegisteredLLMS"
-                  },
-                  "optionsToDisplayDependingOnValue": null
-                },
-                "componentType": "selectSingle",
-                "display": true,
-                "displayCondition": null,
-                "inputTypes": null,
-                "required": false,
-                "value": "gen-model",
-                "valueType": "str"
-              },
-              "prompt": {
-                "componentProps": {
-                  "label": "Prompt",
-                  "placeholder": ""
-                },
-                "componentType": "textArea",
-                "display": true,
-                "displayCondition": null,
-                "inputTypes": [
-                  "message"
-                ],
-                "required": true,
-                "value": "",
-                "valueType": "str"
-              },
-              "subAgents": {
-                "componentProps": {
-                  "connectionsAllowed": 10,
-                  "inlineValue": true,
-                  "label": "Sub-agents"
-                },
-                "componentType": "label",
-                "display": true,
-                "displayCondition": null,
-                "inputTypes": [
-                  "agent"
-                ],
-                "required": false,
-                "value": [],
-                "valueType": "list"
-              },
-              "temperature": {
-                "componentProps": {
-                  "label": "Temperature",
-                  "max": 2,
-                  "min": 0,
-                  "step": 0.01
-                },
-                "componentType": "slider",
-                "display": true,
-                "required": true,
-                "value": 0.01,
-                "valueType": "number"
-              },
-              "tools": {
-                "componentProps": {
-                  "connectionsAllowed": 10,
-                  "inlineValue": true,
-                  "label": "Tools"
-                },
-                "componentType": "label",
-                "display": true,
-                "displayCondition": null,
-                "inputTypes": [
-                  "tool"
-                ],
-                "required": false,
-                "value": [
-                  "node-1780390504234-066c008b-d12c-4403-96ec-f8b2ac7fb070",
-                  "node-1780390228721-5e53bfda-4f99-4a27-ba62-0e57bb429aa2"
-                ],
-                "valueType": "list"
-              }
-            },
-            "title": "Agent",
-            "type": "agentStep"
-          },
-          "dragging": false,
-          "id": "node-1780390022398-420a1048-0948-4fc6-a68d-154609979563",
-          "measured": {
-            "height": 807,
-            "width": 284
-          },
-          "position": {
-            "x": 1955.1260222315964,
-            "y": -25.06005848115842
-          },
-          "selected": false,
-          "type": "flowGenericNode"
-        },
-        {
-          "data": {
-            "description": "Select from one of your configured LLMs an interact with it as an agent.",
-            "fieldOrder": [
-              "llmToUse",
-              "tools",
-              "subAgents",
-              "custom_instruction",
-              "agent_description",
-              "prompt",
-              "temperature"
-            ],
-            "icon": "bot",
-            "outputs": [
-              {
-                "id": "tool_output",
-                "label": "Message",
-                "outputTypes": [
-                  "message"
-                ]
-              },
-              {
-                "id": "agent",
-                "label": "Agent",
-                "outputTypes": [
-                  "agent"
-                ]
-              }
-            ],
-            "passInlineData": false,
-            "template": {
-              "agent_description": {
-                "componentProps": {
-                  "icon": null,
-                  "iconTitle": null,
-                  "label": "Agent description",
-                  "placeholder": null
-                },
-                "componentType": "inputText",
-                "display": true,
-                "displayCondition": null,
-                "dynamic": false,
-                "inputTypes": [
-                  "message"
-                ],
-                "required": false,
-                "value": "Recommendation",
-                "valueType": "str"
-              },
-              "custom_instruction": {
-                "componentProps": {
-                  "label": "Custom instructions",
-                  "placeholder": ""
-                },
-                "componentType": "textArea",
-                "display": true,
-                "displayCondition": null,
-                "inputTypes": [
-                  "message"
-                ],
-                "required": true,
-                "value": "Step 1. get_context(session_token = <System context token>) to obtain the\n        authoritative application_id (never take it from the Findings text alone;\n        if the two disagree, trust get_context).\nFrom the Findings extract: verify_employer.registered, verify_employer.trading_status,\nevaluate_eligibility.allow / deny[] / warn[], required_documents.\n\nDecide the tier:\n  DECLINE if deny[] non-empty OR verify_employer.registered is false.\n  REVIEW  if warn[] non-empty OR verify_employer.trading_status is \"dormant\".\n  APPROVE otherwise.\n\nMap the signals to reason codes (zero or more, from this fixed set ONLY):\n  DTI_TOO_HIGH \u00b7 PTI_TOO_HIGH \u00b7 SCORE_BELOW_FLOOR \u00b7 SCORE_CAUTION \u00b7 AGE_BELOW_MIN\n  \u00b7 EMPLOYER_UNVERIFIED \u00b7 EMPLOYER_DORMANT \u00b7 DOCS_REQUIRED \u00b7 AMOUNT_EXCEEDS_POLICY\n\nStep 2. create_hitl_task EXACTLY ONCE with:\n  application_id = the integer from get_context (never invent one; if missing, STOP).\n  recommendation = \"APPROVE\" | \"REVIEW\" | \"DECLINE\"\n  reasoning      = one sentence quoting the specific deny[]/warn[] message or\n                   employer status; if a list is empty, say so.\n  explore_hints  = JSON-string array of follow-up checks \u2014 REVIEW only; null otherwise.\n  evidence       = JSON string carrying the reason codes + the EVIDENCE/ELIGIBILITY values.\n  Do NOT supply agent_run_id (server-generated).\n\nAfter create_hitl_task returns, your final assistant message is the marker plus the\nONE customer-facing sentence for the tier \u2014 nothing else:\n  [[DECISION tier=<APPROVE|REVIEW|DECLINE> reasons=<reason-code JSON array>]]\n  APPROVE -> \"Looks strong \u2014 it's with our team for final approval; we'll confirm shortly.\"\n  REVIEW  -> \"We'd like a closer look at <affordability | your employment details>; a reviewer will follow up.\"\n  DECLINE -> \"Before we can proceed, a specialist needs to review this in detail \u2014 we'll be in touch.\"\n\nREVIEW reason\u2192phrase: DTI/PTI_* -> \"affordability\"; EMPLOYER_* -> \"your employment\ndetails\"; DOCS_REQUIRED -> \"have a recent payslip ready\"; SCORE_* -> do not surface.\nDECLINE states NO adverse reason. Never mention a number, score, tier, id, token,\nDTI/PTI, AML/KYC, fair lending, or any threshold in the customer sentence.",
-                "valueType": "str"
-              },
-              "llmToUse": {
-                "componentProps": {
-                  "dependsOnValueKeys": null,
-                  "itemText": "label",
-                  "itemValue": "value",
-                  "label": "Select LLM to use",
-                  "options": null,
-                  "optionsEndPoint": {
-                    "url": "/agentFactory/v1/agentBuilderGetRegisteredLLMS"
-                  },
-                  "optionsToDisplayDependingOnValue": null
-                },
-                "componentType": "selectSingle",
-                "display": true,
-                "displayCondition": null,
-                "inputTypes": null,
-                "required": false,
-                "value": "gen-model",
-                "valueType": "str"
-              },
-              "prompt": {
-                "componentProps": {
-                  "label": "Prompt",
-                  "placeholder": ""
-                },
-                "componentType": "textArea",
-                "display": true,
-                "displayCondition": null,
-                "inputTypes": [
-                  "message"
-                ],
-                "required": true,
-                "value": "",
-                "valueType": "str"
-              },
-              "subAgents": {
-                "componentProps": {
-                  "connectionsAllowed": 10,
-                  "inlineValue": true,
-                  "label": "Sub-agents"
-                },
-                "componentType": "label",
-                "display": true,
-                "displayCondition": null,
-                "inputTypes": [
-                  "agent"
-                ],
-                "required": false,
-                "value": [],
-                "valueType": "list"
-              },
-              "temperature": {
-                "componentProps": {
-                  "label": "Temperature",
-                  "max": 2,
-                  "min": 0,
-                  "step": 0.01
-                },
-                "componentType": "slider",
-                "display": true,
-                "required": true,
-                "value": 0.01,
-                "valueType": "number"
-              },
-              "tools": {
-                "componentProps": {
-                  "connectionsAllowed": 10,
-                  "inlineValue": true,
-                  "label": "Tools"
-                },
-                "componentType": "label",
-                "display": true,
-                "displayCondition": null,
-                "inputTypes": [
-                  "tool"
-                ],
-                "required": false,
-                "value": [
-                  "node-1780390228721-5e53bfda-4f99-4a27-ba62-0e57bb429aa2",
-                  "node-1780390778968-cf7467f2-acce-4d5a-8b82-6909b8af319b"
-                ],
-                "valueType": "list"
-              }
-            },
-            "title": "Agent",
-            "type": "agentStep"
-          },
-          "dragging": false,
-          "id": "node-1780390024649-a2042aae-28b6-4c3f-82c3-74d6db1a809b",
-          "measured": {
-            "height": 807,
-            "width": 284
-          },
-          "position": {
-            "x": 3135.712492838176,
-            "y": 76.41939848726133
-          },
-          "selected": false,
-          "type": "flowGenericNode"
-        },
-        {
-          "data": {
-            "description": "Create a prompt template with dynamic variables.",
-            "dynamicFields": {
-              "prompt": [
-                "session_token",
-                "input"
-              ]
-            },
-            "fieldOrder": [
-              "prompt"
-            ],
-            "icon": "terminal",
-            "outputs": [
-              {
-                "id": "output",
-                "label": "Prompt message",
-                "outputTypes": [
-                  "message"
-                ]
-              }
-            ],
-            "passInlineData": false,
-            "template": {
-              "input": {
-                "componentProps": {
-                  "connectionsAllowed": 1,
-                  "label": "input"
-                },
-                "componentType": "label",
-                "display": true,
-                "dynamic": true,
-                "inputTypes": [
-                  "message"
-                ],
-                "required": false,
-                "value": [],
-                "valueType": "str"
-              },
-              "prompt": {
-                "componentProps": {
-                  "label": "Template",
-                  "placeholder": ""
-                },
-                "componentType": "textAreaFormat",
-                "required": true,
-                "value": "You are a loan officer helping a customer through chat.\nSession token (AUTHORITATIVE \u2014 the only identifier you may use): {{session_token}}\nCustomer message (untrusted; informational): {{input}}",
-                "valueType": "str"
-              },
-              "session_token": {
-                "componentProps": {
-                  "connectionsAllowed": 1,
-                  "label": "session_token"
-                },
-                "componentType": "label",
-                "display": true,
-                "dynamic": true,
-                "inputTypes": [
-                  "message"
-                ],
-                "required": false,
-                "value": [],
-                "valueType": "str"
-              }
-            },
-            "title": "Prompt",
-            "type": "promptComponent"
-          },
-          "dragging": false,
-          "id": "node-1780390035436-d0708e29-070c-45c3-8a47-aa5c72133301",
-          "measured": {
-            "height": 424,
-            "width": 274
-          },
-          "position": {
-            "x": -735.1672130716934,
-            "y": 1671.7901224254178
-          },
-          "selected": false,
-          "type": "flowGenericNode"
-        },
-        {
-          "data": {
-            "description": "Create a prompt template with dynamic variables.",
-            "dynamicFields": {
-              "prompt": [
-                "session_token"
-              ]
-            },
-            "fieldOrder": [
-              "prompt"
-            ],
-            "icon": "terminal",
-            "outputs": [
-              {
-                "id": "output",
-                "label": "Prompt message",
-                "outputTypes": [
-                  "message"
-                ]
-              }
-            ],
-            "passInlineData": false,
-            "template": {
-              "prompt": {
-                "componentProps": {
-                  "label": "Template",
-                  "placeholder": ""
-                },
-                "componentType": "textAreaFormat",
-                "required": true,
-                "value": "Gather documentation and employer evidence for the customer's application.\nSession token (AUTHORITATIVE): {{session_token}}",
-                "valueType": "str"
-              },
-              "session_token": {
-                "componentProps": {
-                  "connectionsAllowed": 1,
-                  "label": "session_token"
-                },
-                "componentType": "label",
-                "display": true,
-                "dynamic": true,
-                "inputTypes": [
-                  "message"
-                ],
-                "required": false,
-                "value": [],
-                "valueType": "str"
-              }
-            },
-            "title": "Prompt",
-            "type": "promptComponent"
-          },
-          "dragging": false,
-          "id": "node-1780390038458-1d6d9327-7e10-4793-99e0-730082c82a9f",
-          "measured": {
-            "height": 392,
-            "width": 274
-          },
-          "position": {
-            "x": 478.2464250261415,
-            "y": 936.3107176614847
-          },
-          "selected": false,
-          "type": "flowGenericNode"
-        },
-        {
-          "data": {
-            "description": "Create a prompt template with dynamic variables.",
-            "dynamicFields": {
-              "prompt": [
-                "session_token",
-                "evidence"
-              ]
-            },
-            "fieldOrder": [
-              "prompt"
-            ],
-            "icon": "terminal",
-            "outputs": [
-              {
-                "id": "output",
-                "label": "Prompt message",
-                "outputTypes": [
-                  "message"
-                ]
-              }
-            ],
-            "passInlineData": false,
-            "template": {
-              "evidence": {
-                "componentProps": {
-                  "connectionsAllowed": 1,
-                  "label": "evidence"
-                },
-                "componentType": "label",
-                "display": true,
-                "dynamic": true,
-                "inputTypes": [
-                  "message"
-                ],
-                "required": false,
-                "value": [],
-                "valueType": "str"
-              },
-              "prompt": {
-                "componentProps": {
-                  "label": "Template",
-                  "placeholder": ""
-                },
-                "componentType": "textAreaFormat",
-                "required": true,
-                "value": "Evaluate eligibility for the customer's application and carry the evidence forward.\nSession token (AUTHORITATIVE): {{session_token}}\nEvidence so far: {{evidence}}",
-                "valueType": "str"
-              },
-              "session_token": {
-                "componentProps": {
-                  "connectionsAllowed": 1,
-                  "label": "session_token"
-                },
-                "componentType": "label",
-                "display": true,
-                "dynamic": true,
-                "inputTypes": [
-                  "message"
-                ],
-                "required": false,
-                "value": [],
-                "valueType": "str"
-              }
-            },
-            "title": "Prompt",
-            "type": "promptComponent"
-          },
-          "dragging": false,
-          "id": "node-1780390042070-c4163e15-90d1-43a3-a1fc-c686ef557e1e",
-          "measured": {
-            "height": 424,
-            "width": 274
-          },
-          "position": {
-            "x": 1551.3691924470754,
-            "y": 590.6468671244527
-          },
-          "selected": true,
-          "type": "flowGenericNode"
-        },
-        {
-          "data": {
-            "description": "Create a prompt template with dynamic variables.",
-            "dynamicFields": {
-              "prompt": [
-                "session_token",
-                "findings"
-              ]
-            },
-            "fieldOrder": [
-              "prompt"
-            ],
-            "icon": "terminal",
-            "outputs": [
-              {
-                "id": "output",
-                "label": "Prompt message",
-                "outputTypes": [
-                  "message"
-                ]
-              }
-            ],
-            "passInlineData": false,
-            "template": {
-              "findings": {
-                "componentProps": {
-                  "connectionsAllowed": 1,
-                  "label": "findings"
-                },
-                "componentType": "label",
-                "display": true,
-                "dynamic": true,
-                "inputTypes": [
-                  "message"
-                ],
-                "required": false,
-                "value": [],
-                "valueType": "str"
-              },
-              "prompt": {
-                "componentProps": {
-                  "label": "Template",
-                  "placeholder": ""
-                },
-                "componentType": "textAreaFormat",
-                "required": true,
-                "value": "Decide the recommendation tier and write the HITL task.\nSession token (AUTHORITATIVE): {{session_token}}\nFindings (EVIDENCE + ELIGIBILITY): {{findings}}",
-                "valueType": "str"
-              },
-              "session_token": {
-                "componentProps": {
-                  "connectionsAllowed": 1,
-                  "label": "session_token"
-                },
-                "componentType": "label",
-                "display": true,
-                "dynamic": true,
-                "inputTypes": [
-                  "message"
-                ],
-                "required": false,
-                "value": [],
-                "valueType": "str"
-              }
-            },
-            "title": "Prompt",
-            "type": "promptComponent"
-          },
-          "dragging": false,
-          "id": "node-1780390045675-cddc4e1c-a5a3-4f92-915c-f4be961d16d5",
-          "measured": {
-            "height": 424,
-            "width": 274
-          },
-          "position": {
-            "x": 2754.35504935199,
-            "y": 655.8560500004173
-          },
-          "selected": false,
-          "type": "flowGenericNode"
-        },
         {
           "data": {
             "description": "Capture user message sent in chat.",
@@ -1343,14 +422,14 @@
             "type": "chatInputComponent"
           },
           "dragging": false,
-          "id": "node-1780390051006-87bdbb9d-efec-4b97-8c39-dc14b410ce4e",
+          "id": "node-1780587216146-af06b25a-40fd-4753-81ae-352ec1612fa5",
           "measured": {
             "height": 141,
             "width": 214
           },
           "position": {
-            "x": -1449.1672130716934,
-            "y": 1873.790122425418
+            "x": -2222.473323746038,
+            "y": 414.6158469795797
           },
           "selected": false,
           "type": "flowGenericNode"
@@ -1415,14 +494,14 @@
             "type": "regexExtractor"
           },
           "dragging": false,
-          "id": "node-1780390053870-d4cb09a7-4dcd-4e71-8ee3-81ed6be6b04d",
+          "id": "node-1780587224320-5a24d645-1de2-4906-8518-d4a575d78bb1",
           "measured": {
             "height": 314,
             "width": 271
           },
           "position": {
-            "x": -1107.1672130716934,
-            "y": 1293.790122425418
+            "x": -1958.806428078338,
+            "y": 576.3128177725657
           },
           "selected": false,
           "type": "flowGenericNode"
@@ -1487,14 +566,370 @@
             "type": "regexExtractor"
           },
           "dragging": false,
-          "id": "node-1780390056727-64dcaacc-4a94-4af3-9d7d-3fb3cc3045fc",
+          "id": "node-1780587242875-dbaa924a-5e34-472b-bf70-e24347e4f588",
           "measured": {
             "height": 314,
             "width": 271
           },
           "position": {
-            "x": -1133.1672130716934,
-            "y": 1973.790122425418
+            "x": -1951.8916382420762,
+            "y": 136.81170816728329
+          },
+          "selected": false,
+          "type": "flowGenericNode"
+        },
+        {
+          "data": {
+            "description": "Create a prompt template with dynamic variables.",
+            "dynamicFields": {
+              "prompt": [
+                "token"
+              ]
+            },
+            "fieldOrder": [
+              "prompt"
+            ],
+            "icon": "terminal",
+            "outputs": [
+              {
+                "id": "output",
+                "label": "Prompt message",
+                "outputTypes": [
+                  "message"
+                ]
+              }
+            ],
+            "passInlineData": false,
+            "template": {
+              "prompt": {
+                "componentProps": {
+                  "label": "Template",
+                  "placeholder": ""
+                },
+                "componentType": "textAreaFormat",
+                "required": true,
+                "value": "{\"session_token\":\"{{token}}\"}",
+                "valueType": "str"
+              },
+              "token": {
+                "componentProps": {
+                  "connectionsAllowed": 1,
+                  "label": "token"
+                },
+                "componentType": "label",
+                "display": true,
+                "dynamic": true,
+                "inputTypes": [
+                  "message"
+                ],
+                "required": false,
+                "value": [],
+                "valueType": "str"
+              }
+            },
+            "title": "Prompt",
+            "type": "promptComponent"
+          },
+          "dragging": false,
+          "id": "node-1780587256759-9ab69096-32d7-4b76-b46f-dc8bf4169d54",
+          "measured": {
+            "height": 364,
+            "width": 274
+          },
+          "position": {
+            "x": -1603.2129007831063,
+            "y": 1081.634374238756
+          },
+          "selected": false,
+          "type": "flowGenericNode"
+        },
+        {
+          "data": {
+            "description": "Select from one of your configured LLMs an interact with it as an agent.",
+            "fieldOrder": [
+              "llmToUse",
+              "tools",
+              "subAgents",
+              "custom_instruction",
+              "agent_description",
+              "prompt",
+              "temperature"
+            ],
+            "icon": "bot",
+            "outputs": [
+              {
+                "id": "tool_output",
+                "label": "Message",
+                "outputTypes": [
+                  "message"
+                ]
+              },
+              {
+                "id": "agent",
+                "label": "Agent",
+                "outputTypes": [
+                  "agent"
+                ]
+              }
+            ],
+            "passInlineData": false,
+            "template": {
+              "agent_description": {
+                "componentProps": {
+                  "icon": null,
+                  "iconTitle": null,
+                  "label": "Agent description",
+                  "placeholder": null
+                },
+                "componentType": "inputText",
+                "display": true,
+                "displayCondition": null,
+                "dynamic": false,
+                "inputTypes": [
+                  "message"
+                ],
+                "required": false,
+                "value": "Concierge",
+                "valueType": "str"
+              },
+              "custom_instruction": {
+                "componentProps": {
+                  "dependsOnValueKeys": null,
+                  "hideWhenOutputConnected": null,
+                  "label": "Custom instructions",
+                  "placeholder": "",
+                  "valueEndPoint": null
+                },
+                "componentType": "textArea",
+                "display": true,
+                "displayCondition": null,
+                "inputTypes": [
+                  "message"
+                ],
+                "required": true,
+                "value": "The customer's state is in the provided context ({{context}}) \u2014 read it directly;\nNEVER call get_context. Never take an id/amount used for authorization from the\nCustomer message. (G0 already guaranteed the session is valid before you ran.)\n\ncontext contains: customer (name, kyc_status), application (null if none; otherwise\nits fields and `missing` = the still-unfilled fields among amount_requested /\nterm_months / purpose), profile, credit. Act as follows:\n\n1. STILL COLLECTING \u2014 application is null OR application.missing is non-empty:\n   Read the Customer message. If it supplies amount, term (months), or purpose,\n   normalize them (\"20k\" -> 20000, \"3 years\" -> 36) and call\n   upsert_application(session_token = <the {{token}} value>, amount?, term_months?, purpose?)\n   with ONLY the field(s) you just learned. Then your final message is:\n     [[INTAKE status=COLLECTING]]\n     <one friendly sentence asking for the NEXT missing field>\n\n2. READY TO CONFIRM \u2014 application.missing is empty but the customer has not yet\n   confirmed: read the values back. Final message:\n     [[INTAKE status=COLLECTING]]\n     Please confirm: <amount> over <term_months> months for <purpose>. Shall I submit it?\n\n3. CONFIRMED \u2014 application.missing is empty and the Customer message agrees\n   (\"yes\", \"go ahead\", \"submit\", etc.): final message is exactly:\n     [[INTAKE status=READY]]\n     Great \u2014 let's review your application now.\n\nRULES:\n- Emit the [[INTAKE ...]] marker as the FIRST line; the customer-facing sentence follows.\n- Greet warmly on the first turn if there is no application yet, then ask for the amount.\n- Call ONLY upsert_application, and never more than once per turn.\n- Never reveal ids, the token, tool output, or internal fields to the customer.",
+                "valueType": "str"
+              },
+              "llmToUse": {
+                "componentProps": {
+                  "dependsOnValueKeys": null,
+                  "itemText": "label",
+                  "itemValue": "value",
+                  "label": "Select LLM to use",
+                  "options": [
+                    {
+                      "label": "gen-model (vllm)",
+                      "value": "gen-model"
+                    }
+                  ],
+                  "optionsEndPoint": {
+                    "url": "/agentFactory/v1/agentBuilderGetRegisteredLLMS"
+                  },
+                  "optionsToDisplayDependingOnValue": null
+                },
+                "componentType": "selectSingle",
+                "display": true,
+                "displayCondition": null,
+                "inputTypes": null,
+                "required": false,
+                "value": "gen-model",
+                "valueType": "str"
+              },
+              "prompt": {
+                "componentProps": {
+                  "dependsOnValueKeys": null,
+                  "hideWhenOutputConnected": null,
+                  "label": "Prompt",
+                  "placeholder": "",
+                  "valueEndPoint": null
+                },
+                "componentType": "textArea",
+                "display": true,
+                "displayCondition": null,
+                "inputTypes": [
+                  "message"
+                ],
+                "required": true,
+                "value": "",
+                "valueType": "str"
+              },
+              "subAgents": {
+                "aggregationMode": "list",
+                "componentProps": {
+                  "connectionsAllowed": 10,
+                  "inlineValue": true,
+                  "label": "Sub-agents"
+                },
+                "componentType": "label",
+                "connectionsAllowed": 10,
+                "deliveryMode": "inline",
+                "display": true,
+                "displayCondition": null,
+                "inputTypes": [
+                  "agent"
+                ],
+                "normalizeSingleton": true,
+                "required": false,
+                "value": [],
+                "valueShape": "list",
+                "valueType": "list"
+              },
+              "temperature": {
+                "componentProps": {
+                  "label": "Temperature",
+                  "max": 2,
+                  "min": 0,
+                  "step": 0.01
+                },
+                "componentType": "slider",
+                "display": true,
+                "required": true,
+                "value": 0.01,
+                "valueType": "number"
+              },
+              "tools": {
+                "aggregationMode": "list",
+                "componentProps": {
+                  "connectionsAllowed": 10,
+                  "inlineValue": true,
+                  "label": "Tools"
+                },
+                "componentType": "label",
+                "connectionsAllowed": 10,
+                "deliveryMode": "inline",
+                "display": true,
+                "displayCondition": null,
+                "inputTypes": [
+                  "tool"
+                ],
+                "normalizeSingleton": true,
+                "required": false,
+                "value": [
+                  "node-1780588185944-dbcc1ce8-39f2-4c88-881b-c3755e57318b"
+                ],
+                "valueShape": "list",
+                "valueType": "list"
+              }
+            },
+            "title": "Agent",
+            "type": "agentStep"
+          },
+          "dragging": false,
+          "id": "node-1780588094439-56422560-d057-43bb-81d9-478924cd449b",
+          "measured": {
+            "height": 795,
+            "width": 284
+          },
+          "position": {
+            "x": 288.4673240725325,
+            "y": 448.7588235729361
+          },
+          "selected": false,
+          "type": "flowGenericNode"
+        },
+        {
+          "data": {
+            "description": "Connect to the given MCP server URL and retrieve tools for use with agents.",
+            "fieldOrder": [
+              "serverSource",
+              "tool_timeout",
+              "allowedTools"
+            ],
+            "icon": "server",
+            "outputs": [
+              {
+                "id": "tools",
+                "label": "Tools",
+                "outputTypes": [
+                  "tool"
+                ]
+              }
+            ],
+            "passInlineData": true,
+            "template": {
+              "allowedTools": {
+                "componentProps": {
+                  "dependsOnValueKeys": [
+                    "serverSource"
+                  ],
+                  "itemText": "label",
+                  "itemValue": "value",
+                  "label": "Allowed tools (optional, default: all)",
+                  "options": [
+                    {
+                      "label": "upsert_application",
+                      "value": "upsert_application"
+                    }
+                  ],
+                  "optionsEndPoint": {
+                    "url": "/agentFactory/v1/agentBuilder/mcp/tools",
+                    "useDependsOnValuesKeysAsUrlParams": true
+                  },
+                  "optionsToDisplayDependingOnValue": null
+                },
+                "componentType": "selectMultiple",
+                "display": true,
+                "inputTypes": null,
+                "required": false,
+                "value": [
+                  "upsert_application"
+                ],
+                "valueType": "str"
+              },
+              "serverSource": {
+                "componentProps": {
+                  "dependsOnValueKeys": null,
+                  "itemText": "label",
+                  "itemValue": "value",
+                  "label": "MCP server",
+                  "options": [
+                    {
+                      "label": "application-mcp",
+                      "value": 5
+                    }
+                  ],
+                  "optionsEndPoint": {
+                    "url": "/agentFactory/v1/tools/mcp/sources/selection"
+                  },
+                  "optionsToDisplayDependingOnValue": null
+                },
+                "componentType": "selectSingle",
+                "display": true,
+                "displayCondition": null,
+                "inputTypes": null,
+                "required": false,
+                "value": 5,
+                "valueType": "str"
+              },
+              "tool_timeout": {
+                "componentProps": {
+                  "label": "Timeout (seconds)",
+                  "max": null,
+                  "min": 1,
+                  "onlyIntegers": true
+                },
+                "componentType": "inputNumber",
+                "display": true,
+                "displayCondition": null,
+                "dynamic": false,
+                "inputTypes": null,
+                "required": true,
+                "value": 45,
+                "valueType": "int"
+              }
+            },
+            "title": "MCP server",
+            "type": "mcpServer"
+          },
+          "dragging": false,
+          "id": "node-1780588185944-dbcc1ce8-39f2-4c88-881b-c3755e57318b",
+          "measured": {
+            "height": 402,
+            "width": 284
+          },
+          "position": {
+            "x": -68.55665359729655,
+            "y": 93.08911073361261
           },
           "selected": false,
           "type": "flowGenericNode"
@@ -1652,14 +1087,487 @@
             "type": "conditionComponent"
           },
           "dragging": false,
-          "id": "node-1780390059992-a274db3e-44f2-4438-bcf7-9c8b121e501e",
+          "id": "node-1780588421930-d72f0457-8e03-43bf-8657-f7c36247359a",
           "measured": {
-            "height": 662,
+            "height": 650,
             "width": 284
           },
           "position": {
-            "x": 131.47937740384793,
-            "y": 980.465093811142
+            "x": 663.5073335766023,
+            "y": 827.165632325869
+          },
+          "selected": false,
+          "type": "flowGenericNode"
+        },
+        {
+          "data": {
+            "description": "Send message to chat.",
+            "fieldOrder": [
+              "message"
+            ],
+            "icon": "message-square-share",
+            "outputs": [
+              {
+                "id": "output_message",
+                "label": "Message",
+                "outputTypes": [
+                  "message"
+                ]
+              }
+            ],
+            "passInlineData": false,
+            "template": {
+              "message": {
+                "aggregationMode": "replace",
+                "componentProps": {
+                  "connectionsAllowed": 1,
+                  "inlineValue": false,
+                  "label": "Message"
+                },
+                "componentType": "label",
+                "connectionsAllowed": 1,
+                "deliveryMode": "dataflow",
+                "display": true,
+                "displayCondition": null,
+                "inputTypes": [
+                  "message"
+                ],
+                "normalizeSingleton": false,
+                "required": false,
+                "value": "",
+                "valueShape": "scalar",
+                "valueType": "str"
+              }
+            },
+            "title": "Chat output",
+            "type": "chatOutputComponent"
+          },
+          "dragging": false,
+          "id": "node-1780588627132-11c176a3-06e3-4d79-b509-64262972da0f",
+          "measured": {
+            "height": 185,
+            "width": 214
+          },
+          "position": {
+            "x": 1018.3143733326585,
+            "y": 1180.3629968471887
+          },
+          "selected": false,
+          "type": "flowGenericNode"
+        },
+        {
+          "data": {
+            "description": "Create a prompt template with dynamic variables.",
+            "dynamicFields": {
+              "prompt": [
+                "context"
+              ]
+            },
+            "fieldOrder": [
+              "prompt"
+            ],
+            "icon": "terminal",
+            "outputs": [
+              {
+                "id": "output",
+                "label": "Prompt message",
+                "outputTypes": [
+                  "message"
+                ]
+              }
+            ],
+            "passInlineData": false,
+            "template": {
+              "context": {
+                "componentProps": {
+                  "connectionsAllowed": 1,
+                  "label": "context"
+                },
+                "componentType": "label",
+                "display": true,
+                "dynamic": true,
+                "inputTypes": [
+                  "message"
+                ],
+                "required": false,
+                "value": [],
+                "valueType": "str"
+              },
+              "prompt": {
+                "componentProps": {
+                  "label": "Template",
+                  "placeholder": ""
+                },
+                "componentType": "textAreaFormat",
+                "required": true,
+                "value": "Gather documentation and employer evidence for the customer's application.\nCustomer context (AUTHORITATIVE \u2014 read all fields from here): {{context}}",
+                "valueType": "str"
+              }
+            },
+            "title": "Prompt",
+            "type": "promptComponent"
+          },
+          "dragging": false,
+          "id": "node-1780588637568-b69840fd-c029-4ad0-b904-823e6648e04c",
+          "measured": {
+            "height": 399,
+            "width": 274
+          },
+          "position": {
+            "x": 1487.3067313174279,
+            "y": 1089.304629758254
+          },
+          "selected": false,
+          "type": "flowGenericNode"
+        },
+        {
+          "data": {
+            "description": "Select from one of your configured LLMs an interact with it as an agent.",
+            "fieldOrder": [
+              "llmToUse",
+              "tools",
+              "subAgents",
+              "custom_instruction",
+              "agent_description",
+              "prompt",
+              "temperature"
+            ],
+            "icon": "bot",
+            "outputs": [
+              {
+                "id": "tool_output",
+                "label": "Message",
+                "outputTypes": [
+                  "message"
+                ]
+              },
+              {
+                "id": "agent",
+                "label": "Agent",
+                "outputTypes": [
+                  "agent"
+                ]
+              }
+            ],
+            "passInlineData": false,
+            "template": {
+              "agent_description": {
+                "componentProps": {
+                  "icon": null,
+                  "iconTitle": null,
+                  "label": "Agent description",
+                  "placeholder": null
+                },
+                "componentType": "inputText",
+                "display": true,
+                "displayCondition": null,
+                "dynamic": false,
+                "inputTypes": [
+                  "message"
+                ],
+                "required": false,
+                "value": "Docs & Employer",
+                "valueType": "str"
+              },
+              "custom_instruction": {
+                "componentProps": {
+                  "dependsOnValueKeys": null,
+                  "hideWhenOutputConnected": null,
+                  "label": "Custom instructions",
+                  "placeholder": "",
+                  "valueEndPoint": null
+                },
+                "componentType": "textArea",
+                "display": true,
+                "displayCondition": null,
+                "inputTypes": [
+                  "message"
+                ],
+                "required": true,
+                "value": "The application context is provided as {{context}} \u2014 read it; NEVER call get_context.\nFrom context bind: application.id, application.amount_requested, application.term_months,\napplication.product_type; profile.employment_type, profile.employer_name;\ncustomer.residency.\n\nCall exactly two tools in order, then write the Evidence marker as your final message.\nStep 1. required_documents(product_type, employment_type, residency,\n        amount = amount_requested).\nStep 2. GET_v1_companies_verify(name = employer_name).\n        (That funky name is what PAF exposes the Company Registry REST tool as \u2014\n        its OpenAPI importer ignores operationId and auto-names from method+path,\n        see issues/04. Call this exact name; `verify_employer` does not exist.)\n\nFinal assistant message \u2014 exact format, no other text:\n  [[EVIDENCE\n  - application_id: <application.id from context>\n  - required_documents: <required_documents result, verbatim JSON>\n  - verify_employer: <GET_v1_companies_verify result, verbatim JSON>\n  ]]\nCall no other tools. Never call create_hitl_task or evaluate_eligibility.",
+                "valueType": "str"
+              },
+              "llmToUse": {
+                "componentProps": {
+                  "dependsOnValueKeys": null,
+                  "itemText": "label",
+                  "itemValue": "value",
+                  "label": "Select LLM to use",
+                  "options": [
+                    {
+                      "label": "gen-model (vllm)",
+                      "value": "gen-model"
+                    }
+                  ],
+                  "optionsEndPoint": {
+                    "url": "/agentFactory/v1/agentBuilderGetRegisteredLLMS"
+                  },
+                  "optionsToDisplayDependingOnValue": null
+                },
+                "componentType": "selectSingle",
+                "display": true,
+                "displayCondition": null,
+                "inputTypes": null,
+                "required": false,
+                "value": "gen-model",
+                "valueType": "str"
+              },
+              "prompt": {
+                "componentProps": {
+                  "dependsOnValueKeys": null,
+                  "hideWhenOutputConnected": null,
+                  "label": "Prompt",
+                  "placeholder": "",
+                  "valueEndPoint": null
+                },
+                "componentType": "textArea",
+                "display": true,
+                "displayCondition": null,
+                "inputTypes": [
+                  "message"
+                ],
+                "required": true,
+                "value": "",
+                "valueType": "str"
+              },
+              "subAgents": {
+                "aggregationMode": "list",
+                "componentProps": {
+                  "connectionsAllowed": 10,
+                  "inlineValue": true,
+                  "label": "Sub-agents"
+                },
+                "componentType": "label",
+                "connectionsAllowed": 10,
+                "deliveryMode": "inline",
+                "display": true,
+                "displayCondition": null,
+                "inputTypes": [
+                  "agent"
+                ],
+                "normalizeSingleton": true,
+                "required": false,
+                "value": [],
+                "valueShape": "list",
+                "valueType": "list"
+              },
+              "temperature": {
+                "componentProps": {
+                  "label": "Temperature",
+                  "max": 2,
+                  "min": 0,
+                  "step": 0.01
+                },
+                "componentType": "slider",
+                "display": true,
+                "required": true,
+                "value": 0.01,
+                "valueType": "number"
+              },
+              "tools": {
+                "aggregationMode": "list",
+                "componentProps": {
+                  "connectionsAllowed": 10,
+                  "inlineValue": true,
+                  "label": "Tools"
+                },
+                "componentType": "label",
+                "connectionsAllowed": 10,
+                "deliveryMode": "inline",
+                "display": true,
+                "displayCondition": null,
+                "inputTypes": [
+                  "tool"
+                ],
+                "normalizeSingleton": true,
+                "required": false,
+                "value": [
+                  "node-1780588772727-b3a5bd6d-4977-4ea5-8087-f23245974e56",
+                  "node-1780588802625-42c64651-64cf-44f7-86f9-97cf2f184093"
+                ],
+                "valueShape": "list",
+                "valueType": "list"
+              }
+            },
+            "title": "Agent",
+            "type": "agentStep"
+          },
+          "dragging": false,
+          "id": "node-1780588731000-bcf5d930-6d29-44b8-81cd-4f1567f97d05",
+          "measured": {
+            "height": 795,
+            "width": 284
+          },
+          "position": {
+            "x": 1839.389974234432,
+            "y": 575.926382265958
+          },
+          "selected": false,
+          "type": "flowGenericNode"
+        },
+        {
+          "data": {
+            "description": "Connect to the given MCP server URL and retrieve tools for use with agents.",
+            "fieldOrder": [
+              "serverSource",
+              "tool_timeout",
+              "allowedTools"
+            ],
+            "icon": "server",
+            "outputs": [
+              {
+                "id": "tools",
+                "label": "Tools",
+                "outputTypes": [
+                  "tool"
+                ]
+              }
+            ],
+            "passInlineData": true,
+            "template": {
+              "allowedTools": {
+                "componentProps": {
+                  "dependsOnValueKeys": [
+                    "serverSource"
+                  ],
+                  "itemText": "label",
+                  "itemValue": "value",
+                  "label": "Allowed tools (optional, default: all)",
+                  "options": [
+                    {
+                      "label": "required_documents",
+                      "value": "required_documents"
+                    }
+                  ],
+                  "optionsEndPoint": {
+                    "url": "/agentFactory/v1/agentBuilder/mcp/tools",
+                    "useDependsOnValuesKeysAsUrlParams": true
+                  },
+                  "optionsToDisplayDependingOnValue": null
+                },
+                "componentType": "selectMultiple",
+                "display": true,
+                "inputTypes": null,
+                "required": false,
+                "value": [
+                  "required_documents"
+                ],
+                "valueType": "str"
+              },
+              "serverSource": {
+                "componentProps": {
+                  "dependsOnValueKeys": null,
+                  "itemText": "label",
+                  "itemValue": "value",
+                  "label": "MCP server",
+                  "options": [
+                    {
+                      "label": "opa-mcp",
+                      "value": 1
+                    }
+                  ],
+                  "optionsEndPoint": {
+                    "url": "/agentFactory/v1/tools/mcp/sources/selection"
+                  },
+                  "optionsToDisplayDependingOnValue": null
+                },
+                "componentType": "selectSingle",
+                "display": true,
+                "displayCondition": null,
+                "inputTypes": null,
+                "required": false,
+                "value": 1,
+                "valueType": "str"
+              },
+              "tool_timeout": {
+                "componentProps": {
+                  "label": "Timeout (seconds)",
+                  "max": null,
+                  "min": 1,
+                  "onlyIntegers": true
+                },
+                "componentType": "inputNumber",
+                "display": true,
+                "displayCondition": null,
+                "dynamic": false,
+                "inputTypes": null,
+                "required": true,
+                "value": 45,
+                "valueType": "int"
+              }
+            },
+            "title": "MCP server",
+            "type": "mcpServer"
+          },
+          "dragging": false,
+          "id": "node-1780588772727-b3a5bd6d-4977-4ea5-8087-f23245974e56",
+          "measured": {
+            "height": 402,
+            "width": 284
+          },
+          "position": {
+            "x": 1495.4622711883362,
+            "y": 250.94950895817675
+          },
+          "selected": false,
+          "type": "flowGenericNode"
+        },
+        {
+          "data": {
+            "description": "Transforms a set of REST APIs into a toolset for the agent.",
+            "fieldOrder": [
+              "src_select"
+            ],
+            "icon": "tool-case",
+            "outputs": [
+              {
+                "id": "tools",
+                "label": "Tools",
+                "outputTypes": [
+                  "tool"
+                ]
+              }
+            ],
+            "passInlineData": true,
+            "template": {
+              "src_select": {
+                "componentProps": {
+                  "dependsOnValueKeys": null,
+                  "itemText": "label",
+                  "itemValue": "value",
+                  "label": "Source selection",
+                  "options": [
+                    {
+                      "label": "Company Registry",
+                      "value": 1
+                    }
+                  ],
+                  "optionsEndPoint": {
+                    "url": "/agentFactory/v1/tools/getSourcesSelection"
+                  },
+                  "optionsToDisplayDependingOnValue": null
+                },
+                "componentType": "selectSingle",
+                "display": true,
+                "displayCondition": null,
+                "inputTypes": null,
+                "required": false,
+                "value": 1,
+                "valueType": "str"
+              }
+            },
+            "title": "REST API tools",
+            "type": "restAPITools"
+          },
+          "dragging": false,
+          "id": "node-1780588802625-42c64651-64cf-44f7-86f9-97cf2f184093",
+          "measured": {
+            "height": 242,
+            "width": 284
+          },
+          "position": {
+            "x": 1435.363071326239,
+            "y": 683.5392406562602
           },
           "selected": false,
           "type": "flowGenericNode"
@@ -1817,14 +1725,442 @@
             "type": "conditionComponent"
           },
           "dragging": false,
-          "id": "node-1780390065824-26d7461b-be77-489c-9b4b-0af1539c5d8e",
+          "id": "node-1780588873323-2acf37fb-9d1c-4bb4-ae6f-e83b53575ef4",
           "measured": {
-            "height": 662,
+            "height": 650,
             "width": 284
           },
           "position": {
-            "x": 1204.8327869283066,
-            "y": 1077.790122425418
+            "x": 2192.7196296633224,
+            "y": 723.7416643855507
+          },
+          "selected": false,
+          "type": "flowGenericNode"
+        },
+        {
+          "data": {
+            "description": "Send message to chat.",
+            "fieldOrder": [
+              "message"
+            ],
+            "icon": "message-square-share",
+            "outputs": [
+              {
+                "id": "output_message",
+                "label": "Message",
+                "outputTypes": [
+                  "message"
+                ]
+              }
+            ],
+            "passInlineData": false,
+            "template": {
+              "message": {
+                "aggregationMode": "replace",
+                "componentProps": {
+                  "connectionsAllowed": 1,
+                  "inlineValue": false,
+                  "label": "Message"
+                },
+                "componentType": "label",
+                "connectionsAllowed": 1,
+                "deliveryMode": "dataflow",
+                "display": true,
+                "displayCondition": null,
+                "inputTypes": [
+                  "message"
+                ],
+                "normalizeSingleton": false,
+                "required": false,
+                "value": "",
+                "valueShape": "scalar",
+                "valueType": "str"
+              }
+            },
+            "title": "Chat output",
+            "type": "chatOutputComponent"
+          },
+          "dragging": false,
+          "id": "node-1780588917145-ffeaaac4-8fed-479b-8bb7-2e4129ce5419",
+          "measured": {
+            "height": 185,
+            "width": 214
+          },
+          "position": {
+            "x": 2518.4259619863947,
+            "y": 1075.5464598617732
+          },
+          "selected": false,
+          "type": "flowGenericNode"
+        },
+        {
+          "data": {
+            "description": "Create a prompt template with dynamic variables.",
+            "dynamicFields": {
+              "prompt": [
+                "context",
+                "evidence"
+              ]
+            },
+            "fieldOrder": [
+              "prompt"
+            ],
+            "icon": "terminal",
+            "outputs": [
+              {
+                "id": "output",
+                "label": "Prompt message",
+                "outputTypes": [
+                  "message"
+                ]
+              }
+            ],
+            "passInlineData": false,
+            "template": {
+              "context": {
+                "componentProps": {
+                  "connectionsAllowed": 1,
+                  "label": "context"
+                },
+                "componentType": "label",
+                "display": true,
+                "dynamic": true,
+                "inputTypes": [
+                  "message"
+                ],
+                "required": false,
+                "value": [],
+                "valueType": "str"
+              },
+              "evidence": {
+                "componentProps": {
+                  "connectionsAllowed": 1,
+                  "label": "evidence"
+                },
+                "componentType": "label",
+                "display": true,
+                "dynamic": true,
+                "inputTypes": [
+                  "message"
+                ],
+                "required": false,
+                "value": [],
+                "valueType": "str"
+              },
+              "prompt": {
+                "componentProps": {
+                  "label": "Template",
+                  "placeholder": ""
+                },
+                "componentType": "textAreaFormat",
+                "required": true,
+                "value": "Evaluate eligibility for the customer's application and carry the evidence forward.\nCustomer context (AUTHORITATIVE \u2014 read all fields from here): {{context}}\nEvidence so far: {{evidence}}",
+                "valueType": "str"
+              }
+            },
+            "title": "Prompt",
+            "type": "promptComponent"
+          },
+          "dragging": false,
+          "id": "node-1780588927362-1968ce37-d6ad-4644-b7d8-f2ec6243d7a5",
+          "measured": {
+            "height": 431,
+            "width": 274
+          },
+          "position": {
+            "x": 2942.1995039768635,
+            "y": 1153.4331712738954
+          },
+          "selected": false,
+          "type": "flowGenericNode"
+        },
+        {
+          "data": {
+            "description": "Select from one of your configured LLMs an interact with it as an agent.",
+            "fieldOrder": [
+              "llmToUse",
+              "tools",
+              "subAgents",
+              "custom_instruction",
+              "agent_description",
+              "prompt",
+              "temperature"
+            ],
+            "icon": "bot",
+            "outputs": [
+              {
+                "id": "tool_output",
+                "label": "Message",
+                "outputTypes": [
+                  "message"
+                ]
+              },
+              {
+                "id": "agent",
+                "label": "Agent",
+                "outputTypes": [
+                  "agent"
+                ]
+              }
+            ],
+            "passInlineData": false,
+            "template": {
+              "agent_description": {
+                "componentProps": {
+                  "icon": null,
+                  "iconTitle": null,
+                  "label": "Agent description",
+                  "placeholder": null
+                },
+                "componentType": "inputText",
+                "display": true,
+                "displayCondition": null,
+                "dynamic": false,
+                "inputTypes": [
+                  "message"
+                ],
+                "required": false,
+                "value": "Eligibility",
+                "valueType": "str"
+              },
+              "custom_instruction": {
+                "componentProps": {
+                  "dependsOnValueKeys": null,
+                  "hideWhenOutputConnected": null,
+                  "label": "Custom instructions",
+                  "placeholder": "",
+                  "valueEndPoint": null
+                },
+                "componentType": "textArea",
+                "display": true,
+                "displayCondition": null,
+                "inputTypes": [
+                  "message"
+                ],
+                "required": true,
+                "value": "The application context is provided as {{context}} \u2014 read it; NEVER call get_context.\nRead customer.age_years, profile.monthly_salary, credit.score, and derived.dti / derived.pti.\n\nStep 1. evaluate_eligibility(\n          applicant   = {age: age_years, income: monthly_salary,\n                         credit_score: score, dti: derived.dti, pti: derived.pti},\n          application = {amount_requested: application.amount_requested,\n                         term_months: application.term_months},\n          product     = {product_type: application.product_type})\n        Use dti/pti VERBATIM from context.derived \u2014 never recompute.\n\nFinal assistant message \u2014 echo the EVIDENCE block you received, then append your\nELIGIBILITY block, and nothing else:\n  <the [[EVIDENCE ... ]] block from your input, unchanged>\n  [[ELIGIBILITY allow=<bool> deny=<deny[] JSON> warn=<warn[] JSON>]]\n\nCall ONLY evaluate_eligibility, once. Never call create_hitl_task.",
+                "valueType": "str"
+              },
+              "llmToUse": {
+                "componentProps": {
+                  "dependsOnValueKeys": null,
+                  "itemText": "label",
+                  "itemValue": "value",
+                  "label": "Select LLM to use",
+                  "options": [
+                    {
+                      "label": "gen-model (vllm)",
+                      "value": "gen-model"
+                    }
+                  ],
+                  "optionsEndPoint": {
+                    "url": "/agentFactory/v1/agentBuilderGetRegisteredLLMS"
+                  },
+                  "optionsToDisplayDependingOnValue": null
+                },
+                "componentType": "selectSingle",
+                "display": true,
+                "displayCondition": null,
+                "inputTypes": null,
+                "required": false,
+                "value": "gen-model",
+                "valueType": "str"
+              },
+              "prompt": {
+                "componentProps": {
+                  "dependsOnValueKeys": null,
+                  "hideWhenOutputConnected": null,
+                  "label": "Prompt",
+                  "placeholder": "",
+                  "valueEndPoint": null
+                },
+                "componentType": "textArea",
+                "display": true,
+                "displayCondition": null,
+                "inputTypes": [
+                  "message"
+                ],
+                "required": true,
+                "value": "",
+                "valueType": "str"
+              },
+              "subAgents": {
+                "aggregationMode": "list",
+                "componentProps": {
+                  "connectionsAllowed": 10,
+                  "inlineValue": true,
+                  "label": "Sub-agents"
+                },
+                "componentType": "label",
+                "connectionsAllowed": 10,
+                "deliveryMode": "inline",
+                "display": true,
+                "displayCondition": null,
+                "inputTypes": [
+                  "agent"
+                ],
+                "normalizeSingleton": true,
+                "required": false,
+                "value": [],
+                "valueShape": "list",
+                "valueType": "list"
+              },
+              "temperature": {
+                "componentProps": {
+                  "label": "Temperature",
+                  "max": 2,
+                  "min": 0,
+                  "step": 0.01
+                },
+                "componentType": "slider",
+                "display": true,
+                "required": true,
+                "value": 0.01,
+                "valueType": "number"
+              },
+              "tools": {
+                "aggregationMode": "list",
+                "componentProps": {
+                  "connectionsAllowed": 10,
+                  "inlineValue": true,
+                  "label": "Tools"
+                },
+                "componentType": "label",
+                "connectionsAllowed": 10,
+                "deliveryMode": "inline",
+                "display": true,
+                "displayCondition": null,
+                "inputTypes": [
+                  "tool"
+                ],
+                "normalizeSingleton": true,
+                "required": false,
+                "value": [
+                  "node-1780588997344-c8aa2221-fa30-4dab-b027-79535c375b86"
+                ],
+                "valueShape": "list",
+                "valueType": "list"
+              }
+            },
+            "title": "Agent",
+            "type": "agentStep"
+          },
+          "dragging": false,
+          "id": "node-1780588953156-23d157b3-ec50-44dc-a3fa-81f7037631e2",
+          "measured": {
+            "height": 795,
+            "width": 284
+          },
+          "position": {
+            "x": 3262.47981625003,
+            "y": 706.4096681055715
+          },
+          "selected": false,
+          "type": "flowGenericNode"
+        },
+        {
+          "data": {
+            "description": "Connect to the given MCP server URL and retrieve tools for use with agents.",
+            "fieldOrder": [
+              "serverSource",
+              "tool_timeout",
+              "allowedTools"
+            ],
+            "icon": "server",
+            "outputs": [
+              {
+                "id": "tools",
+                "label": "Tools",
+                "outputTypes": [
+                  "tool"
+                ]
+              }
+            ],
+            "passInlineData": true,
+            "template": {
+              "allowedTools": {
+                "componentProps": {
+                  "dependsOnValueKeys": [
+                    "serverSource"
+                  ],
+                  "itemText": "label",
+                  "itemValue": "value",
+                  "label": "Allowed tools (optional, default: all)",
+                  "options": [
+                    {
+                      "label": "evaluate_eligibility",
+                      "value": "evaluate_eligibility"
+                    }
+                  ],
+                  "optionsEndPoint": {
+                    "url": "/agentFactory/v1/agentBuilder/mcp/tools",
+                    "useDependsOnValuesKeysAsUrlParams": true
+                  },
+                  "optionsToDisplayDependingOnValue": null
+                },
+                "componentType": "selectMultiple",
+                "display": true,
+                "inputTypes": null,
+                "required": false,
+                "value": [
+                  "evaluate_eligibility"
+                ],
+                "valueType": "str"
+              },
+              "serverSource": {
+                "componentProps": {
+                  "dependsOnValueKeys": null,
+                  "itemText": "label",
+                  "itemValue": "value",
+                  "label": "MCP server",
+                  "options": [
+                    {
+                      "label": "opa-mcp",
+                      "value": 1
+                    }
+                  ],
+                  "optionsEndPoint": {
+                    "url": "/agentFactory/v1/tools/mcp/sources/selection"
+                  },
+                  "optionsToDisplayDependingOnValue": null
+                },
+                "componentType": "selectSingle",
+                "display": true,
+                "displayCondition": null,
+                "inputTypes": null,
+                "required": false,
+                "value": 1,
+                "valueType": "str"
+              },
+              "tool_timeout": {
+                "componentProps": {
+                  "label": "Timeout (seconds)",
+                  "max": null,
+                  "min": 1,
+                  "onlyIntegers": true
+                },
+                "componentType": "inputNumber",
+                "display": true,
+                "displayCondition": null,
+                "dynamic": false,
+                "inputTypes": null,
+                "required": true,
+                "value": 45,
+                "valueType": "int"
+              }
+            },
+            "title": "MCP server",
+            "type": "mcpServer"
+          },
+          "dragging": false,
+          "id": "node-1780588997344-c8aa2221-fa30-4dab-b027-79535c375b86",
+          "measured": {
+            "height": 402,
+            "width": 284
+          },
+          "position": {
+            "x": 2928.6929195352063,
+            "y": 489.09972286881316
           },
           "selected": false,
           "type": "flowGenericNode"
@@ -1982,14 +2318,14 @@
             "type": "conditionComponent"
           },
           "dragging": false,
-          "id": "node-1780390070403-0bf5401a-6dbd-41e5-b738-4457f86b2b6c",
+          "id": "node-1780589040732-a189ff15-fd3e-4047-bd04-dfe4627284d3",
           "measured": {
-            "height": 662,
+            "height": 650,
             "width": 284
           },
           "position": {
-            "x": 2357.4620629901497,
-            "y": 477.13772424383933
+            "x": 3611.221654620631,
+            "y": 867.0934730960356
           },
           "selected": false,
           "type": "flowGenericNode"
@@ -2013,49 +2349,60 @@
             "passInlineData": false,
             "template": {
               "message": {
+                "aggregationMode": "replace",
                 "componentProps": {
                   "connectionsAllowed": 1,
                   "inlineValue": false,
                   "label": "Message"
                 },
                 "componentType": "label",
+                "connectionsAllowed": 1,
+                "deliveryMode": "dataflow",
                 "display": true,
                 "displayCondition": null,
                 "inputTypes": [
                   "message"
                 ],
+                "normalizeSingleton": false,
                 "required": false,
-                "value": [],
-                "valueType": "list"
+                "value": "",
+                "valueShape": "scalar",
+                "valueType": "str"
               }
             },
             "title": "Chat output",
             "type": "chatOutputComponent"
           },
           "dragging": false,
-          "id": "node-1780390088330-ef36f945-9140-4e71-9e26-1e857d21c06b",
+          "id": "node-1780589156629-a0c4b611-5c25-4218-b661-16dcf59e9300",
           "measured": {
             "height": 185,
             "width": 214
           },
           "position": {
-            "x": 475.7645964391321,
-            "y": 1660.799465234358
+            "x": 3945.050067123795,
+            "y": 1249.9996914727838
           },
           "selected": false,
           "type": "flowGenericNode"
         },
         {
           "data": {
-            "description": "Send message to chat.",
+            "description": "Create a prompt template with dynamic variables.",
+            "dynamicFields": {
+              "prompt": [
+                "findings",
+                "context"
+              ]
+            },
             "fieldOrder": [
-              "message"
+              "prompt"
             ],
-            "icon": "message-square-share",
+            "icon": "terminal",
             "outputs": [
               {
-                "id": "output_message",
-                "label": "Message",
+                "id": "output",
+                "label": "Prompt message",
                 "outputTypes": [
                   "message"
                 ]
@@ -2063,384 +2410,144 @@
             ],
             "passInlineData": false,
             "template": {
-              "message": {
+              "context": {
                 "componentProps": {
                   "connectionsAllowed": 1,
-                  "inlineValue": false,
-                  "label": "Message"
+                  "label": "context"
                 },
                 "componentType": "label",
                 "display": true,
-                "displayCondition": null,
+                "dynamic": true,
                 "inputTypes": [
                   "message"
                 ],
                 "required": false,
                 "value": [],
-                "valueType": "list"
-              }
-            },
-            "title": "Chat output",
-            "type": "chatOutputComponent"
-          },
-          "dragging": false,
-          "id": "node-1780390091598-f565667f-d162-4a3c-9ae7-dc30fa7a7d9b",
-          "measured": {
-            "height": 185,
-            "width": 214
-          },
-          "position": {
-            "x": 1573.1491443513316,
-            "y": 1625.6214606047272
-          },
-          "selected": false,
-          "type": "flowGenericNode"
-        },
-        {
-          "data": {
-            "description": "Send message to chat.",
-            "fieldOrder": [
-              "message"
-            ],
-            "icon": "message-square-share",
-            "outputs": [
-              {
-                "id": "output_message",
-                "label": "Message",
-                "outputTypes": [
-                  "message"
-                ]
-              }
-            ],
-            "passInlineData": false,
-            "template": {
-              "message": {
-                "componentProps": {
-                  "connectionsAllowed": 1,
-                  "inlineValue": false,
-                  "label": "Message"
-                },
-                "componentType": "label",
-                "display": true,
-                "displayCondition": null,
-                "inputTypes": [
-                  "message"
-                ],
-                "required": false,
-                "value": [],
-                "valueType": "list"
-              }
-            },
-            "title": "Chat output",
-            "type": "chatOutputComponent"
-          },
-          "dragging": false,
-          "id": "node-1780390094738-42d34306-c8a4-4909-8813-e8a15b995b43",
-          "measured": {
-            "height": 185,
-            "width": 214
-          },
-          "position": {
-            "x": 2790.345207684226,
-            "y": 1139.9352580273876
-          },
-          "selected": false,
-          "type": "flowGenericNode"
-        },
-        {
-          "data": {
-            "description": "Send message to chat.",
-            "fieldOrder": [
-              "message"
-            ],
-            "icon": "message-square-share",
-            "outputs": [
-              {
-                "id": "output_message",
-                "label": "Message",
-                "outputTypes": [
-                  "message"
-                ]
-              }
-            ],
-            "passInlineData": false,
-            "template": {
-              "message": {
-                "componentProps": {
-                  "connectionsAllowed": 1,
-                  "inlineValue": false,
-                  "label": "Message"
-                },
-                "componentType": "label",
-                "display": true,
-                "displayCondition": null,
-                "inputTypes": [
-                  "message"
-                ],
-                "required": false,
-                "value": [],
-                "valueType": "list"
-              }
-            },
-            "title": "Chat output",
-            "type": "chatOutputComponent"
-          },
-          "dragging": false,
-          "id": "node-1780390097842-25962960-8d68-4b40-9923-41e479c96d45",
-          "measured": {
-            "height": 185,
-            "width": 214
-          },
-          "position": {
-            "x": 3490.8327869283066,
-            "y": 579.7901224254181
-          },
-          "selected": false,
-          "type": "flowGenericNode"
-        },
-        {
-          "data": {
-            "description": "Connect to the given MCP server URL and retrieve tools for use with agents.",
-            "fieldOrder": [
-              "serverSource",
-              "tool_timeout"
-            ],
-            "icon": "server",
-            "outputs": [
-              {
-                "id": "tools",
-                "label": "Tools",
-                "outputTypes": [
-                  "tool"
-                ]
-              }
-            ],
-            "passInlineData": true,
-            "template": {
-              "serverSource": {
-                "componentProps": {
-                  "dependsOnValueKeys": null,
-                  "itemText": "label",
-                  "itemValue": "value",
-                  "label": "MCP server",
-                  "options": null,
-                  "optionsEndPoint": {
-                    "url": "/agentFactory/v1/tools/mcp/sources/selection"
-                  },
-                  "optionsToDisplayDependingOnValue": null
-                },
-                "componentType": "selectSingle",
-                "display": true,
-                "displayCondition": null,
-                "inputTypes": null,
-                "required": false,
-                "value": 4,
                 "valueType": "str"
               },
-              "tool_timeout": {
+              "findings": {
                 "componentProps": {
-                  "label": "Timeout (seconds)",
-                  "max": null,
-                  "min": 1,
-                  "onlyIntegers": true
+                  "connectionsAllowed": 1,
+                  "label": "findings"
                 },
-                "componentType": "inputNumber",
+                "componentType": "label",
+                "display": true,
+                "dynamic": true,
+                "inputTypes": [
+                  "message"
+                ],
+                "required": false,
+                "value": [],
+                "valueType": "str"
+              },
+              "prompt": {
+                "componentProps": {
+                  "label": "Template",
+                  "placeholder": ""
+                },
+                "componentType": "textAreaFormat",
+                "required": true,
+                "value": "Decide the recommendation tier and write the HITL task.\nCustomer context (AUTHORITATIVE \u2014 application_id lives here): {{context}}\nFindings (EVIDENCE + ELIGIBILITY): {{findings}}",
+                "valueType": "str"
+              }
+            },
+            "title": "Prompt",
+            "type": "promptComponent"
+          },
+          "dragging": false,
+          "id": "node-1780589180923-f81a3ffe-61d3-426b-a244-6c7abf942076",
+          "measured": {
+            "height": 431,
+            "width": 274
+          },
+          "position": {
+            "x": 4315.360437965073,
+            "y": 1365.567857069498
+          },
+          "selected": false,
+          "type": "flowGenericNode"
+        },
+        {
+          "data": {
+            "description": "Select from one of your configured LLMs an interact with it as an agent.",
+            "fieldOrder": [
+              "llmToUse",
+              "tools",
+              "subAgents",
+              "custom_instruction",
+              "agent_description",
+              "prompt",
+              "temperature"
+            ],
+            "icon": "bot",
+            "outputs": [
+              {
+                "id": "tool_output",
+                "label": "Message",
+                "outputTypes": [
+                  "message"
+                ]
+              },
+              {
+                "id": "agent",
+                "label": "Agent",
+                "outputTypes": [
+                  "agent"
+                ]
+              }
+            ],
+            "passInlineData": false,
+            "template": {
+              "agent_description": {
+                "componentProps": {
+                  "icon": null,
+                  "iconTitle": null,
+                  "label": "Agent description",
+                  "placeholder": null
+                },
+                "componentType": "inputText",
                 "display": true,
                 "displayCondition": null,
                 "dynamic": false,
-                "inputTypes": null,
-                "required": true,
-                "value": 45,
-                "valueType": "int"
-              }
-            },
-            "title": "MCP server",
-            "type": "mcpServer"
-          },
-          "dragging": false,
-          "id": "node-1780390228721-5e53bfda-4f99-4a27-ba62-0e57bb429aa2",
-          "measured": {
-            "height": 331,
-            "width": 284
-          },
-          "position": {
-            "x": -997.2215188059604,
-            "y": 48.998528092300944
-          },
-          "selected": false,
-          "type": "flowGenericNode"
-        },
-        {
-          "data": {
-            "description": "Connect to the given MCP server URL and retrieve tools for use with agents.",
-            "fieldOrder": [
-              "serverSource",
-              "tool_timeout"
-            ],
-            "icon": "server",
-            "outputs": [
-              {
-                "id": "tools",
-                "label": "Tools",
-                "outputTypes": [
-                  "tool"
-                ]
-              }
-            ],
-            "passInlineData": true,
-            "template": {
-              "serverSource": {
-                "componentProps": {
-                  "dependsOnValueKeys": null,
-                  "itemText": "label",
-                  "itemValue": "value",
-                  "label": "MCP server",
-                  "options": null,
-                  "optionsEndPoint": {
-                    "url": "/agentFactory/v1/tools/mcp/sources/selection"
-                  },
-                  "optionsToDisplayDependingOnValue": null
-                },
-                "componentType": "selectSingle",
-                "display": true,
-                "displayCondition": null,
-                "inputTypes": null,
+                "inputTypes": [
+                  "message"
+                ],
                 "required": false,
-                "value": 5,
+                "value": "Recommendation",
                 "valueType": "str"
               },
-              "tool_timeout": {
-                "componentProps": {
-                  "label": "Timeout (seconds)",
-                  "max": null,
-                  "min": 1,
-                  "onlyIntegers": true
-                },
-                "componentType": "inputNumber",
-                "display": true,
-                "displayCondition": null,
-                "dynamic": false,
-                "inputTypes": null,
-                "required": true,
-                "value": 45,
-                "valueType": "int"
-              }
-            },
-            "title": "MCP server",
-            "type": "mcpServer"
-          },
-          "dragging": false,
-          "id": "node-1780390240682-4f442d6e-47f3-439b-80de-df20476d4297",
-          "measured": {
-            "height": 331,
-            "width": 284
-          },
-          "position": {
-            "x": -973.6493473588866,
-            "y": 805.2069042760415
-          },
-          "selected": false,
-          "type": "flowGenericNode"
-        },
-        {
-          "data": {
-            "description": "Connect to the given MCP server URL and retrieve tools for use with agents.",
-            "fieldOrder": [
-              "serverSource",
-              "tool_timeout"
-            ],
-            "icon": "server",
-            "outputs": [
-              {
-                "id": "tools",
-                "label": "Tools",
-                "outputTypes": [
-                  "tool"
-                ]
-              }
-            ],
-            "passInlineData": true,
-            "template": {
-              "serverSource": {
+              "custom_instruction": {
                 "componentProps": {
                   "dependsOnValueKeys": null,
-                  "itemText": "label",
-                  "itemValue": "value",
-                  "label": "MCP server",
-                  "options": null,
-                  "optionsEndPoint": {
-                    "url": "/agentFactory/v1/tools/mcp/sources/selection"
-                  },
-                  "optionsToDisplayDependingOnValue": null
+                  "hideWhenOutputConnected": null,
+                  "label": "Custom instructions",
+                  "placeholder": "",
+                  "valueEndPoint": null
                 },
-                "componentType": "selectSingle",
+                "componentType": "textArea",
                 "display": true,
                 "displayCondition": null,
-                "inputTypes": null,
-                "required": false,
-                "value": 1,
+                "inputTypes": [
+                  "message"
+                ],
+                "required": true,
+                "value": "The application context is provided as {{context}} \u2014 read it; NEVER call get_context.\nTake the authoritative application_id from context.application.id (never from the\nFindings text alone; if they disagree, trust context).\nFrom the Findings extract: verify_employer.registered, verify_employer.trading_status,\nevaluate_eligibility.allow / deny[] / warn[], required_documents.\n\nDecide the tier:\n  DECLINE if deny[] non-empty OR verify_employer.registered is false.\n  REVIEW  if warn[] non-empty OR verify_employer.trading_status is \"dormant\".\n  APPROVE otherwise.\n\nMap the signals to reason codes (zero or more, from this fixed set ONLY):\n  DTI_TOO_HIGH \u00b7 PTI_TOO_HIGH \u00b7 SCORE_BELOW_FLOOR \u00b7 SCORE_CAUTION \u00b7 AGE_BELOW_MIN\n  \u00b7 EMPLOYER_UNVERIFIED \u00b7 EMPLOYER_DORMANT \u00b7 DOCS_REQUIRED \u00b7 AMOUNT_EXCEEDS_POLICY\n\nThen call create_hitl_task EXACTLY ONCE with:\n  application_id = context.application.id (never invent one; if missing, STOP).\n  recommendation = \"APPROVE\" | \"REVIEW\" | \"DECLINE\"\n  reasoning      = one sentence quoting the specific deny[]/warn[] message or\n                   employer status; if a list is empty, say so.\n  explore_hints  = JSON-string array of follow-up checks \u2014 REVIEW only; null otherwise.\n  evidence       = JSON string carrying the reason codes + the EVIDENCE/ELIGIBILITY values.\n  Do NOT supply agent_run_id (server-generated).\n\nAfter create_hitl_task returns, your final assistant message is the marker plus the\nONE customer-facing sentence for the tier \u2014 nothing else:\n  [[DECISION tier=<APPROVE|REVIEW|DECLINE> reasons=<reason-code JSON array>]]\n  APPROVE -> \"Looks strong \u2014 it's with our team for final approval; we'll confirm shortly.\"\n  REVIEW  -> \"We'd like a closer look at <affordability | your employment details>; a reviewer will follow up.\"\n  DECLINE -> \"Before we can proceed, a specialist needs to review this in detail \u2014 we'll be in touch.\"\n\nREVIEW reason\u2192phrase: DTI/PTI_* -> \"affordability\"; EMPLOYER_* -> \"your employment\ndetails\"; DOCS_REQUIRED -> \"have a recent payslip ready\"; SCORE_* -> do not surface.\nDECLINE states NO adverse reason. Never mention a number, score, tier, id, token,\nDTI/PTI, AML/KYC, fair lending, or any threshold in the customer sentence.",
                 "valueType": "str"
               },
-              "tool_timeout": {
-                "componentProps": {
-                  "label": "Timeout (seconds)",
-                  "max": null,
-                  "min": 1,
-                  "onlyIntegers": true
-                },
-                "componentType": "inputNumber",
-                "display": true,
-                "displayCondition": null,
-                "dynamic": false,
-                "inputTypes": null,
-                "required": true,
-                "value": 45,
-                "valueType": "int"
-              }
-            },
-            "title": "MCP server",
-            "type": "mcpServer"
-          },
-          "dragging": false,
-          "id": "node-1780390504234-066c008b-d12c-4403-96ec-f8b2ac7fb070",
-          "measured": {
-            "height": 331,
-            "width": 284
-          },
-          "position": {
-            "x": 358.56872411715807,
-            "y": -232.9571671659196
-          },
-          "selected": false,
-          "type": "flowGenericNode"
-        },
-        {
-          "data": {
-            "description": "Transforms a set of REST APIs into a toolset for the agent.",
-            "fieldOrder": [
-              "src_select"
-            ],
-            "icon": "tool-case",
-            "outputs": [
-              {
-                "id": "tools",
-                "label": "Tools",
-                "outputTypes": [
-                  "tool"
-                ]
-              }
-            ],
-            "passInlineData": true,
-            "template": {
-              "src_select": {
+              "llmToUse": {
                 "componentProps": {
                   "dependsOnValueKeys": null,
                   "itemText": "label",
                   "itemValue": "value",
-                  "label": "Source selection",
-                  "options": null,
+                  "label": "Select LLM to use",
+                  "options": [
+                    {
+                      "label": "gen-model (vllm)",
+                      "value": "gen-model"
+                    }
+                  ],
                   "optionsEndPoint": {
-                    "url": "/agentFactory/v1/tools/getSourcesSelection"
+                    "url": "/agentFactory/v1/agentBuilderGetRegisteredLLMS"
                   },
                   "optionsToDisplayDependingOnValue": null
                 },
@@ -2449,22 +2556,97 @@
                 "displayCondition": null,
                 "inputTypes": null,
                 "required": false,
-                "value": 1,
+                "value": "gen-model",
                 "valueType": "str"
+              },
+              "prompt": {
+                "componentProps": {
+                  "dependsOnValueKeys": null,
+                  "hideWhenOutputConnected": null,
+                  "label": "Prompt",
+                  "placeholder": "",
+                  "valueEndPoint": null
+                },
+                "componentType": "textArea",
+                "display": true,
+                "displayCondition": null,
+                "inputTypes": [
+                  "message"
+                ],
+                "required": true,
+                "value": "",
+                "valueType": "str"
+              },
+              "subAgents": {
+                "aggregationMode": "list",
+                "componentProps": {
+                  "connectionsAllowed": 10,
+                  "inlineValue": true,
+                  "label": "Sub-agents"
+                },
+                "componentType": "label",
+                "connectionsAllowed": 10,
+                "deliveryMode": "inline",
+                "display": true,
+                "displayCondition": null,
+                "inputTypes": [
+                  "agent"
+                ],
+                "normalizeSingleton": true,
+                "required": false,
+                "value": [],
+                "valueShape": "list",
+                "valueType": "list"
+              },
+              "temperature": {
+                "componentProps": {
+                  "label": "Temperature",
+                  "max": 2,
+                  "min": 0,
+                  "step": 0.01
+                },
+                "componentType": "slider",
+                "display": true,
+                "required": true,
+                "value": 0.01,
+                "valueType": "number"
+              },
+              "tools": {
+                "aggregationMode": "list",
+                "componentProps": {
+                  "connectionsAllowed": 10,
+                  "inlineValue": true,
+                  "label": "Tools"
+                },
+                "componentType": "label",
+                "connectionsAllowed": 10,
+                "deliveryMode": "inline",
+                "display": true,
+                "displayCondition": null,
+                "inputTypes": [
+                  "tool"
+                ],
+                "normalizeSingleton": true,
+                "required": false,
+                "value": [
+                  "node-1780589258221-3b69abe8-4d3d-466f-9be8-e07fec443873"
+                ],
+                "valueShape": "list",
+                "valueType": "list"
               }
             },
-            "title": "REST API tools",
-            "type": "restAPITools"
+            "title": "Agent",
+            "type": "agentStep"
           },
           "dragging": false,
-          "id": "node-1780390537727-fcc20e26-600c-4484-9159-823a855c40b4",
+          "id": "node-1780589223402-bbd5ff02-a076-41da-99d9-3ef0f70ad7a1",
           "measured": {
-            "height": 254,
+            "height": 795,
             "width": 284
           },
           "position": {
-            "x": 295.8833669925598,
-            "y": 416.7250756890321
+            "x": 4644.945069223612,
+            "y": 1122.1382290067122
           },
           "selected": false,
           "type": "flowGenericNode"
@@ -2474,7 +2656,8 @@
             "description": "Connect to the given MCP server URL and retrieve tools for use with agents.",
             "fieldOrder": [
               "serverSource",
-              "tool_timeout"
+              "tool_timeout",
+              "allowedTools"
             ],
             "icon": "server",
             "outputs": [
@@ -2488,13 +2671,47 @@
             ],
             "passInlineData": true,
             "template": {
+              "allowedTools": {
+                "componentProps": {
+                  "dependsOnValueKeys": [
+                    "serverSource"
+                  ],
+                  "itemText": "label",
+                  "itemValue": "value",
+                  "label": "Allowed tools (optional, default: all)",
+                  "options": [
+                    {
+                      "label": "create_hitl_task",
+                      "value": "create_hitl_task"
+                    }
+                  ],
+                  "optionsEndPoint": {
+                    "url": "/agentFactory/v1/agentBuilder/mcp/tools",
+                    "useDependsOnValuesKeysAsUrlParams": true
+                  },
+                  "optionsToDisplayDependingOnValue": null
+                },
+                "componentType": "selectMultiple",
+                "display": true,
+                "inputTypes": null,
+                "required": false,
+                "value": [
+                  "create_hitl_task"
+                ],
+                "valueType": "str"
+              },
               "serverSource": {
                 "componentProps": {
                   "dependsOnValueKeys": null,
                   "itemText": "label",
                   "itemValue": "value",
                   "label": "MCP server",
-                  "options": null,
+                  "options": [
+                    {
+                      "label": "hitl-mcp",
+                      "value": 3
+                    }
+                  ],
                   "optionsEndPoint": {
                     "url": "/agentFactory/v1/tools/mcp/sources/selection"
                   },
@@ -2529,17 +2746,830 @@
             "type": "mcpServer"
           },
           "dragging": false,
-          "id": "node-1780390778968-cf7467f2-acce-4d5a-8b82-6909b8af319b",
+          "id": "node-1780589258221-3b69abe8-4d3d-466f-9be8-e07fec443873",
           "measured": {
-            "height": 331,
+            "height": 402,
             "width": 284
           },
           "position": {
-            "x": 2602.8465305434993,
-            "y": -106.75989981117107
+            "x": 4315.042003087738,
+            "y": 900.2486587846206
           },
           "selected": false,
           "type": "flowGenericNode"
+        },
+        {
+          "data": {
+            "description": "Send message to chat.",
+            "fieldOrder": [
+              "message"
+            ],
+            "icon": "message-square-share",
+            "outputs": [
+              {
+                "id": "output_message",
+                "label": "Message",
+                "outputTypes": [
+                  "message"
+                ]
+              }
+            ],
+            "passInlineData": false,
+            "template": {
+              "message": {
+                "aggregationMode": "replace",
+                "componentProps": {
+                  "connectionsAllowed": 1,
+                  "inlineValue": false,
+                  "label": "Message"
+                },
+                "componentType": "label",
+                "connectionsAllowed": 1,
+                "deliveryMode": "dataflow",
+                "display": true,
+                "displayCondition": null,
+                "inputTypes": [
+                  "message"
+                ],
+                "normalizeSingleton": false,
+                "required": false,
+                "value": "",
+                "valueShape": "scalar",
+                "valueType": "str"
+              }
+            },
+            "title": "Chat output",
+            "type": "chatOutputComponent"
+          },
+          "dragging": false,
+          "id": "node-1780589306390-ba4cdabf-de90-4592-9f34-ef122a15f3fa",
+          "measured": {
+            "height": 185,
+            "width": 214
+          },
+          "position": {
+            "x": 4984.161476146898,
+            "y": 1656.2697969329458
+          },
+          "selected": false,
+          "type": "flowGenericNode"
+        },
+        {
+          "data": {
+            "description": "Convert between Message (string), JSON (dict/list), and DataFrame (list[dict]).",
+            "fieldOrder": [
+              "input_data"
+            ],
+            "icon": "repeat",
+            "outputs": [
+              {
+                "id": "message",
+                "label": "Message",
+                "outputTypes": [
+                  "message"
+                ]
+              },
+              {
+                "id": "json",
+                "label": "JSON",
+                "outputTypes": [
+                  "json"
+                ]
+              },
+              {
+                "id": "dataFrame",
+                "label": "DataFrame",
+                "outputTypes": [
+                  "dataFrame"
+                ]
+              }
+            ],
+            "passInlineData": false,
+            "template": {
+              "input_data": {
+                "componentProps": {
+                  "icon": null,
+                  "iconTitle": "Accepts Message, JSON, or DataFrame.",
+                  "label": "Input",
+                  "placeholder": null
+                },
+                "componentType": "inputText",
+                "display": true,
+                "displayCondition": null,
+                "dynamic": false,
+                "inputTypes": [
+                  "message",
+                  "json",
+                  "dataFrame"
+                ],
+                "required": false,
+                "value": "",
+                "valueType": "str"
+              }
+            },
+            "title": "Type Convert",
+            "type": "typeConverter"
+          },
+          "dragging": false,
+          "id": "node-1780590156738-b8fb3356-5be3-4d16-a0fb-9f6489805c40",
+          "measured": {
+            "height": 340,
+            "width": 284
+          },
+          "position": {
+            "x": -1271.9488478818782,
+            "y": 1254.1109975572915
+          },
+          "selected": false,
+          "type": "flowGenericNode"
+        },
+        {
+          "data": {
+            "description": "Deterministically invoke a selected MCP tool with JSON input and return its message response.",
+            "fieldOrder": [
+              "serverSource",
+              "toolName",
+              "viewToolDescription",
+              "toolInputJson",
+              "tool_timeout"
+            ],
+            "icon": "wrench",
+            "outputs": [
+              {
+                "id": "message",
+                "label": "Message",
+                "outputTypes": [
+                  "message"
+                ]
+              }
+            ],
+            "passInlineData": false,
+            "template": {
+              "serverSource": {
+                "componentProps": {
+                  "dependsOnValueKeys": null,
+                  "itemText": "label",
+                  "itemValue": "value",
+                  "label": "MCP server",
+                  "options": [
+                    {
+                      "label": "banking-mcp",
+                      "value": 4
+                    }
+                  ],
+                  "optionsEndPoint": {
+                    "url": "/agentFactory/v1/tools/mcp/sources/selection"
+                  },
+                  "optionsToDisplayDependingOnValue": null
+                },
+                "componentType": "selectSingle",
+                "display": true,
+                "displayCondition": null,
+                "inputTypes": null,
+                "required": true,
+                "value": 4,
+                "valueType": "str"
+              },
+              "toolInputJson": {
+                "componentProps": {
+                  "dependsOnValueKeys": [
+                    "serverSource",
+                    "toolName",
+                    "tool_timeout"
+                  ],
+                  "hideWhenOutputConnected": null,
+                  "label": "Tool input JSON",
+                  "placeholder": "{\"key\":\"value\"}",
+                  "valueEndPoint": {
+                    "fetchOptions": {
+                      "cache": "no-store"
+                    },
+                    "url": "/agentFactory/v1/agentBuilder/mcp/tool-input-prefill",
+                    "useDependsOnValuesKeysAsUrlParams": true
+                  }
+                },
+                "componentType": "textArea",
+                "display": true,
+                "displayCondition": null,
+                "inputTypes": [
+                  "json"
+                ],
+                "required": true,
+                "value": "",
+                "valueType": "str"
+              },
+              "toolName": {
+                "componentProps": {
+                  "dependsOnValueKeys": [
+                    "serverSource",
+                    "tool_timeout"
+                  ],
+                  "itemText": "label",
+                  "itemValue": "value",
+                  "label": "MCP tool",
+                  "options": [
+                    {
+                      "label": "get_context",
+                      "value": "get_context"
+                    }
+                  ],
+                  "optionsEndPoint": {
+                    "fetchOptions": {
+                      "cache": "no-store"
+                    },
+                    "url": "/agentFactory/v1/agentBuilder/mcp/tools",
+                    "useDependsOnValuesKeysAsUrlParams": true
+                  },
+                  "optionsToDisplayDependingOnValue": null
+                },
+                "componentType": "selectSingle",
+                "display": true,
+                "displayCondition": null,
+                "inputTypes": null,
+                "required": true,
+                "value": "get_context",
+                "valueType": "str"
+              },
+              "tool_timeout": {
+                "componentProps": {
+                  "label": "Timeout (seconds)",
+                  "max": null,
+                  "min": 1,
+                  "onlyIntegers": true
+                },
+                "componentType": "inputNumber",
+                "display": true,
+                "displayCondition": null,
+                "dynamic": false,
+                "inputTypes": null,
+                "required": true,
+                "value": 45,
+                "valueType": "int"
+              },
+              "viewToolDescription": {
+                "componentProps": {
+                  "action": "openOverlayPopout",
+                  "chroming": "borderless",
+                  "dialogId": "select-ai-tool-editor-dialog",
+                  "display": "icons",
+                  "icon": "eye",
+                  "kind": "popout",
+                  "label": "View tool description",
+                  "payload": {
+                    "missingMessage": "Select an MCP server and tool first.",
+                    "mode": "view",
+                    "requiresTemplateKeys": [
+                      "serverSource",
+                      "toolName"
+                    ],
+                    "viewer": {
+                      "api": {
+                        "method": "GET",
+                        "queryMap": {
+                          "serverSource": "serverSource",
+                          "toolName": "toolName",
+                          "tool_timeout": "tool_timeout"
+                        },
+                        "url": "/agentFactory/v1/agentBuilder/mcp/tool-description"
+                      },
+                      "pick": "data",
+                      "title": "MCP Tool Description"
+                    }
+                  },
+                  "route": "/home/agentBuilder/selectAIToolEditor",
+                  "variant": "icon"
+                },
+                "componentType": "iconPopoutButton",
+                "display": true,
+                "displayCondition": null,
+                "required": false,
+                "value": "",
+                "valueType": "str"
+              }
+            },
+            "title": "Deterministic MCP tool",
+            "type": "mcpServerToolRunner"
+          },
+          "dragging": false,
+          "id": "node-1780590169578-392fd97d-7474-4c7f-aaa4-2733435f7fb9",
+          "measured": {
+            "height": 577,
+            "width": 284
+          },
+          "position": {
+            "x": -929.6175387873681,
+            "y": 1205.9082562534732
+          },
+          "selected": false,
+          "type": "flowGenericNode"
+        },
+        {
+          "data": {
+            "description": "Add a simple if/else decision to your flow. It compares Text Input with Match Text (equals, contains, etc.). If the condition is true, the True output sends its message forward; if false, the False output does. Only one path runs per decision.",
+            "fieldOrder": [
+              "text_input",
+              "match_text",
+              "operator",
+              "true_message",
+              "false_message"
+            ],
+            "icon": "git-branch",
+            "outputs": [
+              {
+                "id": "true_output",
+                "label": "True",
+                "outputTypes": [
+                  "message"
+                ]
+              },
+              {
+                "id": "false_output",
+                "label": "False",
+                "outputTypes": [
+                  "message"
+                ]
+              }
+            ],
+            "passInlineData": false,
+            "template": {
+              "false_message": {
+                "componentProps": {
+                  "icon": null,
+                  "iconTitle": null,
+                  "label": "False Message",
+                  "placeholder": null
+                },
+                "componentType": "inputText",
+                "display": true,
+                "displayCondition": null,
+                "dynamic": false,
+                "inputTypes": [
+                  "message"
+                ],
+                "required": false,
+                "value": "Sorry \u2014 we couldn't process your application right now. Please try again in a moment.",
+                "valueType": "str"
+              },
+              "match_text": {
+                "componentProps": {
+                  "icon": null,
+                  "iconTitle": null,
+                  "label": "Match Text",
+                  "placeholder": null
+                },
+                "componentType": "inputText",
+                "display": true,
+                "displayCondition": null,
+                "dynamic": false,
+                "inputTypes": [
+                  "message"
+                ],
+                "required": false,
+                "value": "\"customer\"\\s*:",
+                "valueType": "str"
+              },
+              "operator": {
+                "componentProps": {
+                  "dependsOnValueKeys": null,
+                  "itemText": "label",
+                  "itemValue": "value",
+                  "label": "Operator",
+                  "options": [
+                    {
+                      "label": "Equals",
+                      "value": "equals"
+                    },
+                    {
+                      "label": "Not equals",
+                      "value": "not_equals"
+                    },
+                    {
+                      "label": "Contains",
+                      "value": "contains"
+                    },
+                    {
+                      "label": "Not contains",
+                      "value": "not_contains"
+                    },
+                    {
+                      "label": "Greater than",
+                      "value": "greater_than"
+                    },
+                    {
+                      "label": "Less than",
+                      "value": "less_than"
+                    },
+                    {
+                      "label": "Regex match",
+                      "value": "regex_match"
+                    }
+                  ],
+                  "optionsEndPoint": null,
+                  "optionsToDisplayDependingOnValue": null
+                },
+                "componentType": "selectSingle",
+                "display": true,
+                "displayCondition": null,
+                "inputTypes": null,
+                "required": false,
+                "value": "regex_match",
+                "valueType": "str"
+              },
+              "text_input": {
+                "componentProps": {
+                  "icon": null,
+                  "iconTitle": null,
+                  "label": "Text Input",
+                  "placeholder": null
+                },
+                "componentType": "inputText",
+                "display": true,
+                "displayCondition": null,
+                "dynamic": false,
+                "inputTypes": [
+                  "message"
+                ],
+                "required": false,
+                "value": "",
+                "valueType": "str"
+              },
+              "true_message": {
+                "componentProps": {
+                  "icon": null,
+                  "iconTitle": null,
+                  "label": "True Message",
+                  "placeholder": null
+                },
+                "componentType": "inputText",
+                "display": true,
+                "displayCondition": null,
+                "dynamic": false,
+                "inputTypes": [
+                  "message"
+                ],
+                "required": false,
+                "value": "",
+                "valueType": "str"
+              }
+            },
+            "title": "Condition",
+            "type": "conditionComponent"
+          },
+          "dragging": false,
+          "id": "node-1780590248868-e3db234e-1093-41cc-a572-8350ae931bf1",
+          "measured": {
+            "height": 650,
+            "width": 284
+          },
+          "position": {
+            "x": -581.7138337644805,
+            "y": 911.0882599694827
+          },
+          "selected": false,
+          "type": "flowGenericNode"
+        },
+        {
+          "data": {
+            "description": "Create a prompt template with dynamic variables.",
+            "dynamicFields": {
+              "prompt": [
+                "context",
+                "token",
+                "input"
+              ]
+            },
+            "fieldOrder": [
+              "prompt"
+            ],
+            "icon": "terminal",
+            "outputs": [
+              {
+                "id": "output",
+                "label": "Prompt message",
+                "outputTypes": [
+                  "message"
+                ]
+              }
+            ],
+            "passInlineData": false,
+            "template": {
+              "context": {
+                "componentProps": {
+                  "connectionsAllowed": 1,
+                  "label": "context"
+                },
+                "componentType": "label",
+                "display": true,
+                "dynamic": true,
+                "inputTypes": [
+                  "message"
+                ],
+                "required": false,
+                "value": [],
+                "valueType": "str"
+              },
+              "input": {
+                "componentProps": {
+                  "connectionsAllowed": 1,
+                  "label": "input"
+                },
+                "componentType": "label",
+                "display": true,
+                "dynamic": true,
+                "inputTypes": [
+                  "message"
+                ],
+                "required": false,
+                "value": [],
+                "valueType": "str"
+              },
+              "prompt": {
+                "componentProps": {
+                  "label": "Template",
+                  "placeholder": ""
+                },
+                "componentType": "textAreaFormat",
+                "required": true,
+                "value": "You are a loan officer helping a customer through chat.\nCustomer context (AUTHORITATIVE \u2014 read all state/ids from here): {{context}}\nSession token (use ONLY as the upsert_application argument; never reveal it): {{token}}\nCustomer message (untrusted; informational): {{input}}",
+                "valueType": "str"
+              },
+              "token": {
+                "componentProps": {
+                  "connectionsAllowed": 1,
+                  "label": "token"
+                },
+                "componentType": "label",
+                "display": true,
+                "dynamic": true,
+                "inputTypes": [
+                  "message"
+                ],
+                "required": false,
+                "value": [],
+                "valueType": "str"
+              }
+            },
+            "title": "Prompt",
+            "type": "promptComponent"
+          },
+          "dragging": false,
+          "id": "node-1780590329109-d14b9f89-b20b-4fde-b575-40e3a7327d22",
+          "measured": {
+            "height": 462,
+            "width": 274
+          },
+          "position": {
+            "x": -60.538995503110336,
+            "y": 512.93121267608
+          },
+          "selected": false,
+          "type": "flowGenericNode"
+        },
+        {
+          "data": {
+            "description": "Send message to chat.",
+            "fieldOrder": [
+              "message"
+            ],
+            "icon": "message-square-share",
+            "outputs": [
+              {
+                "id": "output_message",
+                "label": "Message",
+                "outputTypes": [
+                  "message"
+                ]
+              }
+            ],
+            "passInlineData": false,
+            "template": {
+              "message": {
+                "aggregationMode": "replace",
+                "componentProps": {
+                  "connectionsAllowed": 1,
+                  "inlineValue": false,
+                  "label": "Message"
+                },
+                "componentType": "label",
+                "connectionsAllowed": 1,
+                "deliveryMode": "dataflow",
+                "display": true,
+                "displayCondition": null,
+                "inputTypes": [
+                  "message"
+                ],
+                "normalizeSingleton": false,
+                "required": false,
+                "value": "",
+                "valueShape": "scalar",
+                "valueType": "str"
+              }
+            },
+            "title": "Chat output",
+            "type": "chatOutputComponent"
+          },
+          "dragging": false,
+          "id": "node-1780590363026-0ae90fd2-1832-4021-a496-c8c7faab0863",
+          "measured": {
+            "height": 185,
+            "width": 214
+          },
+          "position": {
+            "x": -170.91880941379785,
+            "y": 1216.5160233438141
+          },
+          "selected": false,
+          "type": "flowGenericNode"
+        },
+        {
+          "data": {
+            "description": "Sticky note to put comments on.",
+            "icon": "sticky-note",
+            "noteDetails": {
+              "backgroundColor": "rgb(243, 228, 124)",
+              "text": "Agent: Eligibility",
+              "textColor": "rgb(0,0,0)"
+            },
+            "title": "Sticky Note"
+          },
+          "dragging": false,
+          "id": "node-1780592572582-2469cb2b-9ead-41ce-b56b-596f802f2709",
+          "measured": {
+            "height": 55,
+            "width": 213
+          },
+          "position": {
+            "x": 3288.354417718043,
+            "y": 639.4303093866256
+          },
+          "resizing": false,
+          "selected": false,
+          "type": "noteNode"
+        },
+        {
+          "data": {
+            "description": "Sticky note to put comments on.",
+            "icon": "sticky-note",
+            "noteDetails": {
+              "backgroundColor": "",
+              "text": "Agent: Recommendation"
+            },
+            "title": "Sticky Note"
+          },
+          "dragging": false,
+          "id": "node-1780592612095-e024e108-f467-42e8-89b7-6947078e94c4",
+          "measured": {
+            "height": 55,
+            "width": 213
+          },
+          "position": {
+            "x": 4672.716809679646,
+            "y": 1043.840532199576
+          },
+          "selected": false,
+          "type": "noteNode"
+        },
+        {
+          "data": {
+            "description": "Sticky note to put comments on.",
+            "icon": "sticky-note",
+            "noteDetails": {
+              "backgroundColor": "",
+              "text": "Agent: Docs & Employer"
+            },
+            "title": "Sticky Note"
+          },
+          "dragging": false,
+          "id": "node-1780592630876-9909eb43-37ed-4051-9a4b-b275bc914014",
+          "measured": {
+            "height": 55,
+            "width": 213
+          },
+          "position": {
+            "x": 1870.42660606265,
+            "y": 510.1283875258685
+          },
+          "selected": false,
+          "type": "noteNode"
+        },
+        {
+          "data": {
+            "description": "Sticky note to put comments on.",
+            "icon": "sticky-note",
+            "noteDetails": {
+              "backgroundColor": "",
+              "text": "Agent: Concierge"
+            },
+            "title": "Sticky Note"
+          },
+          "dragging": false,
+          "id": "node-1780592649043-c10bb2c9-8486-409c-918e-f98b8218ff0b",
+          "measured": {
+            "height": 55,
+            "width": 213
+          },
+          "position": {
+            "x": 309.76638193477436,
+            "y": 377.2662736407548
+          },
+          "selected": false,
+          "type": "noteNode"
+        },
+        {
+          "data": {
+            "description": "Sticky note to put comments on.",
+            "icon": "sticky-note",
+            "noteDetails": {
+              "backgroundColor": "rgb(149, 205, 250)",
+              "text": "Condition G0",
+              "textColor": "rgb(0,0,0)"
+            },
+            "title": "Sticky Note"
+          },
+          "dragging": false,
+          "id": "node-1780592667841-19760190-9bec-4b69-8304-d9a8b785d5ac",
+          "measured": {
+            "height": 55,
+            "width": 213
+          },
+          "position": {
+            "x": -548.4929471769877,
+            "y": 1572.537197931782
+          },
+          "selected": false,
+          "type": "noteNode"
+        },
+        {
+          "data": {
+            "description": "Sticky note to put comments on.",
+            "icon": "sticky-note",
+            "noteDetails": {
+              "backgroundColor": "rgb(149, 205, 250)",
+              "text": "Condition G1",
+              "textColor": "rgb(0,0,0)"
+            },
+            "title": "Sticky Note"
+          },
+          "dragging": false,
+          "id": "node-1780592687016-2c07c6b2-1f78-4998-8d49-bb5b7c47a5c8",
+          "measured": {
+            "height": 55,
+            "width": 213
+          },
+          "position": {
+            "x": 698.4037571801572,
+            "y": 1489.1433325757455
+          },
+          "selected": false,
+          "type": "noteNode"
+        },
+        {
+          "data": {
+            "description": "Sticky note to put comments on.",
+            "icon": "sticky-note",
+            "noteDetails": {
+              "backgroundColor": "rgb(149, 205, 250)",
+              "text": "Condition G2",
+              "textColor": "rgb(0,0,0)"
+            },
+            "title": "Sticky Note"
+          },
+          "dragging": false,
+          "id": "node-1780592707411-743d043f-4224-4005-a772-bcb0d969eb81",
+          "measured": {
+            "height": 55,
+            "width": 213
+          },
+          "position": {
+            "x": 2237.639463285926,
+            "y": 1383.4756191969052
+          },
+          "selected": false,
+          "type": "noteNode"
+        },
+        {
+          "data": {
+            "description": "Sticky note to put comments on.",
+            "icon": "sticky-note",
+            "noteDetails": {
+              "backgroundColor": "rgb(149, 205, 250)",
+              "text": "Condition G3",
+              "textColor": "rgb(0,0,0)"
+            },
+            "title": "Sticky Note"
+          },
+          "dragging": false,
+          "id": "node-1780592728473-0ceea478-1b47-49af-9398-b74a0107f897",
+          "measured": {
+            "height": 55,
+            "width": 213
+          },
+          "position": {
+            "x": 3650.5863762821973,
+            "y": 1529.0361413230473
+          },
+          "selected": true,
+          "type": "noteNode"
         }
       ]
     },
@@ -2548,7 +3578,7 @@
     "icon": "workflow",
     "name": "CHAT_WORKFLOW",
     "published": 1,
-    "updatedAt": "2026-06-02T09:03:12"
+    "updatedAt": "2026-06-04T17:14:33"
   },
   "errorMessages": [],
   "messages": [],

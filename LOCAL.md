@@ -8,7 +8,7 @@ You walk through five steps:
 2. [Boot the stack (`local up`).](#2-boot-the-stack)
 3. [Install PAF and register the LLM through its UI wizard.](#3-install-paf)
 4. [Register the MCP servers and datasources in PAF.](#4-register-tools-and-datasources)
-5. [Build the `CHAT_WORKFLOW` Agent Builder flow.](#5-build-chat_agent)
+5. [Load the `CHAT_WORKFLOW` flow — import the `.paf` or build it.](#5-load-chat_workflow)
 
 When you're done you have:
 
@@ -184,21 +184,18 @@ Each tool's input schema is auto-derived from the FastMCP type hints in `src/ai/
 
 **Optional — not required by `CHAT_WORKFLOW`.** The origination flow reads the customer's context through `banking-mcp.get_context` (cx_Oracle bind variables, fail-secure), **not** a PAF SQL Query node — so you can skip this registration for the runbook. Register a Database datasource only if you want an ad-hoc **SQL Query node** for experiments: SQL Query nodes only see databases registered as **Database data sources** (they don't reuse PAF's own metadata connection), and they must never carry untrusted input ([`issues/01-sql-query-no-bind-variables.md`](issues/01-sql-query-no-bind-variables.md)).
 
-In PAF: **Data Sources** → **Add new data source** → **Source type: Database**. Fill in:
+In PAF: **Data Sources** → **Add new data source** → **Source type: Database** → **Connection type: Wallet** (the same TCPS wallet you used at install Step 2). Fill in:
 
-| Field        | Value                                               |
-| ------------ | --------------------------------------------------- |
-| Name         | `Banking Application DB`                            |
-| Protocol     | `TCP`                                               |
-| Host         | `oracle-free-26ai` (compose service name)           |
-| Port         | `1521`                                              |
-| Service name | `FREEPDB1`                                          |
-| User         | `REPORTING`                                         |
-| Password     | `DB_PASSWORD` from `.env` (same as `AGENT_FACTORY`) |
+| Field          | Value                                                                              |
+| -------------- | ---------------------------------------------------------------------------------- |
+| Name           | `Banking Application DB`                                                           |
+| Description    | `Read-only REPORTING views for ad-hoc SQL Query nodes` _(this field is mandatory)_ |
+| Wallet file    | drag-and-drop **`./tcps-wallet.zip`** (exported by `local up`, at the repo root)   |
+| Database alias | `freepdb1` (from the wallet's tnsnames — it carries the TCPS host + cert)          |
+| User           | `REPORTING`                                                                        |
+| Password       | `DB_PASSWORD` from `.env` (same as `AGENT_FACTORY`)                                |
 
-`REPORTING` owns the `chat_v_*` and `research_v_*` views and is `SELECT`-only — appropriate for the read-only SQL Query node (per `docs/PAF.md §7.5`, database datasources reject anything other than `SELECT`-like queries). Side-effect writes go through `hitl-mcp`.
-
-**Do not use `localhost`** as the host — same reason as the MCP wrappers: PAF reaches Oracle over the compose network. The PAF installer's Step 2 already proved this hostname works.
+The wallet supplies the TCPS endpoint (`oracle-free-26ai:2484`) and the trusted cert, so you don't type a host/port/protocol — just pick the `freepdb1` alias. `REPORTING` owns the `chat_v_*` and `research_v_*` views and is `SELECT`-only — appropriate for the read-only SQL Query node (per `docs/PAF.md §7.5`, database datasources reject anything other than `SELECT`-like queries). Side-effect writes go through `hitl-mcp`.
 
 After saving, the datasource should report a connected status. It surfaces inside Agent Builder's **SQL Query node** under the **Datasource** dropdown.
 
@@ -241,13 +238,24 @@ curl -s http://localhost:8090/v1/customers | python -m json.tool # find Liam NoA
 
 The trust-boundary rationale (token-only envelope, customer resolved server-side) is in the design spec [`docs/superpowers/specs/2026-05-30-loan-origination-chat-design.md`](docs/superpowers/specs/2026-05-30-loan-origination-chat-design.md).
 
-## 5. Build `CHAT_WORKFLOW`
+## 5. Load `CHAT_WORKFLOW`
 
-`CHAT_WORKFLOW` is the customer-facing Agent Builder flow that combines OPA, OCR, Company Registry, and the in-DB HITL tool into the three-tier recommendation contract documented in `docs/DECISIONING-ENGINE-USE-CASE.md`. It is the only Agent Builder flow you need to build in this runbook.
+`CHAT_WORKFLOW` is the customer-facing Agent Builder flow that combines OPA, OCR, Company Registry, and the in-DB HITL tool into the three-tier recommendation contract documented in `docs/DECISIONING-ENGINE-USE-CASE.md`. It is the only Agent Builder flow you need in this runbook. Two ways to get it in: **import the pre-built export** (fast) or **build it from scratch** (the blueprint).
 
-The full build blueprint — the node graph, the four agents' (`Concierge` → `Docs & Employer` → `Eligibility` → `Recommendation`) custom instructions, the wiring table, test prompts (including the no-application intake walkthrough), and the operating constraints — is **[`paf/flows/CHAT_WORKFLOW.md`](paf/flows/CHAT_WORKFLOW.md)**. Build it there. This runbook only gets you to the point of opening Agent Builder with the tools (§4) and the LLM (§3) registered; the blueprint is the single source of truth for the flow itself.
+### 5a. Import the pre-built flow (recommended)
 
-Verify each run with:
+A password-protected 26.4 export ships in the repo at **[`paf/flows/chat_flow.paf`](paf/flows/chat_flow.paf)**.
+
+1. Agent Builder → **My Custom Flows** → **Import** → drag-and-drop `paf/flows/chat_flow.paf`.
+2. Enter the export password: **`WelcomeAmigo123!`** _(just the password for this committed POC snapshot — not a system credential)_.
+3. The flow imports **unpublished**, and shared-resource references are **not** bundled in the `.paf`. Re-link them by name: each **MCP server** (§4a), the **Company Registry** REST datasource (§4c), and the **`gen-model`** LLM (§3). 26.4 resolves them by name — pick each from the dropdowns.
+4. **Publish** the flow (the backend's `/v1/chat` needs it published).
+
+### 5b. Build from scratch (the blueprint)
+
+Prefer to build it node-by-node — or the import didn't resolve cleanly? The full blueprint (node graph, the four agents' custom instructions, the 23-step build sequence, the wiring checklist, test prompts, and operating constraints) is **[`paf/flows/CHAT_WORKFLOW.md`](paf/flows/CHAT_WORKFLOW.md)**. Build it there; this runbook only gets you to Agent Builder with the tools (§4) and the LLM (§3) registered.
+
+### Verify
 
 ```sql
 SELECT task_id, application_id, agent_recommendation, agent_run_id
@@ -257,9 +265,11 @@ SELECT task_id, application_id, agent_recommendation, agent_run_id
 SELECT COUNT(*) FROM "APP"."HITL_REQUEST";
 ```
 
-When the flow is green across the test scenarios, capture the JSON for version control. PAF has **no Export button** — grab it from the browser's Network tab (`GET /agentFactory/v1/agents/<agent_id>`) per [`paf/flows/CHAT_WORKFLOW.md §Export`](paf/flows/CHAT_WORKFLOW.md) and save to `paf/flows/chat_workflow.flow.json`. It's a reference snapshot, not a clean re-import — see [`issues/05-no-flow-export-endpoint.md`](issues/05-no-flow-export-endpoint.md).
-
 If anything hangs or errors, `python manage.py local logs paf` shows the backend trace.
+
+### Re-export after edits
+
+26.4 has a native export. After tuning the flow: Agent Builder → **My Custom Flows** → **Export** → set a password → overwrite `paf/flows/chat_flow.paf`. Optionally also re-capture the readable JSON snapshot to `paf/flows/chat_workflow.flow.json` (from the browser Network tab) — it's the human-diffable reference, not the import artifact.
 
 ## Day-2
 

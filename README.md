@@ -134,7 +134,13 @@ What works today on the local stack:
 - `registry-api` at `http://registry-api:8600/` — synthetic Company Registry FastAPI with one `verify_employer(name)` route. OpenAPI 3.1 spec, registered with PAF as an HTTP datasource. Records align with the 010 seed employers (e.g. `Phoenix Holdings Ltd` → dormant, `Atlantis Innovations Ltd` → not registered).
 - `CHAT_WORKFLOW` is a **four-agent origination pipeline** (`Concierge` → `Docs & Employer` → `Eligibility` → `Recommendation`) on a self-hosted vLLM endpoint (validated on `Qwen/Qwen2.5-72B-Instruct-AWQ`; see [`LOCAL.md`](LOCAL.md) for recommended models). The `Concierge` runs conversational intake — collecting `amount` / `term_months` / `purpose` and creating the `DRAFT` via `application-mcp.upsert_application`; the evidence agents gather required documents + employer verification (opa-mcp, Company Registry REST) and run `evaluate_eligibility`; `Recommendation` decides `APPROVE` / `REVIEW` / `DECLINE`, writes structured reason codes via `hitl-mcp.create_hitl_task` (the only side-effect tool), and returns a compliance-safe customer hint. Every agent reads the customer's state from `banking-mcp.get_context` (DB-as-memory) and stays within PAF's ≤3-tool-per-agent budget. Build blueprint with full custom-instructions blocks: [`paf/flows/CHAT_WORKFLOW.md`](paf/flows/CHAT_WORKFLOW.md). The DB tools, `application-mcp`, and the Spring backend are implemented and tested (Plans 1–2); the canvas flow is the build-it step. `ocr-mcp` is registered with PAF but unwired pending the real OCR pipeline.
 
-  ![CHAT_WORKFLOW in PAF Agent Builder](images/CHAT_WORKFLOW.png)
+  The deterministic `CHAT_WORKFLOW` in PAF Agent Builder — the session token is wired into a single `get_context` (Deterministic MCP) node and never transcribed by an LLM; each agent reads `{{context}}`:
+
+  ![Deterministic token entry → get_context (JSON-wrap → Type Convert → Deterministic MCP → G0)](images/chat_flow_0_token.png)
+  ![Concierge — conversational intake + intake gate](images/chat_flow_1_concierge.png)
+  ![Docs & Employer — required documents + employer verification](images/chat_flow_2_docs_employer.png)
+  ![Eligibility — OPA eligibility on the DB-derived DTI/PTI](images/chat_flow_3_eligibility.png)
+  ![Recommendation — tier + reason codes + HITL task](images/chat_flow_4_recommendation.png)
 
 What's next, in order:
 
