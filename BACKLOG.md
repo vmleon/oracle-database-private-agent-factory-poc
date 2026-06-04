@@ -9,11 +9,10 @@ features, and platform hardening.
 
 **Shipped (26.4 fully adopted this session):** kit on 26.4 (`PAF_TARBALL`); **TCPS** DB connection + client wallet; the **`mcp-proxy` HTTPS gateway** for the MCP servers + PAF cert-trust (`SSL_CERT_FILE` + certifi injection); **`AAI_RO_AGENT_FACTORY`** pre-creation; **`paf allow-internal-mcp`**; the **deterministic `get_context`** entry (read path — closes the streamed-token corruption; built, validated end-to-end, the former `issues/09` deleted; spec: `docs/superpowers/specs/2026-06-04-deterministic-get-context-design.md`); the rewritten 23-step `CHAT_WORKFLOW` blueprint; and the flow **`.paf` export/import** round-trip (`LOCAL.md §5`, committed `paf/flows/chat_flow.paf`). What remains is optional or an alternative — **none are blocking**.
 
-### 0.1 Script flow export/import in `manage.py` + doc cleanup (optional)
+### 0.1 Flow export/import doc cleanup
 
-The UI export/import round-trip works and is documented (`LOCAL.md §5`). Nice-to-haves:
+Flow export/import is a **UI operation** (Agent Builder → My Custom Flows) — intentionally **not** scripted in `manage.py`. The round-trip works and is documented (`LOCAL.md §5`). Two doc fixes remain:
 
-- Thin `manage.py paf flow export` / `flow import` wrappers around `/v1/agentBuilder/customFlows/exportAll` (password from a new `.env` `PAF_FLOW_EXPORT_PASS`) so a clean redeploy skips the manual UI steps.
 - **Refresh `issues/05`** — 26.4's native export/import works now; keep only the residuals (deps re-link by hand on import, imports arrive unpublished, `.paf` is binary so not git-diffable).
 - Update `paf/flows/CHAT_WORKFLOW.md §Export` — it still describes the old "no Export button / Network-tab scrape" path.
 
@@ -89,4 +88,4 @@ Outcome: TOON encoding happens either inside the PAF flow (clean, one place to l
 3. §3 — XGBoost credit-scoring tool (reads the shipped `REPORTING.cust_360`).
 4. §1 — product-recommendation workflow. Consumes the credit-score tool from §3 as one of its signals.
 5. §4 — TOON spike. Independent of the steps above, can happen in parallel.
-6. §0 residuals — all optional/alternative (0.1 export-import scripting + doc cleanup, 0.3 PL/SQL-node spike, 0.4 tracing); 0.2 only if write-path corruption appears.
+6. §0 residuals — all optional/alternative (0.1 export/import doc cleanup, 0.3 PL/SQL-node spike, 0.4 tracing); 0.2 only if write-path corruption appears.
