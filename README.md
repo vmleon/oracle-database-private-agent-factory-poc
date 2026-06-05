@@ -100,7 +100,7 @@ New to the project? Read in this order:
 5. [`paf/flows/CHAT_WORKFLOW.md`](paf/flows/CHAT_WORKFLOW.md) — the customer-facing agent flow, in build detail.
 6. [`LOCAL.md`](LOCAL.md) — stand the stack up and test it.
 
-Reference as needed: [`docs/PAF.md`](docs/PAF.md) (generic PAF product guide) · [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) (deploy strategy + `manage.py`) · [`docs/TROUBLESHOOT.md`](docs/TROUBLESHOOT.md) (workarounds) · [`BACKLOG.md`](BACKLOG.md) (future features: Customer 360, XGBoost scoring, product-rec, TOON).
+Reference as needed: [`docs/PAF.md`](docs/PAF.md) (generic PAF product guide) · [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) (deploy strategy + `manage.py`) · [`docs/TROUBLESHOOT.md`](docs/TROUBLESHOOT.md) (workarounds) · [`BACKLOG.md`](BACKLOG.md) (future features: Customer 360, XGBoost scoring, product-rec, TOON) · [`presentation/deck.md`](presentation/deck.md) (conference talk deck).
 
 ## Quickstart (local)
 

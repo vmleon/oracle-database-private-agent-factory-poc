@@ -2,150 +2,135 @@
 
 **Oracle AI Database 26ai + Private Agent Factory — a banking PoC**
 
-> Format: a tool-agnostic outline. Each slide gives a **headline**, the **on-slide**
-> content (what the audience sees), a **visual** cue, and **speaker notes** (what you say).
-> Drop it into PowerPoint / Keynote / Google Slides, or render the mermaid blocks as-is.
->
-> Audience: mixed conference crowd — any banking, AI, or technical background, sales included.
-> Length: ~15 minutes, ~13 slides. Tone: uplifting, honest about the PoC edges, CTA-forward.
-
 ---
 
-## Slide 1 — Cold open
+## Slide 1 — A loan, decided in minutes, and defensible for seven years
 
-**Headline:** A loan, decided in minutes — and defensible for seven years.
-
-**On slide:**
-
-- One sentence, large: _"A customer chats, uploads a payslip, and a few minutes later a human banker approves it — with every reason the machine surfaced recorded, immutably, for seven years."_
-- No agenda. No logo wall. Just the promise.
-
-**Visual:** a faint left-to-right motif — chat bubble → gavel → ledger row — that we'll complete on the closing slide.
-
-**Speaker notes:**
-
-- Open on the outcome, not the technology. Everyone in the room — banker, engineer, salesperson — understands "fast" and "I can prove why."
-- "Hold that image. By the end I'll show you how it's built, where we cut corners honestly, and how you could build your own this afternoon."
-- Don't explain anything yet. This is the hook.
-
----
-
-## Slide 2 — The origination pain
-
-**Headline:** Fast, or explainable. Today you rarely get both.
-
-**On slide:**
-
-- The first look at a loan application today is **ad-hoc, undocumented, impossible to replay.**
-- Three people want three things — and they pull against each other:
-  - **Loan officer** wants a fast first answer.
-  - **Risk / compliance** wants a decision the bank can stand behind.
-  - **The auditor** wants the _why_, months later.
-
-**Visual:** a tension triangle — Speed ↔ Compliance ↔ Explainability — pulling apart.
-
-**Speaker notes:**
-
-- This is the universal nod. Any banker has lived this; anyone else recognizes the shape of it.
-- The trap: teams chase speed with automation and lose the audit trail, or chase compliance with process and lose the speed.
-- "What if the system were fast _because_ it documents everything — not in spite of it?"
-
----
-
-## Slide 3 — Meet the platform
-
-**Headline:** Oracle AI Database 26ai + Private Agent Factory.
-
-**On slide:**
-
-- **Private Agent Factory (PAF):** a no-code platform to build, test, and deploy governed, data-centric agents that run **next to your database**.
-- Your choice of **LLMs**, your **MCP tools**, your **data sources** — wired on a visual canvas.
-- GA today, shipping on a **monthly** cadence.
-- The database isn't just storage. **Vectors + RAG, policy inputs, queues, and a tamper-proof ledger — one engine.**
-
-**Visual:** a PAF container "hugging" the Oracle AI Database; three input chips — _bring your own LLM · tools · data._
-
-**Speaker notes:**
-
-- Keep this to ~60 seconds. The point is _what it is_ and _where it runs_ — private, near the data, your components.
-- "Near-DB" matters for banking: data residency, latency, and the fact that the audit trail lives in the same engine as the decision.
-- Don't go deep on architecture here — slide 7 does that. This is just "here's the answer to slide 2."
-
----
-
-## Slide 4 — Our use case
-
-**Headline:** Loan origination for core banking.
-
-**On slide:**
-
-- What we built: a **customer-facing chat agent** that takes a personal-loan application end to end.
-- Intake → documents → eligibility → a **recommendation packet**: **APPROVE / REVIEW / DECLINE**, each with the reasoning behind it.
-- The governing principle: **observability over determinism** — _"we can always explain why,"_ not _"we're always right."_
-
-**Visual:** a funnel — natural-language chat at the top, a structured recommendation packet at the bottom.
-
-**Speaker notes:**
-
-- Name the product concretely: a personal loan. Region-agnostic — no country, currency, or regulator hard-coded; every threshold lives in database config, not code.
-- The recommendation is a _recommendation_, not a verdict — set this up now, pay it off on slide 6.
-- "Three tiers, and every tier carries its reasoning grounded in policy and rules — not a vibe from a model."
-
----
-
-## Slide 5 — How it works: agents for judgment, deterministic nodes for the rules
-
-**Headline:** Agents where judgment helps. Deterministic nodes where it must be exact.
-
-**On slide:**
+- A customer chats, uploads a payslip, and minutes later a human banker approves it.
+- Every reason the machine surfaced is recorded — immutably — for seven years.
 
 ```mermaid
 flowchart LR
-    C["Concierge<br/>(agent)"] --> D["Docs & Employer<br/>(agent)"] --> R["Recommendation<br/>(agent)"]
-    EL["Eligibility check · OPA<br/>(deterministic — no model)"] --> R
+    A["Customer chats"] --> B["Human decides"] --> C["Immutable ledger row"]
 ```
 
-- **Three agents do the judgment work** — greet and collect the request, gather documents and verify the employer, compose the recommendation. Each does one job; each makes only **1–2 tool calls**.
-- **The rules are deterministic nodes, not a model** — loading the facts and running the eligibility/policy check are wired, exact, and repeatable. A model never does arithmetic that has to be right every time.
-- **The database is the memory** — facts are loaded once per turn from the DB and fanned out to the agents; no agent invents facts, and the opaque session token is never retyped by a model.
+**Speaker notes**
 
-**Visual:** three agents in a line, with a separate deterministic eligibility node feeding the recommendation.
-
-**Speaker notes:**
-
-- The discipline: put the model where judgment helps — conversation, document gathering, composing a defensible recommendation — and hard-wire the parts that must be exact.
-- The honest story that lands well: we first built eligibility _as an agent_, and the model kept filing the numbers into the wrong fields — so the policy check approved almost everyone. We moved it to a deterministic node that does it correctly every time. Agents for judgment; deterministic nodes for the rules.
-- "DB is the memory" is the trust story: the system can't hallucinate its way to a decision, because the facts are loaded fresh from the database every turn — once, deterministically, with the session token wired in, never typed by a model.
-- Tools are reached over **MCP** (Model Context Protocol) — the same open standard everywhere, which is what makes slide 8 possible.
+A customer chats, uploads a payslip, and a few minutes later a human banker approves the loan. And every reason the machine surfaced is recorded — immutably — for seven years. Hold that picture. By the end I'll show you how it's built, where we cut corners honestly, and how you could build your own this afternoon.
 
 ---
 
-## Slide 6 — The non-negotiable: a human decides, and the record is immutable
+## Slide 2 — Fast, or explainable. Today you rarely get both.
 
-**Headline:** The AI recommends. A human decides. The ledger never forgets.
+- The first look at a loan application is ad-hoc, undocumented, impossible to replay.
+- Three roles pull against each other:
+  - Loan officer wants a fast first answer.
+  - Risk and compliance want a decision the bank can stand behind.
+  - The auditor wants the _why_, months later.
 
-**On slide:**
+```mermaid
+flowchart TD
+    O["Loan officer<br/>fast first answer"] --> F["First look at<br/>a loan application"]
+    R["Risk / compliance<br/>a defensible decision"] --> F
+    A["Auditor<br/>the why, months later"] --> F
+```
 
-- **Every** application creates a human-in-the-loop task. The AI never issues the verdict — by design.
-- The reviewer sees the recommendation, the **reason codes**, and **explore-hints**, and can ask a backoffice **Research Agent**: _"how did we decide similar cases in the last 12 months?"_
-- The final decision — **the human's call + the AI's original recommendation + the override reason + the evidence** — lands in a **Blockchain Table**: one immutable row per decision, tamper-evident, retained seven years.
-- Alongside it, a **per-tool audit trace** records which tool produced which signal — so any recommendation can be replayed, step by step.
+**Speaker notes**
 
-**Visual:** a split — _Recommendation (AI)_ on the left, _Decision (human)_ on the right — both flowing into a single ledger row.
-
-**Speaker notes:**
-
-- This is the compliance posture as a _feature_, not a disclaimer. Mandatory human review keeps the bank in control of every credit decision it stands behind.
-- Meet Sam, the reviewer: he doesn't get a black-box score, he gets a defensible case file plus a research assistant that cites prior decisions.
-- The Blockchain Table is native Oracle — append-only, hash-chained, in the same database. That's the "defensible for seven years" from slide 1, delivered.
+The first look at a loan application today is ad-hoc, undocumented, and impossible to replay. Three people need three different things from it. The loan officer wants a fast answer. Risk and compliance want a decision the bank can stand behind. And the auditor, months later, wants to know why. Chase speed with automation and you lose the audit trail. Chase compliance with process and you lose the speed. What if the system were fast _because_ it documents everything — not in spite of it?
 
 ---
 
-## Slide 7 — Architecture at a glance
+## Slide 3 — Oracle AI Database 26ai + Private Agent Factory
 
-**Headline:** One flow, open tools, one database underneath.
+- Private Agent Factory (PAF): a no-code platform to build, test, and deploy governed, data-centric agents that run next to your database.
+- Your LLMs, your MCP tools, your data sources — wired on a visual canvas.
+- Generally available today, on a monthly release cadence.
+- The database is the engine: vectors and RAG, policy inputs, queues, and a tamper-proof ledger — all in one.
 
-**On slide:**
+```mermaid
+flowchart TD
+    LLM["Your LLMs"] --> PAF["Private Agent Factory"]
+    TOOLS["Your MCP tools"] --> PAF
+    DATA["Your data sources"] --> PAF
+    PAF --> DB["Oracle AI Database 26ai<br/>vectors · RAG · queues · ledger"]
+```
+
+**Speaker notes**
+
+This runs on two things: Oracle AI Database 26ai, and the Private Agent Factory. The Agent Factory is a no-code platform for building governed, data-centric agents that run right next to your database. You bring your own LLMs, your own tools, your own data, and wire them together on a visual canvas. It's generally available today, shipping on a monthly cadence. And the database here isn't just storage — it's one engine that holds your vectors and RAG, your policy inputs, your queues, and a tamper-proof ledger.
+
+_If asked:_ running next to the database matters for data residency, latency, and keeping the audit trail in the same engine as the decision. Tools connect over MCP, an open standard.
+
+---
+
+## Slide 4 — Loan origination for core banking
+
+- A customer-facing chat agent that takes a personal-loan application end to end.
+- Intake → documents → eligibility → a recommendation: APPROVE / REVIEW / DECLINE, each with its reasoning.
+- Guiding principle: observability over determinism — "we can always explain why," not "we're always right."
+
+```mermaid
+flowchart TD
+    CHAT["Customer chat<br/>(natural language)"] --> I["Intake"] --> D["Documents"] --> E["Eligibility"] --> REC["Recommendation<br/>APPROVE · REVIEW · DECLINE<br/>+ reasoning"]
+```
+
+**Speaker notes**
+
+What we built is a personal loan. A customer-facing chat agent that takes an application from the first hello all the way to a recommendation. It collects the request, gathers documents, checks eligibility, and produces one of three outcomes — approve, review, or decline — each carrying the reasoning behind it. Our guiding principle is observability over determinism: the promise isn't that we're always right, it's that we can always explain why.
+
+_If asked:_ it's region-agnostic — no country, currency, or regulator is hard-coded; every threshold lives in database config. The recommendation is a recommendation, not a verdict — a human makes the call. The reasoning is grounded in policy and rules, not a model's guess.
+
+---
+
+## Slide 5 — Agents where judgment helps, deterministic nodes where it must be exact
+
+- Three agents do the judgment: greet and collect the request, gather documents and verify the employer, compose the recommendation. Each does one job, each makes one or two tool calls.
+- The rules are deterministic nodes, not a model: loading the facts and running the eligibility check are wired, exact, and repeatable. A model never does arithmetic that has to be right every time.
+- The database is the memory: facts are loaded once per turn and handed to the agents. No agent invents facts; the session token is never retyped by a model.
+
+```mermaid
+flowchart LR
+    CTX["Load facts from DB<br/>(deterministic)"] --> C["Concierge<br/>(agent)"]
+    C --> D["Docs & Employer<br/>(agent)"] --> R["Recommendation<br/>(agent)"]
+    EL["Eligibility · OPA<br/>(deterministic — no model)"] --> R
+    CTX --> D
+    CTX --> R
+```
+
+**Speaker notes**
+
+Here's the discipline. We put the model where judgment actually helps — holding the conversation, gathering documents, composing a defensible recommendation. Three agents, each doing one job, each making only one or two tool calls. But the rules — loading the customer's facts, running the eligibility and policy check — those are deterministic nodes, not a model. A model never does arithmetic that has to be right every time. And the database is the memory: every turn, the facts are loaded once, straight from the database, and handed to the agents. No agent can hallucinate its way to a decision, because it never invents the facts.
+
+_If asked:_ eligibility is an OPA policy check fed database-derived values — DTI, PTI, credit score, age — evaluated server-side. The session token is wired through deterministically, never passed to the model as text. Tools are reached over MCP.
+
+---
+
+## Slide 6 — The AI recommends, a human decides, the ledger never forgets
+
+- Every application creates a human-in-the-loop task. The AI never issues the verdict — by design.
+- The reviewer sees the recommendation, the reason codes, and explore-hints, and can ask a backoffice Research Agent: "how did we decide similar cases in the last 12 months?"
+- The final decision — the human's call, the AI's recommendation, the reason, and the evidence — lands in a Blockchain Table: one immutable, tamper-evident row per decision, retained seven years.
+- A per-tool audit trace records which tool produced which signal, so any recommendation can be replayed step by step.
+
+```mermaid
+flowchart LR
+    AI["Recommendation<br/>(AI)"] --> LED["Blockchain Table<br/>one immutable row · 7 years"]
+    HUM["Decision<br/>(human reviewer)"] --> LED
+```
+
+**Speaker notes**
+
+This is the non-negotiable. Every single application creates a task for a human reviewer. The AI never issues the verdict — by design. The reviewer doesn't get a black-box score; they get a case file: the recommendation, the reason codes, hints on what to check, and a research assistant they can ask "how did we decide similar cases over the last year?" Then the human makes the call. And that final decision — the human's call, the AI's recommendation, the reason, and the evidence — lands in a Blockchain Table. One immutable, tamper-evident row per decision, kept for seven years. That's the "defensible" from the opening, delivered.
+
+_If asked:_ the Blockchain Table is native Oracle — append-only, hash-chained, in the same database. The mandatory human review is a feature, not a disclaimer: the bank stays in control of every credit decision it stands behind.
+
+---
+
+## Slide 7 — One flow, open tools, one database underneath
+
+- Private by default: the LLM is self-hosted; nothing about a customer leaves the bank's boundary. Traffic is TLS end to end — encrypted database connections and an HTTPS gateway in front of every tool. Cloud-ready when sanctioned.
+- Everything pluggable is reached over MCP or HTTP.
 
 ```mermaid
 flowchart TD
@@ -159,24 +144,18 @@ flowchart TD
     DB --> AUDIT["Data · vectors · queues · Blockchain audit"]
 ```
 
-- **Private by default** — the LLM is self-hosted; nothing about a customer leaves the bank's boundary, and traffic is **TLS end to end** (encrypted DB connections + an HTTPS gateway in front of every tool). Cloud-ready when sanctioned.
-- Everything pluggable is reached over **MCP** or HTTP.
+**Speaker notes**
 
-**Visual:** the layered mermaid diagram above.
+Top to bottom: the customer chat and the backoffice queue talk to the bank's own backend. That backend drives the PAF flow. The flow calls open tools and policy retrieval, and runs against a self-hosted model. And all of it is grounded in one Oracle database — which also holds the vectors, the queues, and the tamper-proof audit. Two things to notice. Nothing about a customer leaves the bank's boundary — the model is private and traffic is encrypted end to end. And the bank's existing backend is the client of this platform, not part of it — this drops into systems you already run.
 
-**Speaker notes:**
-
-- Walk it top to bottom in 30 seconds: UIs → the bank's own backend drives the PAF flow → the flow calls open tools and retrieval → all of it grounded in one Oracle database that also holds the vectors, the queues, and the tamper-proof audit.
-- The bank's existing backend is the _client_ of PAF, not part of the platform — this drops into systems you already run.
-- "One engine" is the efficiency story: no stitched-together stack of a vector DB + a queue + a separate audit store.
+_If asked:_ one engine means no stitched-together stack of a separate vector database, a queue, and an audit store. Every pluggable piece connects over MCP or HTTP.
 
 ---
 
-## Slide 8 — The factory moment
+## Slide 8 — One agent today, a factory tomorrow
 
-**Headline:** One agent today. A factory tomorrow.
-
-**On slide:**
+- New data source? Add an MCP or HTTP tool. New policy? Add an OPA rule. New product? New flow, same plumbing.
+- Modularity is the product.
 
 ```mermaid
 flowchart LR
@@ -189,126 +168,102 @@ flowchart LR
     base --> p6["KYC refresh"]
 ```
 
-- New **data source**? Add an MCP / HTTP tool. New **policy**? Add an OPA rule. New **product**? New flow, same plumbing.
-- **Modularity is the product.**
+**Speaker notes**
 
-**Visual:** the fan-out above — one base, many product agents.
-
-**Speaker notes:**
-
-- This is the real punchline. The loan agent is the _first_ tenant of a pattern, not a bespoke build.
-- A domain expert clones the pattern; the toolkit, the database, and the governance come for free. Different prompt, different product config.
-- "If you're sitting there thinking 'but my use case is refunds / onboarding / claims' — that's the same factory, different flow."
+This is the real punchline. The loan agent isn't a bespoke build — it's the first tenant of a pattern. Need a new data source? Add a tool. New policy? Add a rule. New product — credit cards, mortgages, SMB lending, KYC refresh? New flow, same plumbing. A domain expert clones the pattern, and the toolkit, the database, and the governance all come for free. If you're sitting there thinking "but my use case is refunds, or onboarding, or claims" — that's the same factory, a different flow.
 
 ---
 
-## Slide 9 — Kept real
+## Slide 9 — This is a PoC, and here's exactly where we cut corners
 
-**Headline:** This is a PoC. Here's exactly where we cut corners.
+| In this PoC                                      | Production path                                                                       |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------- |
+| OCR is a stub returning canned extraction        | Real YOLO + PaddleOCR pipeline — a separate workstream                                |
+| Select AI runs on cloud / ADB, not the local box | A 26ai-Free limitation; the cloud path is designed                                    |
+| Banking data is synthetic                        | Engineered to exercise paths, not to validate a credit model                          |
+| The flow is assembled on the PAF canvas          | The tools and Spring backend are implemented and covered by an automated test harness |
 
-**On slide:**
+- Every gap is a seam, not a hole — the interface is in place; you swap in the real thing.
 
-| Scaffolding in place                                 | Production path                                           |
-| ---------------------------------------------------- | --------------------------------------------------------- |
-| OCR is a **stub** (canned extraction)                | Real YOLO + PaddleOCR pipeline — a separate workstream    |
-| Select AI runs on **cloud / ADB**, not the local box | Known 26ai-Free limitation; cloud path already designed   |
-| **Synthetic** banking data                           | Engineered to exercise paths, not validate a credit model |
-| Flow is a **validated build target**                 | The tools + backend are implemented and tested            |
+**Speaker notes**
 
-- Every gap is a **seam**, not a hole — the interface is in place, you swap in the real thing.
-
-**Visual:** the two-column table; left muted, right confident; a connecting arrow labeled "swap in."
-
-**Speaker notes:**
-
-- Say this plainly and cheerfully — credibility comes from naming the limits before anyone asks.
-- The framing that matters: these are _deliberate cuts on a PoC_, and each one sits behind a clean interface (an MCP tool, a config flag). Production is integration work, not a redesign.
-- "We're not hiding the stub OCR — we're showing you the socket it plugs into."
+Let me be straight about where we cut corners, because that's where credibility comes from. The OCR is a stub — it returns canned extraction; the real computer-vision pipeline is a separate workstream. Select AI runs on the cloud database, not the local box — that's a known limitation of the free local edition. The banking data is synthetic, built to exercise every path, not to validate a real credit model. But here's the framing that matters: every one of these is a seam, not a hole. Each one sits behind a clean interface — a tool, a config flag. We're not hiding the stub OCR; we're showing you the socket it plugs into. Production is integration work, not a redesign.
 
 ---
 
-## Slide 10 — Value delivered
+## Slide 10 — Fast and defensible, and built to clone
 
-**Headline:** Fast _and_ defensible — and built to clone.
+- Speed with a paper trail — a governed first look in minutes.
+- Reproducible — every recommendation and decision can be replayed.
+- The bank stays in control — a human owns every credit call.
+- One engine — data, vectors, queues, and audit in Oracle AI Database 26ai.
+- A pattern that scales — across products, with the same plumbing.
 
-**On slide:**
+```mermaid
+flowchart LR
+    V1["Speed with<br/>a paper trail"]
+    V2["Reproducible"]
+    V3["Human owns<br/>every credit call"]
+    V4["One engine"]
+    V5["A pattern<br/>that scales"]
+```
 
-- **Speed with a paper trail** — a governed first look in minutes.
-- **Reproducible** — every recommendation and decision can be replayed.
-- **The bank stays in control** — a human owns every credit call.
-- **One engine** — data, vectors, queues, and audit in Oracle AI Database 26ai.
-- **A pattern that scales** — across products, with the same plumbing.
+**Speaker notes**
 
-**Visual:** five value chips, mapped back to the slide-2 tension triangle (now resolved).
-
-**Speaker notes:**
-
-- Close the loop opened on slide 2: speed _and_ compliance _and_ explainability, no longer pulling apart.
-- Pick the two chips that matter most to _your_ room and dwell there; let the rest land as a list.
+So where does that leave us. Speed with a paper trail — a governed first look in minutes. Reproducible — every recommendation and decision can be replayed. The bank stays in control — a human owns every credit call. One engine — data, vectors, queues, and audit, all in the Oracle database. And a pattern that scales across products with the same plumbing. The three forces that were pulling apart at the start — speed, compliance, explainability — no longer fight each other.
 
 ---
 
-## Slide 11 — Call to action #1: try the factory yourself
+## Slide 11 — It's GA. You can build your first agent this afternoon.
 
-**Headline:** It's GA. You can build your first agent this afternoon.
-
-**On slide:**
-
-- **Live Lab** — a guided, hands-on walkthrough: install PAF and build an agent end to end.
-- **Download** — oracle.com → Private Agent Factory; also on Oracle Marketplace.
-- **Docs** — the full Agent Factory documentation.
+- Live Lab — a guided, hands-on walkthrough: install PAF and build an agent end to end.
+- Download — oracle.com → Private Agent Factory; also on Oracle Marketplace.
+- Docs — the full Agent Factory documentation.
 - Teams across industries are already building on it.
 
-**Visual:** a big "Start here" with three link tiles (Live Lab · Download · Docs).
+```mermaid
+flowchart LR
+    S["Start here"] --> L["Live Lab"]
+    S --> D["Download"]
+    S --> O["Docs"]
+```
 
-**Speaker notes:**
+**Speaker notes**
 
-- Make it feel achievable: "first agent this afternoon" is the energy.
-- Drop the exact URLs you want live on the slide (oracle.com downloads page, marketplace listing, docs site).
-- _(Optional, setting-dependent:)_ if your venue permits, this is where you'd add named-customer traction or adoption numbers. Left out here on purpose — those came from internal/restricted material; add back only if your audience and disclosure allow.
+The best part — you can do this yourself. There's a Live Lab: a guided, hands-on walkthrough that installs the Agent Factory and builds an agent end to end. You can download it from oracle.com or the Oracle Marketplace. And the full documentation is online. Your first agent, this afternoon.
 
 ---
 
-## Slide 12 — Call to action #2: bring your use case
-
-**Headline:** What's _your_ origination?
-
-**On slide:**
+## Slide 12 — What's your origination?
 
 - KYC refresh? Refund triage? Claims intake? Customer onboarding?
-- Same factory, **your** data and tools.
-- _"Let's wire one to your data."_
+- Same factory, your data and your tools.
+- "Let's wire one to your data."
 
-**Visual:** an open invitation panel + a clear next step (talk to us / scan to connect).
+```mermaid
+flowchart LR
+    F["Same factory"] --> u1["KYC refresh"]
+    F --> u2["Refund triage"]
+    F --> u3["Claims intake"]
+    F --> u4["Customer onboarding"]
+```
 
-**Speaker notes:**
+**Speaker notes**
 
-- Turn the factory idea into a personal ask — invite people to name their own flow out loud.
-- This is the conversation-starter CTA: the goal is a follow-up, not a signature.
-
----
-
-## Slide 13 — Closing frame
-
-**Headline:** Fast. Explainable. Governed. Ready to clone.
-
-**On slide:**
-
-- Callback to slide 1: _the loan decided in minutes — and defensible for seven years — now earned._
-- One last line: _"Come build yours."_
-
-**Visual:** the slide-1 motif completed — chat bubble → gavel → ledger row, now fully drawn.
-
-**Speaker notes:**
-
-- Land the plane on the exact image you opened with. The promise from slide 1 is now backed by everything in between.
-- End on the CTA verb: build, try, talk. Don't add a "thank you / questions" slide before this lands — let the closing line breathe first.
+So let me turn it around. What's your origination? Maybe it's a KYC refresh. Refund triage. Claims intake. Customer onboarding. Same factory, your data, your tools. Tell me what yours is — let's wire one to your data.
 
 ---
 
-> ### Presenter cheat-sheet
->
-> - **The one idea:** loan origination that is fast _and_ defensible, because the database records the _why_ — and it's a _factory_, so the next product is a clone, not a rebuild.
-> - **Three plain-English terms to define live if the room is non-technical:** RAG (the agent cites real policy text), MCP (the open plug for tools), HITL (a human reviews every application).
-> - **If you have only 10 minutes:** cut slides 7 and 9, fold "kept real" into one spoken sentence on slide 4.
-> - **If asked "is this production?":** no — it's a PoC with honest seams (slide 9); the value is the proven pattern and the one-engine governance.
+## Slide 13 — Fast. Explainable. Governed. Ready to clone.
+
+- The loan decided in minutes — and defensible for seven years.
+- "Come build yours."
+
+```mermaid
+flowchart LR
+    A["Customer chats"] --> B["Human decides"] --> C["Immutable ledger row"]
+```
+
+**Speaker notes**
+
+A loan decided in minutes — and defensible for seven years. That's the promise we opened with, and now you've seen how it's built. Come build yours.
