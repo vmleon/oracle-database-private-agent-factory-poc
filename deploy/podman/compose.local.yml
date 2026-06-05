@@ -156,6 +156,7 @@ services:
       DB_USER: "REPORTING"
       DB_PASSWORD: "${DB_PASSWORD}"
       BACKEND_URL: "http://application-backend:8090"
+      OPA_URL: "http://opa:8181"
 
   # STUB OCR MCP — placeholder for the YOLO + PaddleOCR/Tesseract pipeline.
   # Exposes a single `extract_document` MCP tool whose canned responses are

@@ -27,6 +27,7 @@ public class PafClient {
     private final RestClient http;
     private final String adminUser;
     private final String adminPass;
+    private final String baseUrl;
     private final ObjectMapper mapper = new ObjectMapper();
 
     private volatile String cookie;
@@ -34,10 +35,12 @@ public class PafClient {
 
     public PafClient(RestClient pafRestClient,
                      @Value("${paf.admin-user}") String adminUser,
-                     @Value("${paf.admin-pass}") String adminPass) {
+                     @Value("${paf.admin-pass}") String adminPass,
+                     @Value("${paf.base-url}") String baseUrl) {
         this.http = pafRestClient;
         this.adminUser = adminUser;
         this.adminPass = adminPass;
+        this.baseUrl = baseUrl;
     }
 
     /** Agent reply text plus PAF's own roomId (its conversation thread id); roomId may be null. */
@@ -113,6 +116,10 @@ public class PafClient {
         return http.post()
                 .uri(RUN_PATH + id)
                 .header(HttpHeaders.COOKIE, cookie)
+                // PAF 26.4 enforces a same-origin CSRF check on state-changing routes
+                // (auth.py: CSRF_ORIGIN_REQUIRED). Programmatic callers must send an
+                // Origin matching PAF's own host, else the run is 403'd.
+                .header(HttpHeaders.ORIGIN, baseUrl)
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(Map.of("message", envelopedMessage))
                 .retrieve()

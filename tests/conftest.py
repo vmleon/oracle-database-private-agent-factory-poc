@@ -165,6 +165,9 @@ def chat(paf, agent_id):
         r = paf.post(
             f"{PAF_BASE}/agentFactory/v1/agentBuilder/run/{agent_id}",
             json={"message": _envelope(token, message, sanitize=sanitize)},
+            # PAF 26.4 enforces a same-origin CSRF check (auth.py: CSRF_ORIGIN_REQUIRED);
+            # state-changing routes need an Origin matching PAF's host or they 403.
+            headers={"Origin": PAF_BASE},
             timeout=300,  # vLLM 72B can take 60-90s for a full agent turn
         )
         r.raise_for_status()

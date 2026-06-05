@@ -46,6 +46,7 @@ def _now_utc() -> datetime:
 
 
 _AUDIT_URL = os.getenv("BACKEND_URL", "http://application-backend:8090").rstrip("/") + "/v1/audit/tool-call"
+_OPA_URL = os.getenv("OPA_URL", "http://opa:8181").rstrip("/")
 
 
 def _audit(tool_name, status, started, ended, tool_input, tool_output, *, session_token):
@@ -321,6 +322,67 @@ def _get_context_impl(session_token: str) -> dict:
             print(f"[get_context] -> customer_id={customer_id} has_app={application is not None} "
                   f"missing={application['missing'] if application else None} kyc_stale={kyc_stale}", flush=True)
             return result
+
+
+@mcp.tool()
+def evaluate_eligibility_for_session(session_token: str) -> dict:
+    """Deterministic eligibility: token in -> {allow, deny, warn} out.
+
+    Resolves the opaque session token, builds the OPA `applicant` from the SAME
+    DB-derived values get_context returns (age / income / credit_score / dti / pti),
+    and evaluates the `decisioning.eligibility` Rego rule. No LLM constructs the
+    payload, so the policy always sees the fields where it expects them — this is
+    the deterministic counterpart to get_context, for the policy-eval step.
+
+    Returns {"allow": bool, "deny": [str], "warn": [str]}. Fail-closed (allow=False)
+    on a bad token, an incomplete application, or an OPA error.
+    """
+    started = _now_utc()
+    print(f"[evaluate_eligibility_for_session] called session_token={session_token!r}", flush=True)
+    ctx = _get_context_impl(session_token)
+    if ctx.get("error"):
+        return {"allow": False, "deny": ["invalid_or_expired_session"], "warn": []}
+    app = ctx.get("application") or {}
+    if not app or app.get("missing"):
+        # Incomplete application: derived (dti/pti) is null. Unused on collecting
+        # turns (the flow exits at G1 before Recommendation); fail closed.
+        print("[evaluate_eligibility_for_session] -> incomplete application, fail-closed", flush=True)
+        return {"allow": False, "deny": [], "warn": []}
+    cust = ctx.get("customer") or {}
+    prof = ctx.get("profile") or {}
+    cred = ctx.get("credit") or {}
+    der = ctx.get("derived") or {}
+    opa_input = {
+        "applicant": {
+            "age": cust.get("age_years"),
+            "income": prof.get("monthly_salary"),
+            "credit_score": cred.get("score"),
+            "dti": der.get("dti"),
+            "pti": der.get("pti"),
+        },
+        "application": {
+            "amount_requested": app.get("amount_requested"),
+            "term_months": app.get("term_months"),
+        },
+        "product": {"product_type": app.get("product_type") or "PERSONAL"},
+    }
+    try:
+        resp = httpx.post(f"{_OPA_URL}/v1/data/decisioning/eligibility",
+                          json={"input": opa_input}, timeout=5.0)
+        resp.raise_for_status()
+        res = resp.json().get("result") or {}
+    except Exception as exc:  # noqa: BLE001
+        print(f"[evaluate_eligibility_for_session] OPA error: {exc}", flush=True)
+        return {"allow": False, "deny": ["eligibility_unavailable"], "warn": []}
+    out = {
+        "allow": bool(res.get("allow", False)),
+        "deny": res.get("deny", []),
+        "warn": res.get("warn", []),
+    }
+    _audit("evaluate_eligibility_for_session", "SUCCESS", started, _now_utc(), opa_input, out,
+           session_token=session_token)
+    print(f"[evaluate_eligibility_for_session] -> allow={out['allow']} deny={out['deny']} warn={out['warn']}", flush=True)
+    return out
 
 
 if __name__ == "__main__":

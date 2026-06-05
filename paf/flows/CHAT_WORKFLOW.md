@@ -1,16 +1,16 @@
 # `CHAT_WORKFLOW` — flow design
 
-This is the build blueprint for the customer-facing workflow in PAF Agent Builder. The workflow is a **four-agent origination pipeline** that serves a customer **with or without** an existing application:
+This is the build blueprint for the customer-facing workflow in PAF Agent Builder. The workflow is a **three-agent origination pipeline** (Concierge, Docs & Employer, Recommendation) plus a **deterministic eligibility node** — it serves a customer **with or without** an existing application:
 
 - **`Concierge`** — greets, detects loan intent, collects the loan request (`amount` / `term_months` / `purpose`) through conversation, creates/patches the `DRAFT` application, and signals readiness. Tools: `upsert_application`. (Reads `context` — see below.)
 - **`Docs & Employer`** — gathers the required-document set and verifies the employer. Tools: `required_documents`, `verify_employer`.
-- **`Eligibility`** — runs the OPA eligibility check on the DB-derived DTI/PTI. Tools: `evaluate_eligibility`.
-- **`Recommendation`** — decides the tier, writes the HITL task with structured reason codes, and returns a compliance-safe hint. Tools: `create_hitl_task`.
+- **Eligibility (deterministic — no agent)** — the OPA eligibility check runs in the `banking-mcp.evaluate_eligibility_for_session` Deterministic MCP node (token in → `{allow, deny, warn}` out), built up front alongside `get_context`. An LLM never builds the OPA payload (it filed `dti`/`credit_score` in the wrong place every run, so OPA returned `allow=true` for everyone — see [Steps 17–20](#steps-1720--removed-eligibility-is-deterministic)).
+- **`Recommendation`** — decides the tier from the deterministic eligibility result + the employer evidence, writes the HITL task with structured reason codes, and returns a compliance-safe hint. Tools: `create_hitl_task`.
 
 Two principles shape the whole design:
 
 1. **The database is the memory, loaded once deterministically.** PAF runs the flow statelessly per turn — agents have no memory between turns. A single **Deterministic MCP node** calls `get_context(session_token)` at flow start with the token **wired** (RegexExtractor → Prompt JSON-wrap → Type Convert → Deterministic MCP), so the authoritative DB facts enter the flow as data, and the opaque token is **never transcribed by an LLM** (closes the streamed-token corruption; see `docs/superpowers/specs/2026-06-04-deterministic-get-context-design.md`). That `context` is wired into every agent's prompt; no agent calls `get_context` itself. Anything that must survive to the next turn is written to the DB through a tool (`upsert_application`, `create_hitl_task`). On the turn the downstream agents run (`INTAKE = READY`), no `upsert` happens, so the once-loaded context is current for all of them.
-2. **Few planned tool calls per agent.** PAF hardcodes `max_iterations = 5` (verified in `agent_factory/app/models/agentBuilder/steps/customSteps/AgentStep.py`; `wayflowcore` 26.1.1). Now that `get_context` is loaded once deterministically and read from `{{context}}`, **no agent spends an iteration on it** — each agent makes only 1–2 tool calls, well inside the budget. The four-agent split remains for the **deterministic gate pipeline** (G0–G3 are the safety nets that only forward a well-formed message between stages) and the staged marker accumulation, not the iteration cap.
+2. **Few planned tool calls per agent.** PAF hardcodes `max_iterations = 5` (verified in `agent_factory/app/models/agentBuilder/steps/customSteps/AgentStep.py`; `wayflowcore` 26.1.1). Now that `get_context` is loaded once deterministically and read from `{{context}}`, **no agent spends an iteration on it** — each agent makes only 1–2 tool calls, well inside the budget. The agent split remains for the **deterministic gate pipeline** (G0–G2 are the safety nets that only forward a well-formed message between stages), not the iteration cap. **Eligibility is not an agent at all** — pure DB-to-OPA plumbing belongs in a deterministic node, not a model.
 
 > **Status: build target, not yet validated end-to-end.** The DB tools, the `application-mcp`/`get_context` surface, and the Spring backend are implemented and tested (see the design spec). The **deterministic `get_context` entry** (token wired, never transcribed) is built and validated on its own (see the build-sequence note + spec). The full canvas flow is assembled by hand in PAF; treat the **Custom Instructions below as drafts to tune against the live 72B**, exactly as the earlier two-agent flow's instructions were. When it runs green, capture the JSON per [Export](#export) and fold any instruction fixes back here.
 
@@ -27,7 +27,7 @@ Source-of-truth references:
 For a customer chatting with the bank:
 
 1. **Intake.** If the customer has no open application (or one with missing fields), the `Concierge` collects `amount` / `term_months` / `purpose` conversationally and writes a `DRAFT` via `upsert_application`. Once complete and confirmed, it emits `[[INTAKE status=READY]]`.
-2. **Evidence.** `Docs & Employer` determines required documents (`opa-mcp.required_documents`) and verifies the employer (`registry-api` → `GET_v1_companies_verify`). `Eligibility` runs `opa-mcp.evaluate_eligibility` on the DB-derived DTI/PTI.
+2. **Evidence.** `Docs & Employer` determines required documents (`opa-mcp.required_documents`) and verifies the employer (`registry-api` → `GET_v1_companies_verify`). Eligibility runs deterministically in `banking-mcp.evaluate_eligibility_for_session` (OPA on the DB-derived DTI/PTI/score/age, server-side — no agent).
 3. **Recommendation.** `Recommendation` composes the tier (`APPROVE` / `REVIEW` / `DECLINE`) + reason codes, calls `hitl-mcp.create_hitl_task` exactly once, and returns a compliance-safe customer hint.
 
 No agent ever issues a binding decision to the customer: the human reviewer who picks up the HITL task does. The customer-facing reply is one of three qualitative tones and never exposes the tier, a number, or an adverse reason.
@@ -53,6 +53,7 @@ flowchart TD
     RT -->|token| JW["Prompt (JSON-wrap)<br/>{session_token}"]
     JW -->|Message| TC["Type Convert<br/>Message → JSON"]
     TC -->|JSON| GC["Deterministic MCP<br/>banking-mcp.get_context"]
+    TC -->|JSON| GE["Deterministic MCP<br/>banking-mcp.evaluate_eligibility_for_session"]
     GC -->|context| G0{"Condition: session valid?<br/>no error key"}
     G0 -.->|False / error| OAPO["Chat output (apology)"]
     G0 -->|True / context| CP["Prompt (Concierge)"]
@@ -65,20 +66,17 @@ flowchart TD
     GC -->|context| DE
     DE -->|Message| G2{"Condition: evidence present?"}
     G2 -.->|False| OERR1["Chat output (error)"]
-    G2 -->|True| EL["Eligibility<br/>evaluate_eligibility"]
-    GC -->|context| EL
-    EL -->|Message| G3{"Condition: signals present?"}
-    G3 -.->|False| OERR2["Chat output (error 2)"]
-    G3 -->|True| RC["Recommendation<br/>create_hitl_task"]
+    G2 -->|True / evidence| RC["Recommendation<br/>create_hitl_task"]
     GC -->|context| RC
+    GE -->|allow/deny/warn| RC
     RC -->|Message| ODEC["Chat output (decision)"]
 ```
 
-The `context` output of the deterministic `get_context` node fans out as a **data** edge into all four agent prompts (`{{context}}`); the `Condition` gates carry **control** only. The token is wired, never typed by a model.
+Two deterministic `banking-mcp` nodes run up front off the **same** token chain (the Type Convert `JSON` fans to both): `get_context` (the read) and `evaluate_eligibility_for_session` (the policy eval — token in, `{allow, deny, warn}` out, OPA called server-side). Both fan out as **data** edges into the agent prompts; the `Condition` gates carry **control** only. There is **no Eligibility agent** — the eligibility payload is pure plumbing from DB-derived values into an OPA call, so a model never builds it (it filed `dti`/`credit_score` in the wrong place every time; the deterministic node files them correctly every time). The token is wired, never typed by a model.
 
 The `Concierge` runs on **every** turn (it is the front door). On a collecting turn it ends the turn by asking for the next field; only when it emits `[[INTAKE status=READY]]` does the flow proceed into evidence gathering and recommendation in that same run. Each `Condition` gate is the deterministic safety net between agents (the same pattern the two-agent flow used) — it inspects the upstream agent's `Message` and only forwards a well-formed one.
 
-> **Marker accumulation.** Findings the OPA/registry tools compute at runtime are _not_ in `get_context`, so they flow forward as text. `Docs & Employer` emits `[[EVIDENCE …]]`; `Eligibility` **echoes that block and appends** `[[ELIGIBILITY …]]`; `Recommendation` receives both. The authoritative facts (ids, amounts, profile) come from the once-loaded `context` data edge — only the runtime signals ride the pipeline.
+> **Evidence forwarding.** The document/employer findings are _not_ in `get_context`, so `Docs & Employer` emits them as a `[[EVIDENCE …]]` text block that G2 forwards to `Recommendation`'s `evidence` port. The eligibility `{allow, deny, warn}` arrives separately, as a **data** edge from the deterministic `evaluate_eligibility_for_session` node into `Recommendation`'s `eligibility` port — no marker, no agent echo. The authoritative facts (ids, amounts, profile) come from the once-loaded `context` data edge.
 
 ## Build sequence
 
@@ -94,7 +92,7 @@ The [node graph](#node-graph) above is the map; this section is the turn-by-turn
 - Each **`Condition`** (type `conditionComponent`, category Processing) has a dense form: `Text Input` (the value tested), `True Message` / `False Message` (the value **forwarded** on each branch), `Match Text` (the regex), Operator **`Regex match`**, and two branch outputs (`True` / `False`). A branch edge does **double duty** — wiring `True`/`False` into a node both **sequences** that node (control flow) **and binds the branch's message into the target input port** (data flow). There is no trigger-only wire, so the message you forward _is_ the value the next step receives. Fill all of it in the step where you drop the node — only one branch fires per turn (BranchingStep semantics).
 - There are **four terminal Chat outputs**, one per branch — never converge two branches onto one node (Wayflow rejects it, [`issues/06`](../../issues/06-non-descriptive-flow-validator-error.md)). Close each Condition's `False` branch with its own Chat output **immediately**, in the step right after the gate.
 
-All four agents use LLM Configuration **`gen-model`** (the generic generative config registered at install — see [LOCAL.md §3](../../LOCAL.md#3-install-paf)) at temperature **`0.01`**. An agent's tool surface is whatever MCP/REST nodes you wire to it (PAF has no per-tool filter) — wire each agent only the tools its step lists.
+All three agents (Concierge, Docs & Employer, Recommendation) use LLM Configuration **`gen-model`** (the generic generative config registered at install — see [LOCAL.md §3](../../LOCAL.md#3-install-paf)) at temperature **`0.01`**. An agent's tool surface is whatever MCP/REST nodes you wire to it (PAF has no per-tool filter) — wire each agent only the tools its step lists. (Eligibility is a deterministic node, not an agent.)
 
 In each step's wiring diagram, the edge label reads `<source port> → <target port>`; dashed edges are branches you wire in a later step (the step number is on the label).
 
@@ -178,6 +176,19 @@ flowchart LR
     TC["Type Convert"] -->|JSON → Tool input JSON| GC["Deterministic MCP (get_context)"]
 ```
 
+### Step 6b — Deterministic MCP — `evaluate_eligibility_for_session`
+
+The policy eval is pure data plumbing (DB-derived `dti`/`pti`/`credit_score`/`age` → OPA), so it runs **deterministically**, exactly like `get_context` — no Eligibility agent. The same Type Convert `JSON` output feeds both nodes (the payload `{"session_token":"…"}` is identical), so this is just a second node off the existing chain.
+
+- **Drag** a second `Deterministic MCP tool` node.
+- **Configure** — MCP server `banking-mcp`, MCP tool `evaluate_eligibility_for_session`.
+- **Wire** — Type Convert's **`JSON`** output → this node's `Tool input JSON` (fan the same edge that feeds `get_context`). Its `Message` output is the `{allow, deny, warn}` result; it lands on the Recommendation prompt's `eligibility` port in Step 21. The node resolves the token, builds the OPA `applicant` from the same DB values `get_context` returns, and calls OPA server-side — so the policy always sees `applicant.dti` / `applicant.credit_score` where it expects them.
+
+```mermaid
+flowchart LR
+    TC["Type Convert"] -->|JSON → Tool input JSON| GE["Deterministic MCP (evaluate_eligibility_for_session)"]
+```
+
 ### Step 7 — Condition G0 (session valid?)
 
 Filters an invalid/expired token **once**, up front, so no agent has to handle it.
@@ -192,11 +203,13 @@ Filters an invalid/expired token **once**, up front, so no agent has to handle i
 Sorry — we couldn't process your application right now. Please try again in a moment.
 ```
 
-- Operator = `Regex match`; `Match Text` (a valid context carries a `customer` object; an error payload `{"error": …}` does not):
+- Operator = `Regex match`; `Match Text` — a valid context carries a `customer` key; an error payload (`{"error":"invalid_or_expired_session"}`) does not. **Match the bare key word, _not_ a quoted key.** The Deterministic MCP node delivers its `Message` as a JSON-wrapped envelope — `{"message":"<the get_context JSON>"}` — with the inner quotes **escaped** (`{"message":"{\"customer\":{\"id\":1,…}}"}`, verified in the PAF app log, `Condition.py` line 100). Because the key's closing quote is escaped as `\"`, **any quote-anchored regex fails** (`"customer"\s*:` and `["']customer["']` both reject every session → apology for everyone). The unescaped word `customer` is always present on a valid session and never in the `{"error":…}` payload:
 
 ```
-"customer"\s*:
+customer
 ```
+
+> The bracket-based gates (G1, G2) are unaffected by this wrapping — `[` / `]` are not escaped, so their `\[\[…\]\]` markers still match inside the `{"message":"…"}` envelope. Only G0's key-quote match needed de-anchoring.
 
 - **Wire** (branches wired in Steps 8 and 9):
 
@@ -332,7 +345,7 @@ Gather documentation and employer evidence for the customer's application.
 Customer context (AUTHORITATIVE — read all fields from here): {{context}}
 ```
 
-- **Wire** — a **single** edge from G1's `True` output into `context`. That one edge both **sequences** this step (control flow) and **delivers the context** (data flow), because Step 11 set G1's `True Message` to the context. Do **not** also wire `get_context` here — a second feeder on `context` would conflict, and it already arrives through the gate. _(Eligibility and Recommendation differ: their prompts have a second port — `evidence` / `findings` — for the gate output to land on, so they take `context` straight from the `get_context` node. Docs & Employer has only `context`, so the gate forwards it.)_
+- **Wire** — a **single** edge from G1's `True` output into `context`. That one edge both **sequences** this step (control flow) and **delivers the context** (data flow), because Step 11 set G1's `True Message` to the context. Do **not** also wire `get_context` here — a second feeder on `context` would conflict, and it already arrives through the gate. _(Recommendation differs: its prompt has separate `evidence` / `eligibility` ports for the gate output and the deterministic eligibility result to land on, so it takes `context` straight from the `get_context` node. Docs & Employer has only `context`, so the gate forwards it.)_
 
 ```mermaid
 flowchart LR
@@ -353,8 +366,14 @@ customer.residency.
 Call exactly two tools in order, then write the Evidence marker as your final message.
 Step 1. required_documents(product_type, employment_type, residency,
         amount = amount_requested).
-Step 2. GET_v1_companies_verify(name = employer_name).
-        (That funky name is what PAF exposes the Company Registry REST tool as —
+Step 2. GET_v1_companies_verify(name = <profile.employer_name copied VERBATIM from
+        the context>).
+        CRITICAL: copy the employer name character-for-character from
+        context.profile.employer_name. NEVER guess it, default it, or use a name from
+        memory (e.g. do NOT output "Acme Tech Ltd" unless that exact string is in THIS
+        context). A wrong name silently returns registered=false/true for the wrong
+        company and corrupts the decision.
+        (That funky tool name is what PAF exposes the Company Registry REST tool as —
         its OpenAPI importer ignores operationId and auto-names from method+path,
         see issues/04. Call this exact name; `verify_employer` does not exist.)
 
@@ -379,7 +398,7 @@ flowchart LR
 ### Step 15 — Condition G2 (evidence gate)
 
 - **Drag** a `Condition`.
-- **Configure** — `Text Input` ← Docs & Employer.`Message`; `True Message` ← Docs & Employer.`Message` (forwards the EVIDENCE block to Eligibility on match); Operator = `Regex match`. Then set two inline values, `Match Text` and `False Message`:
+- **Configure** — `Text Input` ← Docs & Employer.`Message`; `True Message` ← Docs & Employer.`Message` (forwards the EVIDENCE block straight to **Recommendation** on match — there is no Eligibility agent between them anymore); Operator = `Regex match`. Then set two inline values, `Match Text` and `False Message`:
 
 `Match Text`:
 
@@ -398,7 +417,7 @@ Sorry — we couldn't process your application right now. Please try again in a 
 ```mermaid
 flowchart LR
     A["Docs & Employer"] -->|Message → Text Input + True Message| G2{"Condition G2<br/>Regex match"}
-    G2 -.->|True → Step 17| EL["Eligibility"]
+    G2 -.->|True → Step 21| RC["Prompt (Recommendation) · evidence"]
     G2 -.->|False → Step 16| OE["Chat output (error)"]
 ```
 
@@ -412,109 +431,33 @@ flowchart LR
     G2{"Condition G2"} -->|False output → Message| OE["Chat output (error)"]
 ```
 
-### Step 17 — Prompt (Eligibility)
+### Steps 17–20 — _removed (eligibility is deterministic)_
 
-- **Paste**, then **Save prompt** (ports `context`, `evidence` appear):
+The old Eligibility **Prompt + agent**, **Condition G3**, and its **error Chat output** are gone. The eligibility signals now come from the **Deterministic MCP node built in [Step 6b](#step-6b--deterministic-mcp--evaluate_eligibility_for_session)** (`evaluate_eligibility_for_session`), whose `{allow, deny, warn}` result lands directly on the Recommendation prompt's `eligibility` port (Step 21). G2's `True` now sequences **Recommendation** directly (Step 15), carrying the `[[EVIDENCE …]]` block to its `evidence` port.
 
-```
-Evaluate eligibility for the customer's application and carry the evidence forward.
-Customer context (AUTHORITATIVE — read all fields from here): {{context}}
-Evidence so far: {{evidence}}
-```
-
-- **Wire** — context direct from the `get_context` node, plus the gated EVIDENCE block (the gate lands on `evidence`, not `context`, so there is no conflict):
-
-```mermaid
-flowchart LR
-    GC["Deterministic MCP (get_context)"] -->|Message → context| P["Prompt (Eligibility)"]
-    G2{"Condition G2"} -->|True → evidence| P
-```
-
-### Step 18 — Eligibility agent (+ tools)
-
-- **Drag** the agent, and drag **only** `opa-mcp` (`evaluate_eligibility`) beside it. **No `banking-mcp`**.
-- **Configure** — LLM `gen-model`, temp `0.01`, name `Eligibility`, Custom Instructions:
-
-```
-The application context is provided as {{context}} — read it; NEVER call get_context.
-Read customer.age_years, profile.monthly_salary, credit.score, and derived.dti / derived.pti.
-
-Step 1. evaluate_eligibility(
-          applicant   = {age: age_years, income: monthly_salary,
-                         credit_score: score, dti: derived.dti, pti: derived.pti},
-          application = {amount_requested: application.amount_requested,
-                         term_months: application.term_months},
-          product     = {product_type: application.product_type})
-        Use dti/pti VERBATIM from context.derived — never recompute.
-
-Final assistant message — echo the EVIDENCE block you received, then append your
-ELIGIBILITY block, and nothing else:
-  <the [[EVIDENCE ... ]] block from your input, unchanged>
-  [[ELIGIBILITY allow=<bool> deny=<deny[] JSON> warn=<warn[] JSON>]]
-
-Call ONLY evaluate_eligibility, once. Never call create_hitl_task.
-```
-
-- **Wire:**
-
-```mermaid
-flowchart LR
-    P["Prompt (Eligibility)"] -->|Prompt message → Prompt| A["Eligibility"]
-    OM["opa-mcp"] -->|Tools| A
-```
-
-### Step 19 — Condition G3 (signals gate)
-
-- **Drag** a `Condition`.
-- **Configure** — `Text Input` ← Eligibility.`Message`; `True Message` ← Eligibility.`Message` (forwards the EVIDENCE + ELIGIBILITY findings to Recommendation on match); Operator = `Regex match`. Then set two inline values, `Match Text` and `False Message`:
-
-`Match Text`:
-
-```
-\[\[ELIGIBILITY[\s\S]*?allow=
-```
-
-`False Message` — typed inline; the customer-facing apology that rides the `False` output to the error Chat output in Step 20:
-
-```
-Sorry — we couldn't process your application right now. Please try again in a moment.
-```
-
-- **Wire** (input; the branches are wired in Steps 21 and 20):
-
-```mermaid
-flowchart LR
-    A["Eligibility"] -->|Message → Text Input + True Message| G3{"Condition G3<br/>Regex match"}
-    G3 -.->|True → Step 21| RC["Recommendation"]
-    G3 -.->|False → Step 20| OE2["Chat output (error 2)"]
-```
-
-### Step 20 — Chat output (error 2) — closes G3 `False`
-
-- **Drag** a Chat output. Leave its `Message` empty — the apology arrives as G3's `False Message` (set in Step 19).
-- **Wire:**
-
-```mermaid
-flowchart LR
-    G3{"Condition G3"} -->|False output → Message| OE2["Chat output (error 2)"]
-```
+> Why: an LLM filed `dti`/`credit_score` in the wrong place every run (OPA then returned `allow=true` for everyone), and CI tuning with a worked example did not move it — the model has a hard "`applicant = customer`" prior. The payload is pure plumbing, so the deterministic node builds it server-side and the policy is correct every time. If you're converting an existing canvas, **delete** these four nodes (delete the nodes, not just the wires, or the validator rejects the orphans).
 
 ### Step 21 — Prompt (Recommendation)
 
-- **Paste**, then **Save prompt** (ports `context`, `findings` appear):
+- **Paste**, then **Save prompt** (ports `context`, `evidence`, `eligibility` appear):
 
 ```
 Decide the recommendation tier and write the HITL task.
 Customer context (AUTHORITATIVE — application_id lives here): {{context}}
-Findings (EVIDENCE + ELIGIBILITY): {{findings}}
+Evidence (documents + employer): {{evidence}}
+Eligibility signals (AUTHORITATIVE — server-computed): {{eligibility}}
 ```
 
-- **Wire** — context direct from the `get_context` node, plus the gated findings (the gate lands on `findings`, not `context`):
+- **Wire** — three feeders, all landing on distinct ports (no conflict):
+  - `context` ← **`get_context`** node.`Message` (data edge, direct).
+  - `evidence` ← **G2.`True` output** (carries the `[[EVIDENCE …]]` block + sequences this step).
+  - `eligibility` ← **`evaluate_eligibility_for_session`** node.`Message` (the `{allow, deny, warn}` result, Step 6b — data edge, direct).
 
 ```mermaid
 flowchart LR
     GC["Deterministic MCP (get_context)"] -->|Message → context| P["Prompt (Recommendation)"]
-    G3{"Condition G3"} -->|True → findings| P
+    G2{"Condition G2"} -->|True → evidence| P
+    GE["Deterministic MCP (evaluate_eligibility_for_session)"] -->|Message → eligibility| P
 ```
 
 ### Step 22 — Recommendation agent (+ tools)
@@ -524,15 +467,19 @@ flowchart LR
 
 ```
 The application context is provided as {{context}} — read it; NEVER call get_context.
-Take the authoritative application_id from context.application.id (never from the
-Findings text alone; if they disagree, trust context).
-From the Findings extract: verify_employer.registered, verify_employer.trading_status,
-evaluate_eligibility.allow / deny[] / warn[], required_documents.
+Take the authoritative application_id from context.application.id.
 
-Decide the tier:
-  DECLINE if deny[] non-empty OR verify_employer.registered is false.
-  REVIEW  if warn[] non-empty OR verify_employer.trading_status is "dormant".
+You are given two AUTHORITATIVE inputs — do NOT recompute or second-guess them:
+  {{eligibility}} — server-computed OPA result, shaped {"allow":bool,"deny":[...],"warn":[...]}.
+  {{evidence}}    — the [[EVIDENCE ...]] block with required_documents and verify_employer
+                    (registered, trading_status) JSON.
+
+Decide the tier STRICTLY from those two — never invent a signal that isn't present:
+  DECLINE if eligibility.deny is non-empty OR verify_employer.registered is false.
+  REVIEW  if eligibility.warn is non-empty OR verify_employer.trading_status is "dormant".
   APPROVE otherwise.
+(Read deny/warn from {{eligibility}} verbatim. If both arrays are empty and the employer
+is registered and active, it is APPROVE — do not manufacture a caution.)
 
 Map the signals to reason codes (zero or more, from this fixed set ONLY):
   DTI_TOO_HIGH · PTI_TOO_HIGH · SCORE_BELOW_FLOOR · SCORE_CAUTION · AGE_BELOW_MIN
@@ -544,15 +491,18 @@ Then call create_hitl_task EXACTLY ONCE with:
   reasoning      = one sentence quoting the specific deny[]/warn[] message or
                    employer status; if a list is empty, say so.
   explore_hints  = JSON-string array of follow-up checks — REVIEW only; null otherwise.
-  evidence       = JSON string carrying the reason codes + the EVIDENCE/ELIGIBILITY values.
+  evidence       = JSON string carrying the reason codes + the eligibility/evidence values.
   Do NOT supply agent_run_id (server-generated).
 
-After create_hitl_task returns, your final assistant message is the marker plus the
-ONE customer-facing sentence for the tier — nothing else:
-  [[DECISION tier=<APPROVE|REVIEW|DECLINE> reasons=<reason-code JSON array>]]
-  APPROVE -> "Looks strong — it's with our team for final approval; we'll confirm shortly."
-  REVIEW  -> "We'd like a closer look at <affordability | your employment details>; a reviewer will follow up."
-  DECLINE -> "Before we can proceed, a specialist needs to review this in detail — we'll be in touch."
+After create_hitl_task returns, your final assistant message is EXACTLY the ONE
+customer-facing sentence for the tier — nothing else. Emit NO marker, NO tier, NO
+"APPROVE ->" prefix, NO reason codes: the customer must never see the tier or any
+internal token (the `create_hitl_task` call already recorded the structured decision
+in the DB; this Recommendation node is the last step, so nothing downstream reads a
+marker). Output ONLY the sentence:
+  (APPROVE) "Looks strong — it's with our team for final approval; we'll confirm shortly."
+  (REVIEW)  "We'd like a closer look at <affordability | your employment details>; a reviewer will follow up."
+  (DECLINE) "Before we can proceed, a specialist needs to review this in detail — we'll be in touch."
 
 REVIEW reason→phrase: DTI/PTI_* -> "affordability"; EMPLOYER_* -> "your employment
 details"; DOCS_REQUIRED -> "have a recent payslip ready"; SCORE_* -> do not surface.
@@ -582,44 +532,40 @@ flowchart LR
 
 Every wire is created in the steps above; this table is the post-build cross-check. Walk it top-to-bottom and confirm each edge exists.
 
-| Source port                               | Target port                                                            |
-| ----------------------------------------- | ---------------------------------------------------------------------- |
-| Chat input.`Message`                      | Token extractor.`Input text`                                           |
-| Chat input.`Message`                      | Message extractor.`Input text`                                         |
-| Token extractor.`Message`                 | Prompt (JSON-wrap).`token`                                             |
-| Prompt (JSON-wrap).`Prompt message`       | Type Convert.`Input`                                                   |
-| Type Convert.`JSON`                       | Deterministic MCP (get_context).`Tool input JSON`                      |
-| Deterministic MCP (get_context).`Message` | Condition G0.`Text Input`                                              |
-| Deterministic MCP (get_context).`Message` | Condition G0.`True Message`                                            |
-| Condition G0.`False output`               | Chat output (apology).`Message`                                        |
-| Condition G0.`True output`                | Prompt (Concierge).`context` _(carries context + sequences Concierge)_ |
-| Token extractor.`Message`                 | Prompt (Concierge).`token` _(for the agentic upsert only)_             |
-| Message extractor.`Message`               | Prompt (Concierge).`input`                                             |
-| Prompt (Concierge).`Prompt message`       | Concierge.`Prompt`                                                     |
-| MCP (application-mcp).`Tools`             | Concierge.`Tools`                                                      |
-| Concierge.`Message`                       | Condition G1.`Text Input`                                              |
-| Concierge.`Message`                       | Condition G1.`False Message`                                           |
-| Deterministic MCP (get_context).`Message` | Condition G1.`True Message`                                            |
-| Condition G1.`True output`                | Prompt (Docs & Employer).`context` _(carries context + sequences D&E)_ |
-| Condition G1.`False output`               | Chat output (collecting).`Message`                                     |
-| Prompt (Docs & Employer).`Prompt message` | Docs & Employer.`Prompt`                                               |
-| MCP (opa-mcp).`Tools`                     | Docs & Employer.`Tools`                                                |
-| REST (registry).`Tools`                   | Docs & Employer.`Tools`                                                |
-| Docs & Employer.`Message`                 | Condition G2.`Text Input` + `True Message`                             |
-| Condition G2.`False`                      | Chat output (error).`Message`                                          |
-| Condition G2.`True`                       | Prompt (Eligibility).`evidence`                                        |
-| Deterministic MCP (get_context).`Message` | Prompt (Eligibility).`context`                                         |
-| Prompt (Eligibility).`Prompt message`     | Eligibility.`Prompt`                                                   |
-| MCP (opa-mcp).`Tools`                     | Eligibility.`Tools`                                                    |
-| Eligibility.`Message`                     | Condition G3.`Text Input` + `True Message`                             |
-| Condition G3.`False`                      | Chat output (error 2).`Message`                                        |
-| Condition G3.`True`                       | Prompt (Recommendation).`findings`                                     |
-| Deterministic MCP (get_context).`Message` | Prompt (Recommendation).`context`                                      |
-| Prompt (Recommendation).`Prompt message`  | Recommendation.`Prompt`                                                |
-| MCP (hitl-mcp).`Tools`                    | Recommendation.`Tools`                                                 |
-| Recommendation.`Message`                  | Chat output (decision).`Message`                                       |
+| Source port                                                    | Target port                                                                                   |
+| -------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Chat input.`Message`                                           | Token extractor.`Input text`                                                                  |
+| Chat input.`Message`                                           | Message extractor.`Input text`                                                                |
+| Token extractor.`Message`                                      | Prompt (JSON-wrap).`token`                                                                    |
+| Prompt (JSON-wrap).`Prompt message`                            | Type Convert.`Input`                                                                          |
+| Type Convert.`JSON`                                            | Deterministic MCP (get_context).`Tool input JSON`                                             |
+| Type Convert.`JSON`                                            | Deterministic MCP (evaluate*eligibility_for_session).`Tool input JSON` *(same edge, fanned)\_ |
+| Deterministic MCP (get_context).`Message`                      | Condition G0.`Text Input`                                                                     |
+| Deterministic MCP (get_context).`Message`                      | Condition G0.`True Message`                                                                   |
+| Condition G0.`False output`                                    | Chat output (apology).`Message`                                                               |
+| Condition G0.`True output`                                     | Prompt (Concierge).`context` _(carries context + sequences Concierge)_                        |
+| Token extractor.`Message`                                      | Prompt (Concierge).`token` _(for the agentic upsert only)_                                    |
+| Message extractor.`Message`                                    | Prompt (Concierge).`input`                                                                    |
+| Prompt (Concierge).`Prompt message`                            | Concierge.`Prompt`                                                                            |
+| MCP (application-mcp).`Tools`                                  | Concierge.`Tools`                                                                             |
+| Concierge.`Message`                                            | Condition G1.`Text Input`                                                                     |
+| Concierge.`Message`                                            | Condition G1.`False Message`                                                                  |
+| Deterministic MCP (get_context).`Message`                      | Condition G1.`True Message`                                                                   |
+| Condition G1.`True output`                                     | Prompt (Docs & Employer).`context` _(carries context + sequences D&E)_                        |
+| Condition G1.`False output`                                    | Chat output (collecting).`Message`                                                            |
+| Prompt (Docs & Employer).`Prompt message`                      | Docs & Employer.`Prompt`                                                                      |
+| MCP (opa-mcp).`Tools`                                          | Docs & Employer.`Tools`                                                                       |
+| REST (registry).`Tools`                                        | Docs & Employer.`Tools`                                                                       |
+| Docs & Employer.`Message`                                      | Condition G2.`Text Input` + `True Message`                                                    |
+| Condition G2.`False`                                           | Chat output (error).`Message`                                                                 |
+| Condition G2.`True`                                            | Prompt (Recommendation).`evidence` _(carries EVIDENCE + sequences Recommendation)_            |
+| Deterministic MCP (get_context).`Message`                      | Prompt (Recommendation).`context`                                                             |
+| Deterministic MCP (evaluate_eligibility_for_session).`Message` | Prompt (Recommendation).`eligibility`                                                         |
+| Prompt (Recommendation).`Prompt message`                       | Recommendation.`Prompt`                                                                       |
+| MCP (hitl-mcp).`Tools`                                         | Recommendation.`Tools`                                                                        |
+| Recommendation.`Message`                                       | Chat output (decision).`Message`                                                              |
 
-The `get_context` node's `Message` (the context) reaches the agents two ways: **Concierge** and **Docs & Employer** receive it through their gate's `True Message` (G0 / G1) — their prompts have a single `context` port, so the gate forwards context; **Eligibility** and **Recommendation** take `context` straight from the `get_context` node (their gate's `True Message` lands on the `evidence` / `findings` port instead, so no conflict). The bare **token** is wired only to the JSON-wrap prompt (for the deterministic read) and the Concierge prompt (for the agentic `upsert` write) — it never reaches an LLM as a `get_context` argument.
+The `get_context` node's `Message` (the context) reaches the agents two ways: **Concierge** and **Docs & Employer** receive it through their gate's `True Message` (G0 / G1) — their prompts have a single `context` port, so the gate forwards context; **Recommendation** takes `context` straight from the `get_context` node (G2's `True Message` lands on its `evidence` port instead, so no conflict), plus the `eligibility` data edge from the `evaluate_eligibility_for_session` node. The bare **token** is wired only to the JSON-wrap prompt (for both deterministic nodes — the read and the eligibility eval) and the Concierge prompt (for the agentic `upsert` write) — it never reaches an LLM as a tool argument.
 
 ## Test prompts
 
@@ -636,7 +582,7 @@ SELECT session_token, customer_id, application_id, scenario_label
 2. `"$18,000"` → `upsert_application(amount=18000)`, asks the term.
 3. `"over 3 years"` → `upsert_application(term_months=36)`, asks the purpose.
 4. `"home improvement"` → `upsert_application(purpose=...)`, reads back, asks to confirm.
-5. `"yes"` → `[[INTAKE status=READY]]` → Docs & Employer → Eligibility → Recommendation → customer hint + one `APP.hitl_task` row.
+5. `"yes"` → `[[INTAKE status=READY]]` → Docs & Employer → Recommendation (with the deterministic eligibility result) → customer hint + one `APP.hitl_task` row.
 
 **Tier scenarios (evidence/recommendation path).** Envelope each seeded token (these customers already have an application, so the Concierge goes straight to `READY`):
 
@@ -659,7 +605,7 @@ SELECT task_id, application_id, agent_recommendation, agent_run_id,
   FROM APP.hitl_task ORDER BY task_id DESC FETCH FIRST 1 ROW ONLY;
 ```
 
-Trace expectation per successful turn (Playground trace pane): Concierge ≤2 tool calls, Docs & Employer 3, Eligibility 2, Recommendation 2. A collecting turn is Concierge-only. More calls than that = the model is looping — tighten the CI or the per-agent tool list.
+Trace expectation per successful turn (Playground trace pane): Concierge ≤2 tool calls, Docs & Employer 2, Recommendation 1 (`create_hitl_task`); the two deterministic `banking-mcp` nodes (`get_context`, `evaluate_eligibility_for_session`) run once each, up front. A collecting turn is Concierge-only. More agent calls than that = the model is looping — tighten the CI or the per-agent tool list.
 
 ## Export
 
@@ -667,7 +613,7 @@ Trace expectation per successful turn (Playground trace pane): Concierge ≤2 to
 
 ## Open follow-ups
 
-1. **Tune the Custom Instructions against the live 72B.** The marker-accumulation handoff (Eligibility echoing the EVIDENCE block) and the Concierge's confirm logic are the highest-risk spots — expect iteration, the same way the original two-agent CIs were tuned.
+1. **Tune the Custom Instructions against the live 72B.** The Concierge's confirm logic and the Docs & Employer employer-name extraction are the highest-risk spots — expect iteration. (Eligibility was the worst offender — the model could not build the OPA payload from the wrapped context — which is why it is now the deterministic `evaluate_eligibility_for_session` node. The same treatment is the likely fix if `verify_employer` proves unreliable.)
 2. **Structured output via the `Parser` node.** The canvas exposes a `Parser` node (text → Dict/List JSON). Once stable, route each agent's marker through `Parser` + `Condition` for a JSON-shape check instead of regex, removing the cascading-regex fragility.
 3. **KYC / income refresh (Phase 2).** `get_context` already returns `kyc_stale` / `income_stale`; add the Concierge a `refresh_*` write tool and a staleness branch so stale data is re-verified before evidence gathering.
 4. **Reviewer-side HITL flow.** Claim → decide → write the `decision` ledger row → update `loan_application.status` → notify the customer. Not modelled in PAF yet.
@@ -684,19 +630,19 @@ Non-obvious rules and limits that shape the build. Skim before iterating.
 
 ### PAF Agent Builder (verified against the installed kit)
 
-- **`max_iterations` is hardcoded to `5`** (`AgentStep.py`; the last iteration strips all wired tools, leaving only `talk_to_user`/`submit`/`exit_conversation`). Effective ceiling ≈ 4 tool calls. With `get_context` no longer called per agent, each agent now plans only 1–2 calls — comfortable headroom ([`issues/03`](../../issues/03-agent-max-iterations-5-cap.md)). The four-agent split is kept for the gated marker pipeline, not the cap.
+- **`max_iterations` is hardcoded to `5`** (`AgentStep.py`; the last iteration strips all wired tools, leaving only `talk_to_user`/`submit`/`exit_conversation`). Effective ceiling ≈ 4 tool calls. With `get_context` no longer called per agent, each agent now plans only 1–2 calls — comfortable headroom ([`issues/03`](../../issues/03-agent-max-iterations-5-cap.md)). The agent split is kept for the gated pipeline (eligibility moved out to a deterministic node), not the cap.
 - **The canvas exposes no mid-flow user-input node, no Variable node, and no structured-output descriptor** (confirmed in `wayflowcore` 26.1.1 — the engine has them; PAF's palette does not). Hence: multi-turn collection is driven by the **backend re-invoking the flow**, state lives in the **DB**, and agent output is plain text validated by **regex `Condition` gates**. A `Parser` node _is_ available for the JSON-shape upgrade (see follow-ups).
 - **The OpenAPI importer ignores `operationId`** and auto-names HTTP tools `<METHOD>_<path>` (`GET_v1_companies_verify`). The CI must call the auto-name verbatim ([`issues/04`](../../issues/04-openapi-importer-ignores-operationid.md)).
 - **Orphan nodes are rejected by the validator** — to remove a tool, delete the node, not just the wire.
 
 ### DB-as-memory
 
-- **Every agent calls `get_context` first.** No agent depends on another's text for facts — only for the runtime EVIDENCE/ELIGIBILITY signals that aren't in the DB. This keeps each agent decoupled and independently re-groundable, and is what lets the four-agent pipeline stay correct despite PAF's statelessness.
+- **No agent calls `get_context`** — it is loaded once by the deterministic node and fanned into every prompt as `{{context}}` data. No agent depends on another's text for authoritative facts (ids/amounts/profile/derived); only the runtime employer evidence rides forward as the `[[EVIDENCE …]]` block, and the eligibility signals arrive as the deterministic `{allow,deny,warn}` data edge. This keeps each agent decoupled and re-groundable despite PAF's statelessness.
 - **The only writes are `upsert_application` (Concierge) and `create_hitl_task` (Recommendation).** Both resolve `customer_id` from the token via bind variables. `upsert_application` is idempotent per the customer's open draft.
 
 ### Deterministic gates
 
-- **A `Condition` gate decides whether the next agent runs, never the recommendation tier.** Without G1, a flaky Concierge emission would push a non-ready turn downstream; without G2/G3, malformed evidence would reach `Recommendation`, which would then lack an `application_id` and could hallucinate one (the `APP.hitl_task → APP.loan_application` FK is the final backstop, `ORA-02291`).
+- **A `Condition` gate decides whether the next agent runs, never the recommendation tier.** Without G1, a flaky Concierge emission would push a non-ready turn downstream; without G2, malformed evidence would reach `Recommendation`, which would then lack an `application_id` and could hallucinate one (the `APP.hitl_task → APP.loan_application` FK is the final backstop, `ORA-02291`). The tier itself is now grounded in the deterministic eligibility `{allow, deny, warn}`, not an agent-built marker.
 - **Four terminal Chat outputs, one per branch.** Convergence is rejected by Wayflow ([`issues/06`](../../issues/06-non-descriptive-flow-validator-error.md)). Exactly one fires per turn.
 
 ### Agent / LLM behaviour
@@ -709,5 +655,5 @@ Non-obvious rules and limits that shape the build. Skim before iterating.
 ### Schema / data
 
 - **After a fresh `local down --purge && local up`, customer IDs are 1–11** (Alice = 1 … Kyle = 11) plus the seeded no-application customer (`Liam NoApplication`). Application IDs are deterministic from changelog order; verify with the SQL in [Test prompts](#test-prompts).
-- **`get_context.derived` carries `dti` / `pti` / `monthly_payment`** computed server-side (`banking-mcp`), only when the application is complete; `Eligibility` passes them verbatim to OPA.
+- **`get_context.derived` carries `dti` / `pti` / `monthly_payment`** computed server-side (`banking-mcp`), only when the application is complete; the `evaluate_eligibility_for_session` node reads the same values and passes them to OPA — both come from one server-side computation, so they never disagree.
 - **Enum-typed DB columns are uppercase (`SALARIED`, `RESIDENT`); OPA tool enums are lowercase.** `get_context` lowercases them so the agent passes them through unchanged.
