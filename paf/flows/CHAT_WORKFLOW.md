@@ -4,15 +4,13 @@ This is the build blueprint for the customer-facing workflow in PAF Agent Builde
 
 - **`Concierge`** — greets, detects loan intent, collects the loan request (`amount` / `term_months` / `purpose`) through conversation, creates/patches the `DRAFT` application, and signals readiness. Tools: `upsert_application`. (Reads `context` — see below.)
 - **`Docs & Employer`** — gathers the required-document set and verifies the employer. Tools: `required_documents`, `verify_employer`.
-- **Eligibility (deterministic — no agent)** — the OPA eligibility check runs in the `banking-mcp.evaluate_eligibility_for_session` Deterministic MCP node (token in → `{allow, deny, warn}` out), built up front alongside `get_context`. An LLM never builds the OPA payload (it filed `dti`/`credit_score` in the wrong place every run, so OPA returned `allow=true` for everyone — see [Steps 17–20](#steps-1720--removed-eligibility-is-deterministic)).
+- **Eligibility (deterministic — no agent)** — the OPA eligibility check runs in the `banking-mcp.evaluate_eligibility_for_session` Deterministic MCP node (token in → `{allow, deny, warn}` out), built up front alongside `get_context`. Building the OPA payload from DB values is pure plumbing — the node files `dti`/`credit_score` where the policy expects them, which an LLM does not do reliably.
 - **`Recommendation`** — decides the tier from the deterministic eligibility result + the employer evidence, writes the HITL task with structured reason codes, and returns a compliance-safe hint. Tools: `create_hitl_task`.
 
 Two principles shape the whole design:
 
-1. **The database is the memory, loaded once deterministically.** PAF runs the flow statelessly per turn — agents have no memory between turns. A single **Deterministic MCP node** calls `get_context(session_token)` at flow start with the token **wired** (RegexExtractor → Prompt JSON-wrap → Type Convert → Deterministic MCP), so the authoritative DB facts enter the flow as data, and the opaque token is **never transcribed by an LLM** (closes the streamed-token corruption; see `docs/superpowers/specs/2026-06-04-deterministic-get-context-design.md`). That `context` is wired into every agent's prompt; no agent calls `get_context` itself. Anything that must survive to the next turn is written to the DB through a tool (`upsert_application`, `create_hitl_task`). On the turn the downstream agents run (`INTAKE = READY`), no `upsert` happens, so the once-loaded context is current for all of them.
-2. **Few planned tool calls per agent.** PAF hardcodes `max_iterations = 5` (verified in `agent_factory/app/models/agentBuilder/steps/customSteps/AgentStep.py`; `wayflowcore` 26.1.1). Now that `get_context` is loaded once deterministically and read from `{{context}}`, **no agent spends an iteration on it** — each agent makes only 1–2 tool calls, well inside the budget. The agent split remains for the **deterministic gate pipeline** (G0–G2 are the safety nets that only forward a well-formed message between stages), not the iteration cap. **Eligibility is not an agent at all** — pure DB-to-OPA plumbing belongs in a deterministic node, not a model.
-
-> **Status: build target, not yet validated end-to-end.** The DB tools, the `application-mcp`/`get_context` surface, and the Spring backend are implemented and tested (see the design spec). The **deterministic `get_context` entry** (token wired, never transcribed) is built and validated on its own (see the build-sequence note + spec). The full canvas flow is assembled by hand in PAF; treat the **Custom Instructions below as drafts to tune against the live 72B**, exactly as the earlier two-agent flow's instructions were. When it runs green, capture the JSON per [Export](#export) and fold any instruction fixes back here.
+1. **The database is the memory, loaded once deterministically.** PAF runs the flow statelessly per turn — agents have no memory between turns. A single **Deterministic MCP node** calls `get_context(session_token)` at flow start with the token **wired** (RegexExtractor → Prompt JSON-wrap → Type Convert → Deterministic MCP), so the authoritative DB facts enter the flow as data, and the opaque token is **never transcribed by an LLM** — transcription is what corrupts it (see `docs/superpowers/specs/2026-06-04-deterministic-get-context-design.md`). That `context` is wired into every agent's prompt; no agent calls `get_context` itself. Anything that must survive to the next turn is written to the DB through a tool (`upsert_application`, `create_hitl_task`). On the turn the downstream agents run (`INTAKE = READY`), no `upsert` happens, so the once-loaded context is current for all of them.
+2. **Few planned tool calls per agent.** PAF hardcodes `max_iterations = 5` (`agent_factory/app/models/agentBuilder/steps/customSteps/AgentStep.py`). Because `get_context` is loaded once deterministically and read from `{{context}}`, **no agent spends an iteration on it** — each agent makes only 1–2 tool calls, well inside the budget. The agent split exists for the **deterministic gate pipeline**: G0–G2 forward only a well-formed message between stages. **Eligibility is not an agent at all** — pure DB-to-OPA plumbing belongs in a deterministic node, not a model.
 
 This is the **flow-build SSOT**. Architecture rationale: [`docs/DESIGN.md`](../../docs/DESIGN.md); deploy + register the tools: [`LOCAL.md`](../../LOCAL.md).
 
@@ -72,15 +70,15 @@ flowchart TD
     RC -->|Message| ODEC["Chat output (decision)"]
 ```
 
-Two deterministic `banking-mcp` nodes run up front off the **same** token chain (the Type Convert `JSON` fans to both): `get_context` (the read) and `evaluate_eligibility_for_session` (the policy eval — token in, `{allow, deny, warn}` out, OPA called server-side). Both fan out as **data** edges into the agent prompts; the `Condition` gates carry **control** only. There is **no Eligibility agent** — the eligibility payload is pure plumbing from DB-derived values into an OPA call, so a model never builds it (it filed `dti`/`credit_score` in the wrong place every time; the deterministic node files them correctly every time). The token is wired, never typed by a model.
+Two deterministic `banking-mcp` nodes run up front off the **same** token chain (the Type Convert `JSON` fans to both): `get_context` (the read) and `evaluate_eligibility_for_session` (the policy eval — token in, `{allow, deny, warn}` out, OPA called server-side). Both fan out as **data** edges into the agent prompts; the `Condition` gates carry **control** only. There is **no Eligibility agent** — the eligibility payload is pure plumbing from DB-derived values into an OPA call, so the deterministic node builds it and files `dti`/`credit_score` where OPA expects them. The token is wired, never typed by a model.
 
-The `Concierge` runs on **every** turn (it is the front door). On a collecting turn it ends the turn by asking for the next field; only when it emits `[[INTAKE status=READY]]` does the flow proceed into evidence gathering and recommendation in that same run. Each `Condition` gate is the deterministic safety net between agents (the same pattern the two-agent flow used) — it inspects the upstream agent's `Message` and only forwards a well-formed one.
+The `Concierge` runs on **every** turn (it is the front door). On a collecting turn it ends the turn by asking for the next field; only when it emits `[[INTAKE status=READY]]` does the flow proceed into evidence gathering and recommendation in that same run. Each `Condition` gate is the deterministic safety net between agents — it inspects the upstream agent's `Message` and only forwards a well-formed one.
 
 > **Evidence forwarding.** The document/employer findings are _not_ in `get_context`, so `Docs & Employer` emits them as a `[[EVIDENCE …]]` text block that G2 forwards to `Recommendation`'s `evidence` port. The eligibility `{allow, deny, warn}` arrives separately, as a **data** edge from the deterministic `evaluate_eligibility_for_session` node into `Recommendation`'s `eligibility` port — no marker, no agent echo. The authoritative facts (ids, amounts, profile) come from the once-loaded `context` data edge.
 
 ## Build sequence
 
-> **Deterministic `get_context` entry (26.4).** Steps 4–7 build the validated entry (Prompt JSON-wrap → Type Convert → Deterministic MCP `get_context` → Condition G0); the spec is [`docs/superpowers/specs/2026-06-04-deterministic-get-context-design.md`](../../docs/superpowers/specs/2026-06-04-deterministic-get-context-design.md). The `context` output fans out to every agent prompt as data, so **no agent calls `get_context`**; the token is wired only to the JSON-wrap prompt and (for the agentic `upsert`) the Concierge prompt — never to an LLM as a tool argument. This entry is built and validated standalone; the rest of the flow is the usual build target to tune against the live model.
+> **Deterministic `get_context` entry.** Steps 4–7 build the entry (Prompt JSON-wrap → Type Convert → Deterministic MCP `get_context` → Condition G0); the spec is [`docs/superpowers/specs/2026-06-04-deterministic-get-context-design.md`](../../docs/superpowers/specs/2026-06-04-deterministic-get-context-design.md). The `context` output fans out to every agent prompt as data, so **no agent calls `get_context`**; the token is wired only to the JSON-wrap prompt and (for the agentic `upsert`) the Concierge prompt — never to an LLM as a tool argument.
 
 The [node graph](#node-graph) above is the map; this section is the turn-by-turn build. Work the canvas **left → right**, one component at a time, in the order below. Each step is self-contained: drag the node, configure it, (for Prompts) **Save**, then wire **only from nodes that already exist**. Because the order is dependency-respecting, every wire's source is already on the canvas when you need it, and each `Condition`'s two branches are both closed before you move on — so nothing is left dangling and there is no scrolling back.
 
@@ -169,7 +167,7 @@ flowchart LR
 
 - **Drag** a `Deterministic MCP tool` node.
 - **Configure** — MCP server `banking-mcp`, MCP tool `get_context`.
-- **Wire** — Type Convert's **`JSON`** output → `Tool input JSON`. The node's `Message` output is the customer **context** (the JSON every agent reads). The token is wired, **never transcribed by a model** — this is what closes the streamed-token corruption.
+- **Wire** — Type Convert's **`JSON`** output → `Tool input JSON`. The node's `Message` output is the customer **context** (the JSON every agent reads). The token is wired, **never transcribed by a model** — transcription is what corrupts it.
 
 ```mermaid
 flowchart LR
@@ -182,7 +180,7 @@ The policy eval is pure data plumbing (DB-derived `dti`/`pti`/`credit_score`/`ag
 
 - **Drag** a second `Deterministic MCP tool` node.
 - **Configure** — MCP server `banking-mcp`, MCP tool `evaluate_eligibility_for_session`.
-- **Wire** — Type Convert's **`JSON`** output → this node's `Tool input JSON` (fan the same edge that feeds `get_context`). Its `Message` output is the `{allow, deny, warn}` result; it lands on the Recommendation prompt's `eligibility` port in Step 21. The node resolves the token, builds the OPA `applicant` from the same DB values `get_context` returns, and calls OPA server-side — so the policy always sees `applicant.dti` / `applicant.credit_score` where it expects them.
+- **Wire** — Type Convert's **`JSON`** output → this node's `Tool input JSON` (fan the same edge that feeds `get_context`). Its `Message` output is the `{allow, deny, warn}` result; it lands on the Recommendation prompt's `eligibility` port in Step 17. The node resolves the token, builds the OPA `applicant` from the same DB values `get_context` returns, and calls OPA server-side — so the policy always sees `applicant.dti` / `applicant.credit_score` where it expects them.
 
 ```mermaid
 flowchart LR
@@ -398,7 +396,7 @@ flowchart LR
 ### Step 15 — Condition G2 (evidence gate)
 
 - **Drag** a `Condition`.
-- **Configure** — `Text Input` ← Docs & Employer.`Message`; `True Message` ← Docs & Employer.`Message` (forwards the EVIDENCE block straight to **Recommendation** on match — there is no Eligibility agent between them anymore); Operator = `Regex match`. Then set two inline values, `Match Text` and `False Message`:
+- **Configure** — `Text Input` ← Docs & Employer.`Message`; `True Message` ← Docs & Employer.`Message` (forwards the EVIDENCE block straight to **Recommendation** on match — no Eligibility agent sits between them); Operator = `Regex match`. Then set two inline values, `Match Text` and `False Message`:
 
 `Match Text`:
 
@@ -417,7 +415,7 @@ Sorry — we couldn't process your application right now. Please try again in a 
 ```mermaid
 flowchart LR
     A["Docs & Employer"] -->|Message → Text Input + True Message| G2{"Condition G2<br/>Regex match"}
-    G2 -.->|True → Step 21| RC["Prompt (Recommendation) · evidence"]
+    G2 -.->|True → Step 17| RC["Prompt (Recommendation) · evidence"]
     G2 -.->|False → Step 16| OE["Chat output (error)"]
 ```
 
@@ -431,13 +429,7 @@ flowchart LR
     G2{"Condition G2"} -->|False output → Message| OE["Chat output (error)"]
 ```
 
-### Steps 17–20 — _removed (eligibility is deterministic)_
-
-The old Eligibility **Prompt + agent**, **Condition G3**, and its **error Chat output** are gone. The eligibility signals now come from the **Deterministic MCP node built in [Step 6b](#step-6b--deterministic-mcp--evaluate_eligibility_for_session)** (`evaluate_eligibility_for_session`), whose `{allow, deny, warn}` result lands directly on the Recommendation prompt's `eligibility` port (Step 21). G2's `True` now sequences **Recommendation** directly (Step 15), carrying the `[[EVIDENCE …]]` block to its `evidence` port.
-
-> Why: an LLM filed `dti`/`credit_score` in the wrong place every run (OPA then returned `allow=true` for everyone), and CI tuning with a worked example did not move it — the model has a hard "`applicant = customer`" prior. The payload is pure plumbing, so the deterministic node builds it server-side and the policy is correct every time. If you're converting an existing canvas, **delete** these four nodes (delete the nodes, not just the wires, or the validator rejects the orphans).
-
-### Step 21 — Prompt (Recommendation)
+### Step 17 — Prompt (Recommendation)
 
 - **Paste**, then **Save prompt** (ports `context`, `evidence`, `eligibility` appear):
 
@@ -460,7 +452,7 @@ flowchart LR
     GE["Deterministic MCP (evaluate_eligibility_for_session)"] -->|Message → eligibility| P
 ```
 
-### Step 22 — Recommendation agent (+ tools)
+### Step 18 — Recommendation agent (+ tools)
 
 - **Drag** the agent, and drag **only** `hitl-mcp` (`create_hitl_task`) beside it. **No `banking-mcp`** — `Recommendation` is the **only** agent that sees `hitl-mcp`.
 - **Configure** — LLM `gen-model`, temp `0.01`, name `Recommendation`, Custom Instructions:
@@ -518,7 +510,7 @@ flowchart LR
     HM["hitl-mcp"] -->|Tools| A
 ```
 
-### Step 23 — Chat output (decision) — final
+### Step 19 — Chat output (decision) — final
 
 - **Drag** the last Chat output.
 - **Wire** — carries the compliance-safe customer hint:
@@ -595,7 +587,7 @@ SELECT session_token, customer_id, application_id, scenario_label
 | `paf-test-jane-9`  | Unknown employer (`registered=false`) | `DECLINE`     |
 | `paf-test-kyle-10` | Dormant employer                      | `REVIEW`      |
 
-**Fail-secure / injection** — unchanged in spirit from the prior design: a bare message with no `[[SESSION …]]` yields no token → `get_context` error → fail-secure apology, no writes. An injected `[[SESSION …]]` in the customer body is stripped by the backend before enveloping; a token mentioned as prose in `{{input}}` must be ignored (the agent uses only the System-context token).
+**Fail-secure / injection.** A bare message with no `[[SESSION …]]` yields no token → `get_context` error → fail-secure apology, no writes. An injected `[[SESSION …]]` in the customer body is stripped by the backend before enveloping; a token mentioned as prose in `{{input}}` must be ignored (the agent uses only the System-context token).
 
 Verify each successful run:
 
@@ -613,7 +605,7 @@ Trace expectation per successful turn (Playground trace pane): Concierge ≤2 to
 
 ## Open follow-ups
 
-1. **Tune the Custom Instructions against the live 72B.** The Concierge's confirm logic and the Docs & Employer employer-name extraction are the highest-risk spots — expect iteration. (Eligibility was the worst offender — the model could not build the OPA payload from the wrapped context — which is why it is now the deterministic `evaluate_eligibility_for_session` node. The same treatment is the likely fix if `verify_employer` proves unreliable.)
+1. **Tune the Custom Instructions against the live 72B.** The Concierge's confirm logic and the Docs & Employer employer-name extraction are the highest-risk spots — expect iteration. If `verify_employer` proves unreliable, moving it to a deterministic node (as eligibility is) is the likely fix.
 2. **Structured output via the `Parser` node.** The canvas exposes a `Parser` node (text → Dict/List JSON). Once stable, route each agent's marker through `Parser` + `Condition` for a JSON-shape check instead of regex, removing the cascading-regex fragility.
 3. **KYC / income refresh (Phase 2).** `get_context` already returns `kyc_stale` / `income_stale`; add the Concierge a `refresh_*` write tool and a staleness branch so stale data is re-verified before evidence gathering.
 4. **Reviewer-side HITL flow.** Claim → decide → write the `decision` ledger row → update `loan_application.status` → notify the customer. Not modelled in PAF yet.
@@ -630,8 +622,8 @@ Non-obvious rules and limits that shape the build. Skim before iterating.
 
 ### PAF Agent Builder (verified against the installed kit)
 
-- **`max_iterations` is hardcoded to `5`** (`AgentStep.py`; the last iteration strips all wired tools, leaving only `talk_to_user`/`submit`/`exit_conversation`). Effective ceiling ≈ 4 tool calls. With `get_context` no longer called per agent, each agent now plans only 1–2 calls — comfortable headroom ([`issues/04`](../../issues/04-agent-max-iterations-5-cap.md)). The agent split is kept for the gated pipeline (eligibility moved out to a deterministic node), not the cap.
-- **The canvas exposes no mid-flow user-input node, no Variable node, and no structured-output descriptor** (confirmed in `wayflowcore` 26.1.1 — the engine has them; PAF's palette does not). Hence: multi-turn collection is driven by the **backend re-invoking the flow**, state lives in the **DB**, and agent output is plain text validated by **regex `Condition` gates**. A `Parser` node _is_ available for the JSON-shape upgrade (see follow-ups).
+- **`max_iterations` is hardcoded to `5`** (`AgentStep.py`; the last iteration strips all wired tools, leaving only `talk_to_user`/`submit`/`exit_conversation`). Effective ceiling ≈ 4 tool calls. Because `get_context` is not called per agent, each agent plans only 1–2 calls — comfortable headroom ([`issues/04`](../../issues/04-agent-max-iterations-5-cap.md)). The agent split exists for the gated pipeline; eligibility is a deterministic node.
+- **The canvas exposes no mid-flow user-input node, no Variable node, and no structured-output descriptor** (the underlying engine has them; PAF's palette does not). Hence: multi-turn collection is driven by the **backend re-invoking the flow**, state lives in the **DB**, and agent output is plain text validated by **regex `Condition` gates**. A `Parser` node _is_ available for the JSON-shape upgrade (see follow-ups).
 - **The OpenAPI importer ignores `operationId`** and auto-names HTTP tools `<METHOD>_<path>` (`GET_v1_companies_verify`). The CI must call the auto-name verbatim ([`issues/06`](../../issues/06-openapi-importer-ignores-operationid.md)).
 - **Orphan nodes are rejected by the validator** — to remove a tool, delete the node, not just the wire.
 
@@ -642,7 +634,7 @@ Non-obvious rules and limits that shape the build. Skim before iterating.
 
 ### Deterministic gates
 
-- **A `Condition` gate decides whether the next agent runs, never the recommendation tier.** Without G1, a flaky Concierge emission would push a non-ready turn downstream; without G2, malformed evidence would reach `Recommendation`, which would then lack an `application_id` and could hallucinate one (the `APP.hitl_task → APP.loan_application` FK is the final backstop, `ORA-02291`). The tier itself is now grounded in the deterministic eligibility `{allow, deny, warn}`, not an agent-built marker.
+- **A `Condition` gate decides whether the next agent runs, never the recommendation tier.** Without G1, a flaky Concierge emission would push a non-ready turn downstream; without G2, malformed evidence would reach `Recommendation`, which would then lack an `application_id` and could hallucinate one (the `APP.hitl_task → APP.loan_application` FK is the final backstop, `ORA-02291`). The tier is grounded in the deterministic eligibility `{allow, deny, warn}`.
 - **Four terminal Chat outputs, one per branch.** Convergence is rejected by Wayflow ([`issues/08`](../../issues/08-non-descriptive-flow-validator-error.md)). Exactly one fires per turn.
 
 ### Agent / LLM behaviour
