@@ -11,29 +11,28 @@ features, and platform hardening.
 
 ### 0.1 Flow export/import doc cleanup
 
-Flow export/import is a **UI operation** (Agent Builder → My Custom Flows) — intentionally **not** scripted in `manage.py`. The round-trip works and is documented (`LOCAL.md §5`). Two doc fixes remain:
+Flow export/import is a **UI operation** (Agent Builder → My Custom Flows) — intentionally **not** scripted in `manage.py`. The round-trip works and is documented (`LOCAL.md §5`). 26.4's native export/import supersedes the old "no export endpoint" gap (that issue is now deleted); the only residuals are operational: deps re-link by hand on import, imports arrive unpublished, and `.paf` is binary so not git-diffable. One doc fix remains:
 
-- **Refresh `issues/05`** — 26.4's native export/import works now; keep only the residuals (deps re-link by hand on import, imports arrive unpublished, `.paf` is binary so not git-diffable).
 - Update `paf/flows/CHAT_WORKFLOW.md §Export` — it still describes the old "no Export button / Network-tab scrape" path.
 
 ### 0.2 Deterministic `upsert` via marker — only if needed
 
-The deterministic **read** path is shipped; `upsert_application` is left **agentic on purpose** (its token corruption is fail-closed + idempotent, and it wasn't the repro). Only if write-path corruption ever appears in testing: Concierge emits an `[[UPSERT …]]` marker → RegexExtractor + Type Convert build the JSON → a Deterministic MCP node calls `upsert_application` with the token wired. Cost: reopens the fail-open string-interpolation hazard (`issues/01`), a write-or-skip Condition (`issues/08`), and structured marker emission (`issues/07`). Parked.
+The deterministic **read** path is shipped; `upsert_application` is left **agentic on purpose** (its token corruption is fail-closed + idempotent, and it wasn't the repro). Only if write-path corruption ever appears in testing: Concierge emits an `[[UPSERT …]]` marker → RegexExtractor + Type Convert build the JSON → a Deterministic MCP node calls `upsert_application` with the token wired. Cost: reopens the fail-open string-interpolation hazard (`issues/02`), a write-or-skip Condition (`issues/05`), and structured marker emission (`issues/09`). Parked.
 
-### 0.3 PL/SQL Executor node — safe in-DB calls (alternative for `issues/01`)
+### 0.3 PL/SQL Executor node — safe in-DB calls (alternative for `issues/02`)
 
-The new **Oracle PL/SQL Executor node** runs only routines visible in the connected schema metadata, with bound named/positional args, overloads, `OUT`/`IN OUT`, and an optional auto-commit toggle — a first-class, fail-secure DB path. It does not fix the unsafe SQL Query node (`issues/01` stays open as a platform caveat), but our flow can stop depending on MCP shims for DB access.
+The new **Oracle PL/SQL Executor node** runs only routines visible in the connected schema metadata, with bound named/positional args, overloads, `OUT`/`IN OUT`, and an optional auto-commit toggle — a first-class, fail-secure DB path. It does not fix the unsafe SQL Query node (`issues/02` stays open as a platform caveat), but our flow can stop depending on MCP shims for DB access.
 
 - **Code.** Spike: call `AGENT_TOOLS.PKG_AGENT_TOOLS.*` (grants already in Liquibase 011/012) directly from a PL/SQL Executor node and evaluate retiring the `banking-mcp` / `application-mcp` wrapper containers (fewer moving parts). Keep MCP if the node can't resolve the token-keyed read/write cleanly — decide from the spike, don't rip out MCP blind.
-- **Docs.** If adopted: trim the `banking-mcp` / `application-mcp` registrations from `LOCAL.md §4`, update the tool-channel description in `docs/DESIGN.md`, and note in `issues/01` that the flow no longer touches the SQL Query node.
+- **Docs.** If adopted: trim the `banking-mcp` / `application-mcp` registrations from `LOCAL.md §4`, update the tool-channel description in `docs/DESIGN.md`, and note in `issues/02` that the flow no longer touches the SQL Query node.
 - **Guide steps.** Register a Database datasource for the node, select the approved routines, map the bound arguments; document the auto-commit setting for the `upsert` write.
 
-### 0.4 Agent observability / OTel tracing — mitigates `issues/03` and `issues/06`
+### 0.4 Agent observability / OTel tracing — mitigates `issues/04` and `issues/08`
 
 26.4 adds OTel tracing (Arize Phoenix / Comet Opik / Langfuse) capturing spans for flow steps, LLM calls, and tool executions, plus a Collect-Diagnostics ZIP. This is the missing diagnostic surface for the `max_iterations=5` cliff and the ID-only validator errors (neither root cause is fixed in code).
 
 - **Code.** Optional: add a local trace-collector service (e.g. Phoenix or Langfuse) to `deploy/podman/compose.local.yml` if we want traces without a cloud account; otherwise no code.
-- **Docs.** Add an "enable tracing" recipe to `docs/TROUBLESHOOT.md` and an optional step in `LOCAL.md`. Note in `issues/03` / `issues/06` that 26.4 makes the conditions observable even though the messages/cap are unchanged.
+- **Docs.** Add an "enable tracing" recipe to `docs/TROUBLESHOOT.md` and an optional step in `LOCAL.md`. Note in `issues/04` / `issues/08` that 26.4 makes the conditions observable even though the messages/cap are unchanged.
 - **Guide steps.** PAF Settings → tracing provider → point at the collector, enable masking; show where a `CHAT_WORKFLOW` run's per-tool spans land.
 
 ## 1. Proactive product recommendation as a second workflow

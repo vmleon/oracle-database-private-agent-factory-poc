@@ -167,8 +167,8 @@ What each tells you:
 
 - **`ConditionStep evaluation: text_input=...`** — copy `text_input` verbatim and you have exactly what the regex evaluated against. If it's the expected Evidence block but the regex doesn't match, the regex is wrong. If it's an error string from the agent ("Tool named X is not in the list..."), the upstream agent failed — chase the second grep.
 - **`Tool named X is not in the list of available tools. Available tools: [...]`** — two distinct meanings depending on the listed count:
-  - **List length matches the wired tools** (e.g. 10 entries for opa-mcp's 7 + banking-mcp's 1 + registry's 1 + `talk_to_user`): the tool name in the agent's CI doesn't match what the runtime exposes. Common cause: PAF's OpenAPI importer auto-names HTTP tools `<METHOD>_<path>` regardless of `operationId` (see [`../issues/04-openapi-importer-ignores-operationid.md`](../issues/04-openapi-importer-ignores-operationid.md)). Fix the CI to use the auto-name PAF actually exposes.
-  - **List length collapses to 1** (`['talk_to_user']` only): the agent hit PAF's hardcoded `max_iterations=5` cap. Wayflow strips all wired tools on the last iteration (see [`../issues/03-agent-max-iterations-5-cap.md`](../issues/03-agent-max-iterations-5-cap.md)). Fix: trim the recipe to ≤4 tool calls, or split the work across multiple agents.
+  - **List length matches the wired tools** (e.g. 10 entries for opa-mcp's 7 + banking-mcp's 1 + registry's 1 + `talk_to_user`): the tool name in the agent's CI doesn't match what the runtime exposes. Common cause: PAF's OpenAPI importer auto-names HTTP tools `<METHOD>_<path>` regardless of `operationId` (see [`../issues/06-openapi-importer-ignores-operationid.md`](../issues/06-openapi-importer-ignores-operationid.md)). Fix the CI to use the auto-name PAF actually exposes.
+  - **List length collapses to 1** (`['talk_to_user']` only): the agent hit PAF's hardcoded `max_iterations=5` cap. Wayflow strips all wired tools on the last iteration (see [`../issues/04-agent-max-iterations-5-cap.md`](../issues/04-agent-max-iterations-5-cap.md)). Fix: trim the recipe to ≤4 tool calls, or split the work across multiple agents.
 
 ## OPA
 

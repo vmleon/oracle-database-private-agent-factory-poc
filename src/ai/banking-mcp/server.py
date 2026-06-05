@@ -13,7 +13,7 @@ unguessable — the agent gets no authority by holding it; it only resolves
 to a row in APP.auth_session that was minted at login.
 
 Why an MCP wrapper instead of the PAF SQL Query node:
-PAF's SQL Query node ignores `:name` bind variables (issues/01-sql-query-no-bind-variables.md):
+PAF's SQL Query node ignores `:name` bind variables (issues/02-sql-query-no-bind-variables.md):
 unsubstituted placeholders become column-resolved identifiers and the query
 silently returns an arbitrary row. This wrapper uses cx_Oracle bind
 variables directly — typed parameters, no string interpolation, fail-secure

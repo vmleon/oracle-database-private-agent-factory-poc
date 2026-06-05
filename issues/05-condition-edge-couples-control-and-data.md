@@ -7,7 +7,7 @@ In Agent Builder, a single drawn edge from a `Condition`'s `True` / `False` outp
 1. **Control flow** — it makes that node the next step on the taken branch.
 2. **Data flow** — it binds the branch's message (`True Message` / `False Message`) into the target node's **input port**.
 
-There is no way to draw a **control-only** edge ("route to step B, carry no payload"), and the canvas exposes **no shared-state / Variable node** and **no mid-flow input** ([`issues/02`](02-no-flow-start-inputs.md)). So when you need to conditionally sequence a step that does **not** consume the predicate's payload, you must repurpose one of that step's real input ports to receive the branch message.
+There is no way to draw a **control-only** edge ("route to step B, carry no payload"), and the canvas exposes **no shared-state / Variable node** and **no mid-flow input** ([`issues/03`](03-no-flow-start-inputs.md)). So when you need to conditionally sequence a step that does **not** consume the predicate's payload, you must repurpose one of that step's real input ports to receive the branch message.
 
 This is not an edge case — "branch to a step that doesn't need the predicate value" is everyday routing.
 
@@ -56,7 +56,7 @@ For the Eligibility and Recommendation stages the coupling is harmless, because 
 Either (any one would resolve it):
 
 1. **A control-only connector** on the canvas — let an edge be marked "sequence only", so it creates a `ControlFlowEdge` with no accompanying `DataFlowEdge`. Then a `Condition.True` can gate a step without touching its inputs.
-2. **A shared-state / Variable node** (pairs with [`issues/02`](02-no-flow-start-inputs.md)) so steps read inputs from named state rather than from the edge that triggered them — the LangGraph model.
+2. **A shared-state / Variable node** (pairs with [`issues/03`](03-no-flow-start-inputs.md)) so steps read inputs from named state rather than from the edge that triggered them — the LangGraph model.
 3. **A dedicated trigger/“run-after” input port** on agent and prompt nodes (MESSAGE-agnostic, no data binding) for branch outputs to attach to.
 
 The runtime already supports (1) — `ControlFlowEdge` and `DataFlowEdge` are independent — so the change is confined to the Agent Builder edge model and palette.

@@ -20,7 +20,7 @@ Source-of-truth references:
 
 - Design + decisions (agents, ≤3-tool rule, reason codes, customer hint): [`docs/superpowers/specs/2026-05-30-loan-origination-chat-design.md`](../../docs/superpowers/specs/2026-05-30-loan-origination-chat-design.md)
 - Decision contract + tool inventory: [`docs/DECISIONING-ENGINE-USE-CASE.md`](../../docs/DECISIONING-ENGINE-USE-CASE.md)
-- PAF product gaps that shape this design: [`issues/01-sql-query-no-bind-variables.md`](../../issues/01-sql-query-no-bind-variables.md), [`issues/02-no-flow-start-inputs.md`](../../issues/02-no-flow-start-inputs.md), [`issues/03-agent-max-iterations-5-cap.md`](../../issues/03-agent-max-iterations-5-cap.md), [`issues/04-openapi-importer-ignores-operationid.md`](../../issues/04-openapi-importer-ignores-operationid.md), [`issues/06-non-descriptive-flow-validator-error.md`](../../issues/06-non-descriptive-flow-validator-error.md)
+- PAF product gaps that shape this design: [`issues/02-sql-query-no-bind-variables.md`](../../issues/02-sql-query-no-bind-variables.md), [`issues/03-no-flow-start-inputs.md`](../../issues/03-no-flow-start-inputs.md), [`issues/04-agent-max-iterations-5-cap.md`](../../issues/04-agent-max-iterations-5-cap.md), [`issues/06-openapi-importer-ignores-operationid.md`](../../issues/06-openapi-importer-ignores-operationid.md), [`issues/08-non-descriptive-flow-validator-error.md`](../../issues/08-non-descriptive-flow-validator-error.md)
 
 ## Purpose
 
@@ -41,8 +41,8 @@ The flow's only runtime input is the **chat message** posted to PAF's Chat input
 
 Two PAF product gaps shape this design (both verified against the installed kit):
 
-- **SQL Query node ignores `:name` bind variables and silently fails open** ([`issues/01`](../../issues/01-sql-query-no-bind-variables.md)). All DB access — read and write — goes through MCP tools (`get_context`, `upsert_application`, `create_hitl_task`) that use `cx_Oracle` bind variables. There is no SQL Query node in this flow.
-- **No per-invocation flow inputs other than the chat message** ([`issues/02`](../../issues/02-no-flow-start-inputs.md)). The in-band envelope multiplexes token + message through the one channel. A value produced mid-flow (e.g. a newly created `application_id`) cannot be threaded back into the run — which is exactly why state lives in the **DB** and is loaded once per turn through the deterministic `get_context` entry node, then fanned out to the agents as data.
+- **SQL Query node ignores `:name` bind variables and silently fails open** ([`issues/02`](../../issues/02-sql-query-no-bind-variables.md)). All DB access — read and write — goes through MCP tools (`get_context`, `upsert_application`, `create_hitl_task`) that use `cx_Oracle` bind variables. There is no SQL Query node in this flow.
+- **No per-invocation flow inputs other than the chat message** ([`issues/03`](../../issues/03-no-flow-start-inputs.md)). The in-band envelope multiplexes token + message through the one channel. A value produced mid-flow (e.g. a newly created `application_id`) cannot be threaded back into the run — which is exactly why state lives in the **DB** and is loaded once per turn through the deterministic `get_context` entry node, then fanned out to the agents as data.
 
 ## Node graph
 
@@ -90,7 +90,7 @@ The [node graph](#node-graph) above is the map; this section is the turn-by-turn
 - Use **`{{input}}`**, never `{{message}}`, as a placeholder name — `{{message}}` collides with the `Message` output-port id and the wire misbehaves (suspected PAF bug).
 - To remove a tool from an agent, **delete the MCP/REST node**, not just the wire — orphan nodes fail the validator.
 - Each **`Condition`** (type `conditionComponent`, category Processing) has a dense form: `Text Input` (the value tested), `True Message` / `False Message` (the value **forwarded** on each branch), `Match Text` (the regex), Operator **`Regex match`**, and two branch outputs (`True` / `False`). A branch edge does **double duty** — wiring `True`/`False` into a node both **sequences** that node (control flow) **and binds the branch's message into the target input port** (data flow). There is no trigger-only wire, so the message you forward _is_ the value the next step receives. Fill all of it in the step where you drop the node — only one branch fires per turn (BranchingStep semantics).
-- There are **four terminal Chat outputs**, one per branch — never converge two branches onto one node (Wayflow rejects it, [`issues/06`](../../issues/06-non-descriptive-flow-validator-error.md)). Close each Condition's `False` branch with its own Chat output **immediately**, in the step right after the gate.
+- There are **four terminal Chat outputs**, one per branch — never converge two branches onto one node (Wayflow rejects it, [`issues/08`](../../issues/08-non-descriptive-flow-validator-error.md)). Close each Condition's `False` branch with its own Chat output **immediately**, in the step right after the gate.
 
 All three agents (Concierge, Docs & Employer, Recommendation) use LLM Configuration **`gen-model`** (the generic generative config registered at install — see [LOCAL.md §3](../../LOCAL.md#3-install-paf)) at temperature **`0.01`**. An agent's tool surface is whatever MCP/REST nodes you wire to it (PAF has no per-tool filter) — wire each agent only the tools its step lists. (Eligibility is a deterministic node, not an agent.)
 
@@ -255,7 +255,7 @@ flowchart LR
 
 ### Step 10 — Concierge agent (+ tools)
 
-- **Drag** the agent, and drag **only** `application-mcp` (`upsert_application`) beside it. **No `banking-mcp`** — the context is already in the prompt, so this agent has just one tool (more `max_iterations` headroom, [`issues/03`](../../issues/03-agent-max-iterations-5-cap.md)).
+- **Drag** the agent, and drag **only** `application-mcp` (`upsert_application`) beside it. **No `banking-mcp`** — the context is already in the prompt, so this agent has just one tool (more `max_iterations` headroom, [`issues/04`](../../issues/04-agent-max-iterations-5-cap.md)).
 - **Configure** — LLM `gen-model`, temperature `0.01`, name `Concierge`, and paste these Custom Instructions:
 
 ```
@@ -375,7 +375,7 @@ Step 2. GET_v1_companies_verify(name = <profile.employer_name copied VERBATIM fr
         company and corrupts the decision.
         (That funky tool name is what PAF exposes the Company Registry REST tool as —
         its OpenAPI importer ignores operationId and auto-names from method+path,
-        see issues/04. Call this exact name; `verify_employer` does not exist.)
+        see issues/06. Call this exact name; `verify_employer` does not exist.)
 
 Final assistant message — exact format, no other text:
   [[EVIDENCE
@@ -609,7 +609,7 @@ Trace expectation per successful turn (Playground trace pane): Concierge ≤2 to
 
 ## Export
 
-**PAF has no UI Export button.** Once the flow runs the intake walkthrough plus the tier scenarios cleanly, capture the JSON from the browser Network tab (filter Fetch/XHR; find the response whose body starts with `{"data":{"agentId":...,"data":{"edges":[...]`), and paste it verbatim into [`paf/flows/chat_workflow.flow.json`](chat_workflow.flow.json). Re-import on a clean redeploy by POSTing the file body to `/agentFactory/v1/agentBuilder/importAgentIrFlow`. The round-trip is not yet scripted in `manage.py` — see [`issues/05-no-flow-export-endpoint.md`](../../issues/05-no-flow-export-endpoint.md).
+**PAF has no UI Export button.** Once the flow runs the intake walkthrough plus the tier scenarios cleanly, capture the JSON from the browser Network tab (filter Fetch/XHR; find the response whose body starts with `{"data":{"agentId":...,"data":{"edges":[...]`), and paste it verbatim into [`paf/flows/chat_workflow.flow.json`](chat_workflow.flow.json). Re-import on a clean redeploy by POSTing the file body to `/agentFactory/v1/agentBuilder/importAgentIrFlow`. The round-trip is not yet scripted in `manage.py`.
 
 ## Open follow-ups
 
@@ -630,9 +630,9 @@ Non-obvious rules and limits that shape the build. Skim before iterating.
 
 ### PAF Agent Builder (verified against the installed kit)
 
-- **`max_iterations` is hardcoded to `5`** (`AgentStep.py`; the last iteration strips all wired tools, leaving only `talk_to_user`/`submit`/`exit_conversation`). Effective ceiling ≈ 4 tool calls. With `get_context` no longer called per agent, each agent now plans only 1–2 calls — comfortable headroom ([`issues/03`](../../issues/03-agent-max-iterations-5-cap.md)). The agent split is kept for the gated pipeline (eligibility moved out to a deterministic node), not the cap.
+- **`max_iterations` is hardcoded to `5`** (`AgentStep.py`; the last iteration strips all wired tools, leaving only `talk_to_user`/`submit`/`exit_conversation`). Effective ceiling ≈ 4 tool calls. With `get_context` no longer called per agent, each agent now plans only 1–2 calls — comfortable headroom ([`issues/04`](../../issues/04-agent-max-iterations-5-cap.md)). The agent split is kept for the gated pipeline (eligibility moved out to a deterministic node), not the cap.
 - **The canvas exposes no mid-flow user-input node, no Variable node, and no structured-output descriptor** (confirmed in `wayflowcore` 26.1.1 — the engine has them; PAF's palette does not). Hence: multi-turn collection is driven by the **backend re-invoking the flow**, state lives in the **DB**, and agent output is plain text validated by **regex `Condition` gates**. A `Parser` node _is_ available for the JSON-shape upgrade (see follow-ups).
-- **The OpenAPI importer ignores `operationId`** and auto-names HTTP tools `<METHOD>_<path>` (`GET_v1_companies_verify`). The CI must call the auto-name verbatim ([`issues/04`](../../issues/04-openapi-importer-ignores-operationid.md)).
+- **The OpenAPI importer ignores `operationId`** and auto-names HTTP tools `<METHOD>_<path>` (`GET_v1_companies_verify`). The CI must call the auto-name verbatim ([`issues/06`](../../issues/06-openapi-importer-ignores-operationid.md)).
 - **Orphan nodes are rejected by the validator** — to remove a tool, delete the node, not just the wire.
 
 ### DB-as-memory
@@ -643,7 +643,7 @@ Non-obvious rules and limits that shape the build. Skim before iterating.
 ### Deterministic gates
 
 - **A `Condition` gate decides whether the next agent runs, never the recommendation tier.** Without G1, a flaky Concierge emission would push a non-ready turn downstream; without G2, malformed evidence would reach `Recommendation`, which would then lack an `application_id` and could hallucinate one (the `APP.hitl_task → APP.loan_application` FK is the final backstop, `ORA-02291`). The tier itself is now grounded in the deterministic eligibility `{allow, deny, warn}`, not an agent-built marker.
-- **Four terminal Chat outputs, one per branch.** Convergence is rejected by Wayflow ([`issues/06`](../../issues/06-non-descriptive-flow-validator-error.md)). Exactly one fires per turn.
+- **Four terminal Chat outputs, one per branch.** Convergence is rejected by Wayflow ([`issues/08`](../../issues/08-non-descriptive-flow-validator-error.md)). Exactly one fires per turn.
 
 ### Agent / LLM behaviour
 
