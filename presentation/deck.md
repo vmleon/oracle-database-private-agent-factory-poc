@@ -176,18 +176,18 @@ This is the real punchline. The loan agent isn't a bespoke build — it's the fi
 
 ## Slide 9 — This is a PoC, and here's exactly where we cut corners
 
-| In this PoC                                      | Production path                                                                       |
-| ------------------------------------------------ | ------------------------------------------------------------------------------------- |
-| OCR is a stub returning canned extraction        | Real YOLO + PaddleOCR pipeline — a separate workstream                                |
-| Select AI runs on cloud / ADB, not the local box | A 26ai-Free limitation; the cloud path is designed                                    |
-| Banking data is synthetic                        | Engineered to exercise paths, not to validate a credit model                          |
-| The flow is assembled on the PAF canvas          | The tools and Spring backend are implemented and covered by an automated test harness |
+| In this PoC                                                                           | Production path                                                                       |
+| ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| OCR is a stub returning canned extraction                                             | Real YOLO + PaddleOCR pipeline — a separate workstream                                |
+| Select AI custom endpoints aren't in the Oracle Database Free container we develop on | Fully supported on the production database — on-prem or cloud (ADB)                   |
+| Banking data is synthetic                                                             | Engineered to exercise paths, not to validate a credit model                          |
+| The flow is assembled on the PAF canvas                                               | The tools and Spring backend are implemented and covered by an automated test harness |
 
 - Every gap is a seam, not a hole — the interface is in place; you swap in the real thing.
 
 **Speaker notes**
 
-Let me be straight about where we cut corners, because that's where credibility comes from. The OCR is a stub — it returns canned extraction; the real computer-vision pipeline is a separate workstream. Select AI runs on the cloud database, not the local box — that's a known limitation of the free local edition. The banking data is synthetic, built to exercise every path, not to validate a real credit model. But here's the framing that matters: every one of these is a seam, not a hole. Each one sits behind a clean interface — a tool, a config flag. We're not hiding the stub OCR; we're showing you the socket it plugs into. Production is integration work, not a redesign.
+Let me be straight about where we cut corners, because that's where credibility comes from. The OCR is a stub — it returns canned extraction; the real computer-vision pipeline is a separate workstream. Select AI's custom LLM endpoints aren't available in the Oracle Database Free container we develop on locally — that's a limit of the free container, not of the product; on a full Oracle Database, on-prem or in the cloud, it's fully supported. The banking data is synthetic, built to exercise every path, not to validate a real credit model. But here's the framing that matters: every one of these is a seam, not a hole. Each one sits behind a clean interface — a tool, a config flag. We're not hiding the stub OCR; we're showing you the socket it plugs into. Production is integration work, not a redesign.
 
 ---
 
@@ -216,21 +216,19 @@ So where does that leave us. Speed with a paper trail — a governed first look 
 
 ## Slide 11 — It's GA. You can build your first agent this afternoon.
 
-- Live Lab — a guided, hands-on walkthrough: install PAF and build an agent end to end.
-- Download — oracle.com → Private Agent Factory; also on Oracle Marketplace.
-- Docs — the full Agent Factory documentation.
+- Download — [oracle.com → Private Agent Factory](https://www.oracle.com/database/technologies/private-agent-factory-downloads.html); also on [Oracle Marketplace](https://marketplace.oracle.com/app/agentfactory).
+- Docs — [the full Agent Factory documentation](https://docs.oracle.com/en/database/oracle/agent-factory/25.3/paias/introduction.html).
 - Teams across industries are already building on it.
 
 ```mermaid
 flowchart LR
-    S["Start here"] --> L["Live Lab"]
-    S --> D["Download"]
+    S["Start here"] --> D["Download"]
     S --> O["Docs"]
 ```
 
 **Speaker notes**
 
-The best part — you can do this yourself. There's a Live Lab: a guided, hands-on walkthrough that installs the Agent Factory and builds an agent end to end. You can download it from oracle.com or the Oracle Marketplace. And the full documentation is online. Your first agent, this afternoon.
+The best part — you can do this yourself. Download the Agent Factory from oracle.com or the Oracle Marketplace, and the full documentation is online. Your first agent, this afternoon.
 
 ---
 
