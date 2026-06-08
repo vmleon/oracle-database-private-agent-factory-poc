@@ -46,7 +46,8 @@ public final class Dtos {
                                java.math.BigDecimal amountRequested, Integer termMonths, String purpose,
                                String state, String agentRecommendation, String agentReasoning,
                                String agentExploreHints, String agentEvidence, String agentRunId,
-                               String humanOutcome, Instant createdAt, Instant closedAt) {
+                               String humanOutcome, Instant createdAt, Instant closedAt,
+                               java.util.List<DecisionToolCall> toolCalls) {
     }
 
     public record DecisionRequest(String outcome, String note, String reviewer) {

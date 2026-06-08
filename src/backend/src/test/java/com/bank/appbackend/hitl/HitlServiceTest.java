@@ -29,14 +29,14 @@ class HitlServiceTest {
     @Test
     void decideClosesTaskAndWritesDecisionRow() {
         when(repo.findDetail(5L)).thenReturn(Optional.of(row(5L, "OPEN")));
-        when(repo.closeTask(5L, "REJECT", "DTI over cap", "Backoffice Reviewer")).thenReturn(1);
+        when(repo.closeTask(5L, "DECLINE", "DTI over cap", "Backoffice Reviewer")).thenReturn(1);
 
-        DecisionResponse resp = service.decide(5L, new DecisionRequest("REJECT", "DTI over cap", null));
+        DecisionResponse resp = service.decide(5L, new DecisionRequest("DECLINE", "DTI over cap", null));
 
         assertThat(resp.state()).isEqualTo("CLOSED");
-        assertThat(resp.humanOutcome()).isEqualTo("REJECT");
+        assertThat(resp.humanOutcome()).isEqualTo("DECLINE");
         assertThat(resp.humanUser()).isEqualTo("Backoffice Reviewer");
-        verify(repo).insertDecision(5L, "REJECT", "DTI over cap", "Backoffice Reviewer");
+        verify(repo).insertDecision(5L, "DECLINE", "DTI over cap", "Backoffice Reviewer");
     }
 
     @Test

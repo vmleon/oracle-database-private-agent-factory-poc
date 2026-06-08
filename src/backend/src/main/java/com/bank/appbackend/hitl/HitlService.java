@@ -37,9 +37,17 @@ public class HitlService {
                 .toList();
     }
 
-    /** Full recommendation packet for one task. 404 if unknown. */
+    /** Full recommendation packet for one task, including the agent tool trace. 404 if unknown. */
     public HitlTaskView getDetail(Long taskId) {
         return toView(repo.findDetail(taskId).orElseThrow(this::notFound));
+    }
+
+    private List<DecisionToolCall> toolTrace(Long applicationId) {
+        return repo.findDecisionAudit(applicationId).stream()
+                .map(a -> new DecisionToolCall(a.getAuditId(), a.getStepNo(), a.getToolName(),
+                        a.getToolInput(), a.getToolOutput(), a.getStartedAt(), a.getEndedAt(),
+                        a.getDurationMs(), a.getStatus()))
+                .toList();
     }
 
     /**
@@ -50,8 +58,8 @@ public class HitlService {
     @Transactional
     public DecisionResponse decide(Long taskId, DecisionRequest req) {
         String outcome = req.outcome();
-        if (!"APPROVE".equals(outcome) && !"REJECT".equals(outcome)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "outcome must be APPROVE or REJECT");
+        if (!"APPROVE".equals(outcome) && !"DECLINE".equals(outcome)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "outcome must be APPROVE or DECLINE");
         }
         repo.findDetail(taskId).orElseThrow(this::notFound);
 
@@ -79,11 +87,7 @@ public class HitlService {
     public DecisionView getDecision(Long decisionId) {
         DecisionDetailRow d = repo.findDecision(decisionId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "decision not found"));
-        List<DecisionToolCall> toolCalls = repo.findDecisionAudit(d.getApplicationId()).stream()
-                .map(a -> new DecisionToolCall(a.getAuditId(), a.getStepNo(), a.getToolName(),
-                        a.getToolInput(), a.getToolOutput(), a.getStartedAt(), a.getEndedAt(),
-                        a.getDurationMs(), a.getStatus()))
-                .toList();
+        List<DecisionToolCall> toolCalls = toolTrace(d.getApplicationId());
         return new DecisionView(d.getDecisionId(), d.getApplicationId(), d.getCustomerName(),
                 d.getAmountRequested(), d.getTermMonths(), d.getPurpose(), d.getHumanOutcome(),
                 d.getHumanUser(), d.getHumanNote(), d.getDecidedAt(), d.getAgentRecommendation(),
@@ -96,7 +100,7 @@ public class HitlService {
                 r.getAmountRequested(), r.getTermMonths(), r.getPurpose(), r.getState(),
                 r.getAgentRecommendation(), r.getAgentReasoning(), r.getAgentExploreHints(),
                 r.getAgentEvidence(), r.getAgentRunId(), r.getHumanOutcome(),
-                r.getCreatedAt(), r.getClosedAt());
+                r.getCreatedAt(), r.getClosedAt(), toolTrace(r.getApplicationId()));
     }
 
     private ResponseStatusException notFound() {

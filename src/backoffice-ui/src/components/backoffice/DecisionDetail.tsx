@@ -1,15 +1,14 @@
 import { useEffect, useState } from "react";
-import { getDecision, type DecisionToolCall, type DecisionView } from "@/api";
+import { getDecision, type DecisionView } from "@/api";
 import {
   Badge,
   EvidencePanel,
   money,
   recommendationTone,
 } from "./EvidencePanel";
+import { ToolTrace } from "./ToolTrace";
 
 const outcomeTone = (o: string) => (o === "APPROVE" ? "good" : "bad");
-const statusTone = (s: string) =>
-  s === "SUCCESS" ? "good" : s === "SKIPPED" ? "neutral" : "bad";
 
 const fmtDate = (iso: string | null) =>
   iso ? new Date(iso).toLocaleString() : "—";
@@ -101,76 +100,6 @@ export function DecisionDetail({
         </h2>
         <ToolTrace calls={d.toolCalls} runId={d.agentRunId} />
       </div>
-    </div>
-  );
-}
-
-function ToolTrace({
-  calls,
-  runId,
-}: {
-  calls: DecisionToolCall[];
-  runId: string;
-}) {
-  if (!calls.length) {
-    return (
-      <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-400">
-        No tool trace recorded for run {runId}.
-      </div>
-    );
-  }
-  return (
-    <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-slate-200 text-left text-[11px] uppercase tracking-wide text-slate-400">
-            <th className="p-2 font-medium">#</th>
-            <th className="p-2 font-medium">Tool</th>
-            <th className="p-2 font-medium">Status</th>
-            <th className="p-2 font-medium">Duration</th>
-            <th className="p-2 font-medium">Started</th>
-          </tr>
-        </thead>
-        <tbody>
-          {calls.map((c) => (
-            <tr
-              key={c.auditId}
-              className="border-b border-slate-100 align-top last:border-0"
-            >
-              <td className="p-2 text-slate-500">{c.stepNo}</td>
-              <td className="p-2">
-                <span className="font-medium">{c.toolName}</span>
-                {(c.toolInput || c.toolOutput) && (
-                  <details className="mt-1">
-                    <summary className="cursor-pointer text-xs text-slate-400 hover:underline">
-                      input / output
-                    </summary>
-                    {c.toolInput && (
-                      <pre className="mt-1 overflow-x-auto rounded bg-slate-50 p-2 text-xs">
-                        {c.toolInput}
-                      </pre>
-                    )}
-                    {c.toolOutput && (
-                      <pre className="mt-1 overflow-x-auto rounded bg-slate-50 p-2 text-xs">
-                        {c.toolOutput}
-                      </pre>
-                    )}
-                  </details>
-                )}
-              </td>
-              <td className="p-2">
-                <Badge tone={statusTone(c.status)}>{c.status}</Badge>
-              </td>
-              <td className="p-2 text-slate-500">
-                {c.durationMs != null ? `${c.durationMs} ms` : "—"}
-              </td>
-              <td className="p-2 text-xs text-slate-500">
-                {fmtDate(c.startedAt)}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
     </div>
   );
 }

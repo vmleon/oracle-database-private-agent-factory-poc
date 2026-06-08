@@ -4,7 +4,6 @@ import { cn } from "@/lib/utils";
 /** Shape of the agent evidence packet (every field optional — it varies per run). */
 interface Evidence {
   reason_codes?: string[];
-  application_id?: number;
   required_documents?: {
     required?: string[];
     amount_band?: string;
@@ -18,32 +17,6 @@ interface Evidence {
     registered_address?: string;
     last_filed_year?: number;
   };
-  customer?: {
-    id?: number;
-    name?: string;
-    age_years?: number;
-    residency?: string;
-    kyc_status?: string;
-    kyc_age_days?: number;
-    kyc_stale?: boolean;
-  };
-  application?: {
-    id?: number;
-    status?: string;
-    amount_requested?: number;
-    term_months?: number;
-    purpose?: string;
-    missing?: string[];
-  };
-  profile?: {
-    employment_type?: string;
-    employer_name?: string;
-    monthly_salary?: number;
-    income_stale?: boolean;
-  };
-  credit?: { score?: number };
-  facilities?: { existing_monthly_debt?: number };
-  derived?: { monthly_payment?: number; pti?: number; dti?: number };
 }
 
 type Tone = "good" | "warn" | "bad" | "neutral";
@@ -55,20 +28,6 @@ const badgeTone: Record<Tone, string> = {
   neutral: "bg-slate-100 text-slate-600",
 };
 
-const valueTone: Record<Tone, string> = {
-  good: "text-emerald-600",
-  warn: "text-amber-600",
-  bad: "text-rose-600",
-  neutral: "text-slate-900",
-};
-
-// Thresholds mirror APP.system_config for display colouring only — they do not
-// re-decide anything (the agent already produced the recommendation tier).
-const SCORE_CAUTION = 670;
-const SCORE_FLOOR = 600;
-const DTI_CAP = 0.45;
-const PTI_CAP = 0.25;
-
 export const money = (n: number) =>
   n.toLocaleString("en-US", {
     style: "currency",
@@ -76,13 +35,7 @@ export const money = (n: number) =>
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
   });
-const pct = (n: number) => `${Math.round(n * 100)}%`;
 
-const scoreTone = (s: number): Tone =>
-  s >= SCORE_CAUTION ? "good" : s >= SCORE_FLOOR ? "warn" : "bad";
-const ratioTone = (v: number, cap: number): Tone => (v <= cap ? "good" : "bad");
-const kycTone = (status: string, stale?: boolean): Tone =>
-  status !== "PASSED" ? "bad" : stale ? "warn" : "good";
 const employerTone = (registered?: boolean, status?: string): Tone => {
   if (registered === false) return "bad";
   if (status === "active") return "good";
@@ -104,27 +57,6 @@ export function Badge({ tone, children }: { tone: Tone; children: ReactNode }) {
     >
       {children}
     </span>
-  );
-}
-
-function Stat({
-  label,
-  value,
-  tone = "neutral",
-}: {
-  label: string;
-  value: ReactNode;
-  tone?: Tone;
-}) {
-  return (
-    <div className="rounded-lg border border-slate-200 bg-white p-3">
-      <div className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
-        {label}
-      </div>
-      <div className={cn("mt-1 text-lg font-semibold", valueTone[tone])}>
-        {value}
-      </div>
-    </div>
   );
 }
 
@@ -175,165 +107,61 @@ export function EvidencePanel({ raw }: { raw: string | null }) {
     );
   }
 
-  const {
-    credit,
-    derived,
-    application,
-    profile,
-    customer,
-    verify_employer,
-    required_documents,
-    facilities,
-    reason_codes,
-  } = e;
+  const { verify_employer, required_documents, reason_codes } = e;
 
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        {credit?.score != null && (
-          <Stat
-            label="Credit score"
-            value={credit.score}
-            tone={scoreTone(credit.score)}
-          />
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+      <Card title="Employer">
+        {verify_employer ? (
+          <>
+            <div className="mb-2">
+              <Badge
+                tone={employerTone(
+                  verify_employer.registered,
+                  verify_employer.trading_status,
+                )}
+              >
+                {verify_employer.registered === false
+                  ? "Unregistered"
+                  : (verify_employer.trading_status ?? "—")}
+              </Badge>
+            </div>
+            <Field label="Name" value={verify_employer.name} />
+            <Field label="Sector" value={verify_employer.sector} />
+            <Field label="Address" value={verify_employer.registered_address} />
+            <Field label="Last filed" value={verify_employer.last_filed_year} />
+          </>
+        ) : (
+          <p className="text-sm text-slate-400">Not checked.</p>
         )}
-        {derived?.dti != null && (
-          <Stat
-            label="DTI"
-            value={pct(derived.dti)}
-            tone={ratioTone(derived.dti, DTI_CAP)}
-          />
-        )}
-        {derived?.pti != null && (
-          <Stat
-            label="PTI"
-            value={pct(derived.pti)}
-            tone={ratioTone(derived.pti, PTI_CAP)}
-          />
-        )}
-        {derived?.monthly_payment != null && (
-          <Stat label="Monthly payment" value={money(derived.monthly_payment)} />
-        )}
-        {application?.amount_requested != null && (
-          <Stat label="Loan amount" value={money(application.amount_requested)} />
-        )}
-        {application?.term_months != null && (
-          <Stat label="Term" value={`${application.term_months} mo`} />
-        )}
-        {profile?.monthly_salary != null && (
-          <Stat label="Monthly salary" value={money(profile.monthly_salary)} />
-        )}
-        {facilities?.existing_monthly_debt != null && (
-          <Stat
-            label="Existing debt"
-            value={money(facilities.existing_monthly_debt)}
-          />
-        )}
-      </div>
+      </Card>
 
-      <div className="flex flex-wrap gap-2">
-        {customer?.kyc_status && (
-          <Badge tone={kycTone(customer.kyc_status, customer.kyc_stale)}>
-            KYC {customer.kyc_status}
-            {customer.kyc_stale ? " · stale" : ""}
-          </Badge>
-        )}
-        {verify_employer && (verify_employer.name || verify_employer.trading_status) && (
-          <Badge
-            tone={employerTone(
-              verify_employer.registered,
-              verify_employer.trading_status,
+      <Card
+        title={`Required documents${
+          required_documents?.amount_band
+            ? ` · ${required_documents.amount_band} band`
+            : ""
+        }`}
+      >
+        {required_documents?.required?.length ? (
+          <>
+            <div className="flex flex-wrap gap-2">
+              {required_documents.required.map((d) => (
+                <Chip key={d}>{d}</Chip>
+              ))}
+            </div>
+            {required_documents.rationale && (
+              <p className="mt-2 text-xs text-slate-500">
+                {required_documents.rationale}
+              </p>
             )}
-          >
-            {verify_employer.name ?? "Employer"}
-            {verify_employer.trading_status
-              ? ` · ${verify_employer.trading_status}`
-              : ""}
-            {verify_employer.registered === false ? " · unregistered" : ""}
-          </Badge>
+          </>
+        ) : (
+          <p className="text-sm text-slate-400">None.</p>
         )}
-        {profile?.income_stale != null && (
-          <Badge tone={profile.income_stale ? "warn" : "good"}>
-            Income {profile.income_stale ? "stale" : "current"}
-          </Badge>
-        )}
-      </div>
+      </Card>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        {customer && (
-          <Card title="Applicant">
-            <Field label="Name" value={customer.name} />
-            <Field
-              label="Age"
-              value={customer.age_years != null ? `${customer.age_years}` : undefined}
-            />
-            <Field label="Residency" value={customer.residency} />
-            <Field label="Employment" value={profile?.employment_type} />
-            <Field label="Employer" value={profile?.employer_name} />
-            <Field
-              label="KYC age"
-              value={
-                customer.kyc_age_days != null
-                  ? `${customer.kyc_age_days} d`
-                  : undefined
-              }
-            />
-          </Card>
-        )}
-        {application && (
-          <Card title="Application">
-            <Field label="Status" value={application.status} />
-            <Field label="Purpose" value={application.purpose} />
-            <Field
-              label="Amount"
-              value={
-                application.amount_requested != null
-                  ? money(application.amount_requested)
-                  : undefined
-              }
-            />
-            <Field
-              label="Term"
-              value={
-                application.term_months != null
-                  ? `${application.term_months} months`
-                  : undefined
-              }
-            />
-            <Field
-              label="Missing docs"
-              value={
-                application.missing && application.missing.length
-                  ? application.missing.join(", ")
-                  : "none"
-              }
-            />
-          </Card>
-        )}
-      </div>
-
-      {required_documents?.required?.length ? (
-        <Card
-          title={`Required documents${
-            required_documents.amount_band
-              ? ` · ${required_documents.amount_band} band`
-              : ""
-          }`}
-        >
-          <div className="flex flex-wrap gap-2">
-            {required_documents.required.map((d) => (
-              <Chip key={d}>{d}</Chip>
-            ))}
-          </div>
-          {required_documents.rationale && (
-            <p className="mt-2 text-xs text-slate-500">
-              {required_documents.rationale}
-            </p>
-          )}
-        </Card>
-      ) : null}
-
-      <Card title="Reason codes">
+      <Card title="Reasons">
         {reason_codes && reason_codes.length ? (
           <div className="flex flex-wrap gap-2">
             {reason_codes.map((r) => (
@@ -341,7 +169,7 @@ export function EvidencePanel({ raw }: { raw: string | null }) {
             ))}
           </div>
         ) : (
-          <p className="text-sm text-slate-400">None</p>
+          <p className="text-sm text-slate-400">None.</p>
         )}
       </Card>
     </div>

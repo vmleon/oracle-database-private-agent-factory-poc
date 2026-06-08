@@ -28,7 +28,7 @@ databaseChangeLog:
                 application_id       NUMBER NOT NULL,
                 -- Human's final decision (written by the Application Service on HITL close)
                 human_outcome        VARCHAR2(20) NOT NULL
-                  CHECK (human_outcome IN ('APPROVE','REJECT')),
+                  CHECK (human_outcome IN ('APPROVE','DECLINE')),
                 human_user           VARCHAR2(120) NOT NULL,
                 human_note           CLOB,
                 decided_at           TIMESTAMP DEFAULT SYSTIMESTAMP NOT NULL,
@@ -149,7 +149,7 @@ databaseChangeLog:
                 agent_run_id         VARCHAR2(60) NOT NULL,
                 -- Reviewer close-out (populated when state = CLOSED)
                 human_outcome        VARCHAR2(20)
-                  CHECK (human_outcome IN ('APPROVE','REJECT')),
+                  CHECK (human_outcome IN ('APPROVE','DECLINE')),
                 human_note           CLOB,
                 human_user           VARCHAR2(120),
                 created_at           TIMESTAMP DEFAULT SYSTIMESTAMP NOT NULL,

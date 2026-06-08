@@ -31,6 +31,7 @@ export interface HitlTaskView {
   humanOutcome: string | null;
   createdAt: string | null;
   closedAt: string | null;
+  toolCalls: DecisionToolCall[];
 }
 
 export interface DecisionResponse {
@@ -52,7 +53,7 @@ export function getHitlTask(taskId: number): Promise<HitlTaskView> {
 
 export function decideHitlTask(
   taskId: number,
-  body: { outcome: "APPROVE" | "REJECT"; note: string; reviewer: string },
+  body: { outcome: "APPROVE" | "DECLINE"; note: string; reviewer: string },
 ): Promise<DecisionResponse> {
   return fetch(`/v1/hitl/tasks/${taskId}/decision`, {
     method: "POST",
@@ -65,7 +66,7 @@ export interface DecisionListItem {
   decisionId: number;
   applicationId: number;
   customerName: string;
-  humanOutcome: "APPROVE" | "REJECT";
+  humanOutcome: "APPROVE" | "DECLINE";
   humanUser: string;
   decidedAt: string | null;
   agentRecommendation: "APPROVE" | "REVIEW" | "DECLINE";
@@ -92,7 +93,7 @@ export interface DecisionView {
   amountRequested: number | null;
   termMonths: number | null;
   purpose: string | null;
-  humanOutcome: "APPROVE" | "REJECT";
+  humanOutcome: "APPROVE" | "DECLINE";
   humanUser: string;
   humanNote: string | null;
   decidedAt: string | null;

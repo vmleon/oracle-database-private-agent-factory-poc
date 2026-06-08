@@ -81,14 +81,14 @@ Good to know:
 2. Find the request in the queue. The **Agent Recommendation** tag is
    colour-coded for triage — **green APPROVE / amber REVIEW / red DECLINE**.
    Click the row.
-3. Review the **evidence panel**. Highlights to call out during the demo:
-   - **Credit score / DTI / PTI** stat tiles — colour-coded against the policy
-     caps (score 600/670, DTI 0.45, PTI 0.25).
-   - **KYC / Employer / Income** status badges.
-   - The agent's **reasoning** and **recommendation** at the top.
-4. Make the call: click **Approve** (green) or **Reject** (red), type a reviewer
-   **note** (required — Submit stays disabled until you do), then click
-   **Submit decision**. The task drops off the queue.
+3. Review the **evidence panel** — three columns: **Employer** (registry status),
+   **Required documents** (per amount band), and **Reasons** (the agent's reason
+   codes). The agent's **reasoning** and **recommendation** show at the top, and
+   the **Tools called** trace lists each tool call with its parsed input/output.
+4. Make the call: click **Approve** (green) or **Decline** (red) — the button is
+   **preselected** to match the agent's recommendation — type your **Comments
+   (mandatory)** (Submit stays disabled until you do), then press **Enter** or
+   click **Submit decision**. The task drops off the queue.
 
 ---
 
@@ -124,7 +124,7 @@ ALTER SESSION SET CONTAINER=FREEPDB1;
 SET SERVEROUTPUT ON
 
 -- both are rejected: ORA-05715 operation not allowed on the blockchain table
-UPDATE APP.decision SET human_outcome='REJECT'
+UPDATE APP.decision SET human_outcome='DECLINE'
  WHERE decision_id = (SELECT MAX(decision_id) FROM APP.decision);
 DELETE FROM APP.decision
  WHERE decision_id = (SELECT MAX(decision_id) FROM APP.decision);

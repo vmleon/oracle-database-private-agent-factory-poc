@@ -55,7 +55,7 @@ export function Backoffice() {
     <div className="min-h-screen bg-slate-50">
       <header className="bg-slate-800">
         <div className="mx-auto max-w-3xl px-8 py-3 text-sm font-semibold text-white">
-          Reviewer Console
+          Loan Review Portal
         </div>
       </header>
       <Nav active={isHistory ? "history" : "queue"} />

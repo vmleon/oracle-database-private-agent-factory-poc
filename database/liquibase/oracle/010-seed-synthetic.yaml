@@ -494,13 +494,13 @@ databaseChangeLog:
             sql: |-
               INSERT INTO APP.case_history
                 (amount, term_months, dti, pti, credit_score, outcome, outcome_reason)
-              VALUES (25000, 48, 0.46, 0.32, 705, 'REJECT',
+              VALUES (25000, 48, 0.46, 0.32, 705, 'DECLINE',
                       'DTI above cap once new payment factored in')
         - sql:
             sql: |-
               INSERT INTO APP.case_history
                 (amount, term_months, dti, pti, credit_score, outcome, outcome_reason)
-              VALUES (15000, 36, 0.34, 0.24, 545, 'REJECT',
+              VALUES (15000, 36, 0.34, 0.24, 545, 'DECLINE',
                       'Score below floor; no compensating factors')
         - sql:
             sql: |-
@@ -512,7 +512,7 @@ databaseChangeLog:
             sql: |-
               INSERT INTO APP.case_history
                 (amount, term_months, dti, pti, credit_score, outcome, outcome_reason)
-              VALUES (10000, 24, 0.29, 0.19, 700, 'REJECT',
+              VALUES (10000, 24, 0.29, 0.19, 700, 'DECLINE',
                       'Persistently UNUSABLE documents after two re-uploads')
         - sql:
             sql: |-
@@ -524,5 +524,5 @@ databaseChangeLog:
             sql: |-
               INSERT INTO APP.case_history
                 (amount, term_months, dti, pti, credit_score, outcome, outcome_reason)
-              VALUES (14000, 30, 0.33, 0.23, 710, 'REJECT',
+              VALUES (14000, 30, 0.33, 0.23, 710, 'DECLINE',
                       'Employer not in registry; customer could not provide alternative proof')

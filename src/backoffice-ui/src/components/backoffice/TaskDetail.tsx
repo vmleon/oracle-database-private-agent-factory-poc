@@ -8,6 +8,7 @@ import {
   money,
   recommendationTone,
 } from "./EvidencePanel";
+import { ToolTrace } from "./ToolTrace";
 
 // PoC: a single backoffice reviewer, no login. Recorded as human_user.
 const REVIEWER = "Backoffice Reviewer";
@@ -20,21 +21,27 @@ export function TaskDetail({
   onBack: () => void;
 }) {
   const [task, setTask] = useState<HitlTaskView | null>(null);
-  const [outcome, setOutcome] = useState<"APPROVE" | "REJECT">("APPROVE");
+  // Preselected from the agent recommendation: APPROVE→Approve, DECLINE→Decline,
+  // REVIEW→nothing (the reviewer must make a deliberate call).
+  const [outcome, setOutcome] = useState<"APPROVE" | "DECLINE" | null>(null);
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     getHitlTask(taskId)
-      .then(setTask)
+      .then((t) => {
+        setTask(t);
+        if (t.agentRecommendation === "APPROVE") setOutcome("APPROVE");
+        else if (t.agentRecommendation === "DECLINE") setOutcome("DECLINE");
+      })
       .catch(() => setError("Could not load the task."));
   }, [taskId]);
 
   const noteMissing = note.trim() === "";
 
   const submit = async () => {
-    if (noteMissing) return;
+    if (noteMissing || !outcome) return;
     setBusy(true);
     setError(null);
     try {
@@ -99,6 +106,13 @@ export function TaskDetail({
         </div>
       )}
 
+      <div className="mb-6">
+        <h2 className="mb-2 text-sm font-semibold text-slate-700">
+          Tools called
+        </h2>
+        <ToolTrace calls={task.toolCalls} runId={task.agentRunId} />
+      </div>
+
       {error && (
         <p className="mb-4 rounded bg-red-100 p-3 text-sm text-red-700">
           {error}
@@ -119,30 +133,42 @@ export function TaskDetail({
             Approve
           </button>
           <button
-            onClick={() => setOutcome("REJECT")}
+            onClick={() => setOutcome("DECLINE")}
             className={cn(
               "inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium transition-colors",
-              outcome === "REJECT"
+              outcome === "DECLINE"
                 ? "bg-rose-600 text-white"
                 : "border border-rose-300 bg-white text-rose-700 hover:bg-rose-50",
             )}
           >
-            Reject
+            Decline
           </button>
         </div>
-        <textarea
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          placeholder="Reviewer note (required)"
-          rows={3}
-          className="w-full rounded-md border border-slate-200 p-2 text-sm"
-        />
+        <label className="block">
+          <span className="mb-1 block text-sm font-medium text-slate-700">
+            Comments (mandatory)
+          </span>
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            onKeyDown={(e) => {
+              // Enter submits; Shift+Enter inserts a newline.
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                submit();
+              }
+            }}
+            placeholder="Why you reached this decision…"
+            rows={3}
+            className="w-full rounded-md border border-slate-200 p-2 text-sm"
+          />
+        </label>
         {noteMissing && (
           <p className="text-xs text-slate-500">
-            A reviewer note is required before submitting a decision.
+            Comments are required before submitting a decision.
           </p>
         )}
-        <Button onClick={submit} disabled={busy || noteMissing}>
+        <Button onClick={submit} disabled={busy || noteMissing || !outcome}>
           {busy ? "Submitting…" : "Submit decision"}
         </Button>
       </div>

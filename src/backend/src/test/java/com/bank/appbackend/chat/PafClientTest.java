@@ -29,7 +29,7 @@ class PafClientTest {
     void setUp() {
         builder = RestClient.builder().baseUrl("https://paf:8080");
         server = MockRestServiceServer.bindTo(builder).build();
-        client = new PafClient(builder.build(), "admin@example.com", "secret");
+        client = new PafClient(builder.build(), "admin@example.com", "secret", "https://paf:8080");
     }
 
     private void expectAgentsList(String agentId) {

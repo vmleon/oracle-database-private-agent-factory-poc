@@ -51,7 +51,7 @@ databaseChangeLog:
                 pti             NUMBER(5,2),
                 credit_score    NUMBER,
                 outcome         VARCHAR2(20) NOT NULL
-                  CHECK (outcome IN ('APPROVE','REJECT')),
+                  CHECK (outcome IN ('APPROVE','DECLINE')),
                 outcome_reason  CLOB,
                 case_embedding  VECTOR(1024, FLOAT32)
               )
