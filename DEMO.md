@@ -15,7 +15,7 @@ Stack must be running (`python manage.py local up`; `podman ps` shows
 `application-backend`, `customer-ui`, `backoffice-ui`, `paf-proxy`, `paf-*`,
 `paf-oracle-free-26ai`).
 
-URLs (same host, path-routed for now):
+URLs (same host, path-routed):
 
 - **Chat UI (customer):** http://localhost:5173/
 - **Backoffice (reviewer):** http://localhost:5173/backoffice
@@ -31,16 +31,17 @@ SQL
 
 Good to know:
 
-- A full agent turn takes **~3–4 minutes** (4-agent path). Be patient.
+- A full agent turn takes **~3–4 minutes** (3-agent path). Be patient.
 - If a turn returns _"Sorry — we couldn't process your application right now"_
   in ~20s, that's the known streaming `session_token` bug — just send the
   message again (the backend also auto-retries).
-- `decision_audit` (the per-tool agent trace) is populated live: the
-  token-bearing CHAT_WORKFLOW tools (`get_context`, `upsert_application`) POST to
-  the Application Service after they run; it resolves the application from the
-  session token (never a caller-supplied id) and writes one row keyed by
-  `application_id`. It surfaces in the backoffice decision-history detail under
-  "Tools called". Retries log repeat rows (each attempt is real audit signal).
+- `decision_audit` (the per-tool trace) is populated live: the token-bearing
+  CHAT_WORKFLOW tools — `get_context` (a deterministic MCP node) and
+  `upsert_application` (called by the agent) — POST to the Application Service
+  after they run; it resolves the application from the session token (never a
+  caller-supplied id) and writes one row keyed by `application_id`. It surfaces
+  in the backoffice decision-history detail under "Tools called". Retries log
+  repeat rows (each attempt is real audit signal).
 
 ---
 
@@ -57,8 +58,9 @@ Good to know:
 
 4. Answer any follow-up questions naturally. Wait **~3–4 min** for the turn that
    evaluates the application; it ends with an _"under review"_-style reply. Behind
-   the scenes the agent pulls your context (income, bureau, debt), runs policy
-   (eligibility / AML / KYC / fair-lending), verifies your employer, and writes a
+   the scenes the workflow pulls your context (income, bureau, debt) and computes
+   policy (eligibility / AML / KYC / fair-lending) as a deterministic server step,
+   then the agents verify your employer, assess documents, and write a
    **recommendation** to the review queue.
 5. (Optional) confirm the task was created:
 
@@ -198,6 +200,6 @@ The agent records the new application, then evaluates it → **APPROVE**.
   `RESEARCH_WORKFLOW` is not built yet.)
 - **Not wired into the agent flow:** RAG policy citations (`search_policy`) and
   similar-case lookup (`search_similar_cases`) — don't expect them in replies.
-- **Frontends:** customer chat and backoffice currently share one site under
-  path prefixes; splitting them into separate apps is a planned follow-up (see
-  `BACKLOG.md` → Platform follow-ups).
+- **Frontends:** customer chat and backoffice are separate SPAs (`customer-ui`,
+  `backoffice-ui`), served behind one path-routed front door (Caddy) on `:5173` —
+  `/backoffice` to the reviewer app, everything else to the customer app.
