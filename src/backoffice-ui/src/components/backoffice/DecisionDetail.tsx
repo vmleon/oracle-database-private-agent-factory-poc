@@ -1,11 +1,7 @@
 import { useEffect, useState } from "react";
 import { getDecision, type DecisionView } from "@/api";
-import {
-  Badge,
-  EvidencePanel,
-  money,
-  recommendationTone,
-} from "./EvidencePanel";
+import { Badge, EvidencePanel, recommendationTone } from "./EvidencePanel";
+import { RequestSummary } from "./RequestSummary";
 import { ToolTrace } from "./ToolTrace";
 
 const outcomeTone = (o: string) => (o === "APPROVE" ? "good" : "bad");
@@ -49,13 +45,14 @@ export function DecisionDetail({
       >
         ← Back to history
       </button>
-      <h1 className="text-2xl font-semibold">{d.customerName}</h1>
-      <p className="mb-4 text-sm text-slate-500">
-        Decision {d.decisionId} · Application {d.applicationId} ·{" "}
-        {d.purpose ?? "—"} ·{" "}
-        {d.amountRequested != null ? money(d.amountRequested) : "—"} over{" "}
-        {d.termMonths ?? "—"} months
-      </p>
+      <RequestSummary
+        customerName={d.customerName}
+        amountRequested={d.amountRequested}
+        purpose={d.purpose}
+        termMonths={d.termMonths}
+        applicationId={d.applicationId}
+        decisionId={d.decisionId}
+      />
 
       {/* Human decision — the bank's tamper-evident call */}
       <div className="mb-6 rounded-lg border border-slate-200 bg-white p-4">

@@ -105,8 +105,10 @@ export function History() {
               <span>
                 <span className="font-medium">{d.customerName}</span>
                 <span className="ml-2 text-xs text-slate-500">
-                  {d.amountRequested != null ? money(d.amountRequested) : "—"} ·{" "}
-                  {d.termMonths ?? "—"} months · {fmtDate(d.decidedAt)}
+                  <span className="font-medium text-slate-700">
+                    {d.amountRequested != null ? money(d.amountRequested) : "—"}
+                  </span>{" "}
+                  · {d.termMonths ?? "—"} months · {fmtDate(d.decidedAt)}
                 </span>
               </span>
               <span className="flex items-center gap-3">

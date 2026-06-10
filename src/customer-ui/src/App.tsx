@@ -45,13 +45,15 @@ function CustomerApp() {
 
 export default function App() {
   return (
-    <div className="min-h-screen bg-white">
+    <div className="flex h-full flex-col bg-slate-100">
       <header className="bg-blue-600">
-        <div className="mx-auto max-w-2xl px-8 py-3 text-sm font-semibold text-white">
+        <div className="mx-auto max-w-2xl px-8 py-4 text-lg font-semibold tracking-tight text-white">
           Loan Assistant
         </div>
       </header>
-      <CustomerApp />
+      <main className="min-h-0 flex-1 p-4">
+        <CustomerApp />
+      </main>
     </div>
   );
 }

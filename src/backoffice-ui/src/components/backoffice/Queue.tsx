@@ -38,8 +38,10 @@ export function Queue({ onOpen }: { onOpen: (taskId: number) => void }) {
               <span>
                 <span className="font-medium">{t.customerName}</span>
                 <span className="ml-2 text-xs text-slate-500">
-                  {t.amountRequested != null ? money(t.amountRequested) : "—"} ·{" "}
-                  {t.termMonths ?? "—"} months
+                  <span className="font-medium text-slate-700">
+                    {t.amountRequested != null ? money(t.amountRequested) : "—"}
+                  </span>{" "}
+                  · {t.termMonths ?? "—"} months
                 </span>
               </span>
               <span className="flex items-center gap-3">

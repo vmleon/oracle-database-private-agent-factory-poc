@@ -2,12 +2,8 @@ import { useEffect, useState } from "react";
 import { decideHitlTask, getHitlTask, type HitlTaskView } from "@/api";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import {
-  Badge,
-  EvidencePanel,
-  money,
-  recommendationTone,
-} from "./EvidencePanel";
+import { Badge, EvidencePanel, recommendationTone } from "./EvidencePanel";
+import { RequestSummary } from "./RequestSummary";
 import { ToolTrace } from "./ToolTrace";
 
 // PoC: a single backoffice reviewer, no login. Recorded as human_user.
@@ -77,12 +73,13 @@ export function TaskDetail({
       >
         ← Back to queue
       </button>
-      <h1 className="text-2xl font-semibold">{task.customerName}</h1>
-      <p className="mb-4 text-sm text-slate-500">
-        Application {task.applicationId} · {task.purpose ?? "—"} ·{" "}
-        {task.amountRequested != null ? money(task.amountRequested) : "—"} over{" "}
-        {task.termMonths ?? "—"} months
-      </p>
+      <RequestSummary
+        customerName={task.customerName}
+        amountRequested={task.amountRequested}
+        purpose={task.purpose}
+        termMonths={task.termMonths}
+        applicationId={task.applicationId}
+      />
 
       <div className="mb-6 rounded-lg border border-slate-200 bg-white p-4">
         <div className="flex items-center gap-2">

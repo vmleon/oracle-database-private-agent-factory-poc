@@ -9,7 +9,7 @@ export function MessageList({ messages }: { messages: Message[] }) {
   }, [messages]);
 
   return (
-    <div className="flex-1 space-y-3 overflow-y-auto p-4">
+    <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50 p-4">
       {messages.map((m) => (
         <div
           key={m.id}

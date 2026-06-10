@@ -48,13 +48,34 @@ function Nav({ active }: { active: "queue" | "history" }) {
   );
 }
 
+function BankIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M12 3 21 7H3l9-4Z" />
+      <path d="M4 10h16" />
+      <path d="M5 10v10M9 10v10M15 10v10M19 10v10" />
+      <path d="M3 20h18" />
+    </svg>
+  );
+}
+
 export function Backoffice() {
   const isHistory = window.location.pathname.startsWith("/backoffice/history");
 
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="bg-slate-800">
-        <div className="mx-auto max-w-3xl px-8 py-3 text-sm font-semibold text-white">
+        <div className="mx-auto flex max-w-3xl items-center gap-2 px-8 py-4 text-lg font-semibold tracking-tight text-white">
+          <BankIcon className="h-5 w-5" />
           Loan Review Portal
         </div>
       </header>

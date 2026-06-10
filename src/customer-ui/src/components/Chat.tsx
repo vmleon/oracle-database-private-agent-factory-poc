@@ -18,7 +18,7 @@ export function Chat({
   );
 
   return (
-    <div className="mx-auto flex h-full max-w-2xl flex-col bg-slate-50">
+    <div className="mx-auto flex h-full w-full max-w-md flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
       <header className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3">
         <div>
           <div className="font-medium">{name}</div>
