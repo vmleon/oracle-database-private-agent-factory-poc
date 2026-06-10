@@ -44,3 +44,6 @@ databaseChangeLog:
   - include:
       file: 015-customer-360-view.yaml
       relativeToChangelogFile: true
+  - include:
+      file: 016-seed-demo-approve.yaml
+      relativeToChangelogFile: true

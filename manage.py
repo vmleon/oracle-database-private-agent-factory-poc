@@ -1457,6 +1457,45 @@ def test_chat_workflow(expr: str | None, verbose: bool) -> None:
     _run(args)
 
 
+# Three scenarios — one per recommendation tier — that the smoke test drives
+# end to end as a post-install sanity check. Each maps to a pytest id in
+# tests/test_chat_workflow.py.
+SMOKE_SCENARIOS = ("alice-clean", "frank-warn-band", "david-dti-cap")
+
+
+@cli.command("smoke")
+def smoke() -> None:
+    """End-to-end sanity check: drive APPROVE, REVIEW and DECLINE through the
+    live stack and assert each lands in the expected tier.
+
+    Runs three CHAT_WORKFLOW turns (Alice → APPROVE, Frank → REVIEW,
+    David → DECLINE) via the published flow, asserting the customer-facing
+    reply and the hitl_task recommendation row for each. ~5–10 min wall clock
+    (a full agent turn is ~1–4 min). The three requests it creates stay in
+    the backoffice queue for review.
+
+    Prerequisites are the same as `test chat-workflow`: stack up, PAF
+    installed, CHAT_WORKFLOW built + published, PAF_ADMIN_* in .env.
+    """
+    _ensure_env()
+    if not os.getenv("PAF_ADMIN_USER") or not os.getenv("PAF_ADMIN_PASS"):
+        console.print(
+            "[red]PAF_ADMIN_USER / PAF_ADMIN_PASS not set in .env.[/red]\n"
+            "Re-run [cyan]python manage.py setup local[/cyan] to add them."
+        )
+        sys.exit(1)
+    console.print(Panel.fit(
+        "[bold]Smoke test — APPROVE / REVIEW / DECLINE[/bold]\n"
+        "Alice → APPROVE   Frank → REVIEW   David → DECLINE"
+    ))
+    _run(["pytest", "tests/test_chat_workflow.py", "-v",
+          "-k", " or ".join(SMOKE_SCENARIOS)])
+    console.print(
+        "[green]Smoke passed.[/green] The three requests are now in the "
+        "backoffice queue at http://localhost:5173/backoffice"
+    )
+
+
 # ---------------------------------------------------------------- stubs
 
 @cli.command("build")

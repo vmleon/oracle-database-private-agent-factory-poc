@@ -1,26 +1,31 @@
-# Demo — Governed Loan Decisioning Walk-through
+# Demo Runbook — Governed Loan Decisioning
 
-A schematic, copy-paste walk-through of the end-to-end PoC: a **customer chats**
-to apply, the **agent produces a recommendation**, a **human reviewer decides**,
-and the decision is written as an **immutable, tamper-evident row** in an Oracle
-Blockchain Table.
+Step-by-step runbook for the end-to-end PoC: a **customer chats** to apply, the
+**agent produces a recommendation**, a **human reviewer decides**, and the
+decision is written as an **immutable, tamper-evident row** in an Oracle
+Blockchain Table. The human makes the call — the AI only recommends.
 
-The single source of truth is the **human's** call — the AI only recommends.
+Run it in order: **§1 smoke test** (automated sanity check, three requests),
+**§2 view them in the backoffice**, **§3 live customer chat** (three more
+requests), **§4 reviewer decides**, **§5 verify the immutable audit trail**.
 
 ---
 
 ## 0. Before you start
 
-Stack must be running (`python manage.py local up`; `podman ps` shows
-`application-backend`, `customer-ui`, `backoffice-ui`, `paf-proxy`, `paf-*`,
-`paf-oracle-free-26ai`).
+Confirm the stack is up — `podman ps` shows `application-backend`, `customer-ui`,
+`backoffice-ui`, `paf-proxy`, `paf-*`, `paf-oracle-free-26ai`. If not:
+
+```bash
+python manage.py local up
+```
 
 URLs (same host, path-routed):
 
 - **Chat UI (customer):** http://localhost:5173/
 - **Backoffice (reviewer):** http://localhost:5173/backoffice
 
-Open a DB shell for the verify steps (run any query after the `ALTER SESSION`):
+Open a DB shell for the verify steps (paste any query after the `ALTER SESSION`):
 
 ```bash
 podman exec -i paf-oracle-free-26ai sqlplus -s -L / as sysdba <<'SQL'
@@ -31,38 +36,40 @@ SQL
 
 Good to know:
 
-- A full agent turn takes **~3–4 minutes** (3-agent path). Be patient.
-- If a turn returns _"Sorry — we couldn't process your application right now"_
-  in ~20s, that's the known streaming `session_token` bug — just send the
+- A full agent turn takes **~1–4 minutes**. Be patient.
+- If a chat turn returns _"Sorry — we couldn't process your application right
+  now"_ in ~20s, that's the known streaming `session_token` bug — just send the
   message again (the backend also auto-retries).
-- `decision_audit` (the per-tool trace) is populated live: the token-bearing
-  CHAT_WORKFLOW tools — `get_context` (a deterministic MCP node) and
-  `upsert_application` (called by the agent) — POST to the Application Service
-  after they run; it resolves the application from the session token (never a
-  caller-supplied id) and writes one row keyed by `application_id`. It surfaces
-  in the backoffice decision-history detail under "Tools called". Retries log
-  repeat rows (each attempt is real audit signal).
+- `decision_audit` (the per-tool trace) is populated live and surfaces in the
+  backoffice decision detail under **Tools called**.
 
 ---
 
-## 1. Customer applies (Chat UI)
+## 1. Sanity check — run the smoke test
 
-1. Open http://localhost:5173/ .
-2. Pick a customer from the login list — start with **Frank MidBand** (see the
-   scenario menu in §4 for the others).
-3. In the chat box, send:
+Drives three requests end to end — one per recommendation tier — and asserts
+each lands where it should. This is your "the system works" gate before the
+live demo.
 
+1. Run:
+
+   ```bash
+   python manage.py smoke
    ```
-   I'd like to proceed with my personal loan application — please review my eligibility.
-   ```
 
-4. Answer any follow-up questions naturally. Wait **~3–4 min** for the turn that
-   evaluates the application; it ends with an _"under review"_-style reply. Behind
-   the scenes the workflow pulls your context (income, bureau, debt) and computes
-   policy (eligibility / AML / KYC / fair-lending) as a deterministic server step,
-   then the agents verify your employer, assess documents, and write a
-   **recommendation** to the review queue.
-5. (Optional) confirm the task was created:
+2. Wait **~5–10 min**. Expect all three to pass:
+
+   | Customer           | Recommendation |
+   | ------------------ | -------------- |
+   | **Alice Salaried** | **APPROVE**    |
+   | **Frank MidBand**  | **REVIEW**     |
+   | **David HighDti**  | **DECLINE**    |
+
+   A green `3 passed` from pytest means the agent path, OPA policy, MCP tools,
+   and the HITL write are all healthy. The three requests stay in the backoffice
+   queue.
+
+3. (Optional) confirm the three rows:
 
    ```bash
    podman exec -i paf-oracle-free-26ai sqlplus -s -L / as sysdba <<'SQL'
@@ -73,30 +80,118 @@ Good to know:
    SQL
    ```
 
-6. (Optional) Log out from the chat to switch hats.
-
 ---
 
-## 2. Reviewer decides (Backoffice)
+## 2. See the smoke results in the backoffice
 
 1. Open http://localhost:5173/backoffice .
-2. Find the request in the queue. The **Agent Recommendation** tag is
-   colour-coded for triage — **green APPROVE / amber REVIEW / red DECLINE**.
-   Click the row.
-3. Review the **evidence panel** — three columns: **Employer** (registry status),
-   **Required documents** (per amount band), and **Reasons** (the agent's reason
-   codes). The agent's **reasoning** and **recommendation** show at the top, and
-   the **Tools called** trace lists each tool call with its parsed input/output.
-4. Make the call: click **Approve** (green) or **Decline** (red) — the button is
-   **preselected** to match the agent's recommendation — type your **Comments
-   (mandatory)** (Submit stays disabled until you do), then press **Enter** or
-   click **Submit decision**. The task drops off the queue.
+2. You see the three smoke requests in the queue. The **Agent Recommendation**
+   tag is colour-coded — **green APPROVE / amber REVIEW / red DECLINE** — so
+   Alice, Frank and David read green / amber / red at a glance.
+3. Click any row to open the **evidence panel** — three columns: **Employer**
+   (registry status), **Required documents** (per amount band), and **Reasons**
+   (the agent's reason codes); the agent's **reasoning** and **recommendation**
+   show at the top, and **Tools called** lists each tool call with its parsed
+   input/output.
+
+Leave these three for now — you'll process the live ones in §4.
 
 ---
 
-## 3. Verify the audit trail (the point of the PoC)
+## 3. Live demo — customer chat (three more requests)
 
-The human decision is now an immutable Blockchain Table row.
+Now generate three fresh requests by hand, one per tier, to show the live
+customer experience. Repeat the same five clicks for each customer below.
+
+The message to send is always:
+
+```
+Please review my loan application and submit it for processing.
+```
+
+### 3a. Mia Salaried → APPROVE
+
+1. Open http://localhost:5173/ .
+2. Pick **Mia Salaried** from the login list.
+3. Paste the message above into the chat box and send.
+4. Wait **~1–4 min**. The reply ends with an _"under review / final approval"_-style
+   line. Behind the scenes the workflow pulls her context, computes policy
+   (eligibility / AML / KYC / fair-lending) deterministically, verifies her
+   employer, and writes an **APPROVE** recommendation to the queue.
+5. Log out.
+
+### 3b. Kyle DormantEmployer → REVIEW
+
+1. Open http://localhost:5173/ .
+2. Pick **Kyle DormantEmployer**.
+3. Send the same message; wait **~1–4 min**.
+4. His employer is **dormant** in the Company Registry → the agent writes a
+   **REVIEW** recommendation.
+5. Log out.
+
+### 3c. Eva LowScore → DECLINE
+
+1. Open http://localhost:5173/ .
+2. Pick **Eva LowScore**.
+3. Send the same message; wait **~1–4 min**.
+4. Her credit score is **below the floor** → the agent writes a **DECLINE**
+   recommendation.
+5. Log out.
+
+(Optional) confirm the three new tasks:
+
+```bash
+podman exec -i paf-oracle-free-26ai sqlplus -s -L / as sysdba <<'SQL'
+ALTER SESSION SET CONTAINER=FREEPDB1;
+SET LINESIZE 140
+COLUMN full_name FORMAT A22
+SELECT t.task_id, c.full_name, t.agent_recommendation, t.state
+  FROM APP.hitl_task t
+  JOIN APP.loan_application la ON la.application_id = t.application_id
+  JOIN APP.customer c ON c.customer_id = la.customer_id
+ WHERE c.full_name IN ('Mia Salaried','Kyle DormantEmployer','Eva LowScore')
+ ORDER BY t.task_id DESC;
+SQL
+```
+
+---
+
+## 4. Live demo — reviewer decides (backoffice)
+
+Process the three requests you just created — one Approve, one Review-then-Decline,
+one Decline. For each: open the queue, click the row, read the evidence, pick the
+button, type a mandatory comment, submit.
+
+1. Open http://localhost:5173/backoffice .
+
+### 4a. Mia (APPROVE) → **Approve**
+
+2. Click **Mia Salaried**'s row (green tag).
+3. The **Approve** button is preselected to match the agent. Type a **Comment**
+   (mandatory — Submit stays disabled until you do), e.g. _"Clean profile, agree
+   with recommendation."_
+4. Press **Enter** or click **Submit decision**. The task drops off the queue.
+
+### 4b. Kyle (REVIEW) → **Decline**
+
+5. Click **Kyle DormantEmployer**'s row (amber tag). This is the human-judgement
+   case: the agent flagged it for **REVIEW**, and you decide.
+6. Click **Decline** (overriding the amber recommendation), type a **Comment**,
+   e.g. _"Employer dormant in registry; insufficient assurance — declining."_
+7. **Submit decision**. The task drops off the queue.
+
+### 4c. Eva (DECLINE) → **Decline**
+
+8. Click **Eva LowScore**'s row (red tag).
+9. **Decline** is preselected. Type a **Comment**, e.g. _"Score below floor,
+   agree with recommendation."_
+10. **Submit decision**. The task drops off the queue.
+
+---
+
+## 5. Verify the immutable audit trail (the point of the PoC)
+
+Each human decision is now an immutable Blockchain Table row.
 
 ```bash
 podman exec -i paf-oracle-free-26ai sqlplus -s -L / as sysdba <<'SQL'
@@ -105,7 +200,7 @@ SET LINESIZE 180 PAGESIZE 40
 COLUMN human_user FORMAT A22
 COLUMN human_note FORMAT A35
 
--- the task is closed with the human's call
+-- the three tasks closed with the human's call
 SELECT task_id, state, human_outcome, human_user, human_note
   FROM APP.hitl_task WHERE state='CLOSED'
  ORDER BY task_id DESC FETCH FIRST 3 ROWS ONLY;
@@ -118,7 +213,7 @@ SELECT decision_id, application_id, agent_recommendation,
 SQL
 ```
 
-Prove it's tamper-evident (optional — the big "wow"):
+Prove it's tamper-evident (the big "wow"):
 
 ```bash
 podman exec -i paf-oracle-free-26ai sqlplus -s -L / as sysdba <<'SQL'
@@ -141,34 +236,38 @@ END;
 SQL
 ```
 
-You should see two `ORA-05715` rejections (the record can't be altered or
-deleted) followed by `rows cryptographically verified: N`.
+Expect two `ORA-05715` rejections (the record can't be altered or deleted)
+followed by `rows cryptographically verified: N`.
 
 ---
 
-## 4. Scenario menu
+## Reference
 
-Repeat §1–§3 with any of these. Each lands in a different tier for a different
-reason, so you can show the full decisioning surface. Numbers come from seed
-changesets `002` + `010` and the OPA config.
+### Scenario menu
 
-| Customer (login)         | Expected recommendation | Why it lands there                                   |
-| ------------------------ | ----------------------- | ---------------------------------------------------- |
-| **Frank MidBand**        | **REVIEW**              | credit score 660, inside the 600–670 caution band    |
-| **David HighDti**        | **DECLINE**             | DTI ≈ 0.48 > 0.45 hard cap (computed from his debts) |
-| **Jane UnknownEmployer** | **REVIEW**              | employer not found in the Company Registry           |
-| **Alice Salaried**       | **APPROVE**             | clean profile (score 742, DTI 0.10, employer active) |
+Each customer lands in a tier for a different reason, so you can show the full
+decisioning surface. Smoke uses Alice / Frank / David; the live demo uses Mia /
+Kyle / Eva. Numbers come from seed changesets `002`, `010`, `016` and the OPA
+config (DECLINE if score < 600 / DTI > 0.45; REVIEW if score 600–669; APPROVE
+if score ≥ 670 and clean).
 
-Alternatives for variety: **Eva LowScore** → DECLINE (score below floor),
-**Iris UnusableDocs** → DECLINE (document quality), **Kyle DormantEmployer** →
-REVIEW (employer dormant).
+| Customer (login)         | Recommendation | Why it lands there                                  |
+| ------------------------ | -------------- | --------------------------------------------------- |
+| **Alice Salaried**       | **APPROVE**    | clean profile (score 742, DTI low, employer active) |
+| **Mia Salaried**         | **APPROVE**    | clean profile (score 742, DTI low, employer active) |
+| **Frank MidBand**        | **REVIEW**     | credit score 660, inside the 600–670 caution band   |
+| **Kyle DormantEmployer** | **REVIEW**     | employer dormant in the Company Registry            |
+| **David HighDti**        | **DECLINE**    | DTI above the 0.45 hard cap                         |
+| **Eva LowScore**         | **DECLINE**    | credit score 540, below the floor                   |
+| **Jane UnknownEmployer** | **DECLINE**    | employer not found in the Company Registry          |
+| **Iris UnusableDocs**    | **DECLINE**    | document quality unusable                           |
 
-### Optional: Alice "from-scratch intake" variant
+### Optional: "from-scratch intake" variant
 
 By default every demo customer already has a submitted application, so the agent
 evaluates an existing one. To instead show the **intake-from-nothing** path (the
-agent collects the loan amount/term/purpose before evaluating), clear Alice's
-seeded application first:
+agent collects amount/term/purpose before evaluating), clear a clean customer's
+seeded application first — here, Mia:
 
 ```bash
 podman exec -i paf-oracle-free-26ai sqlplus -s -L / as sysdba <<'SQL'
@@ -176,14 +275,14 @@ ALTER SESSION SET CONTAINER=FREEPDB1;
 DELETE FROM APP.loan_application_document WHERE application_id IN
   (SELECT la.application_id FROM APP.loan_application la
      JOIN APP.customer c ON c.customer_id = la.customer_id
-    WHERE c.full_name = 'Alice Salaried');
+    WHERE c.full_name = 'Mia Salaried');
 DELETE FROM APP.loan_application WHERE customer_id =
-  (SELECT customer_id FROM APP.customer WHERE full_name = 'Alice Salaried');
+  (SELECT customer_id FROM APP.customer WHERE full_name = 'Mia Salaried');
 COMMIT;
 SQL
 ```
 
-Then log in as **Alice Salaried** and open with:
+Then log in as **Mia Salaried** and open with:
 
 ```
 I'd like a $10,000 personal loan over 24 months for home renovation.
@@ -191,15 +290,17 @@ I'd like a $10,000 personal loan over 24 months for home renovation.
 
 The agent records the new application, then evaluates it → **APPROVE**.
 
----
+### Notes / current limits
 
-## Notes / current limits
-
-- **Scope of the demo:** the full loop now closes — customer chat → agent
-  recommendation → human review → immutable decision. (The Case Research Agent /
-  `RESEARCH_WORKFLOW` is not built yet.)
+- **Scope:** the full loop closes — customer chat → agent recommendation → human
+  review → immutable decision. (The Case Research Agent / `RESEARCH_WORKFLOW` is
+  not built.)
 - **Not wired into the agent flow:** RAG policy citations (`search_policy`) and
   similar-case lookup (`search_similar_cases`) — don't expect them in replies.
 - **Frontends:** customer chat and backoffice are separate SPAs (`customer-ui`,
   `backoffice-ui`), served behind one path-routed front door (Caddy) on `:5173` —
   `/backoffice` to the reviewer app, everything else to the customer app.
+
+```
+
+```

@@ -1,0 +1,132 @@
+databaseChangeLog:
+  # A second clean-profile APPROVE customer, "Mia Salaried", cloned from
+  # Alice's profile. The smoke test (manage.py smoke) drives Alice for its
+  # APPROVE scenario; the demo runbook needs its own distinct APPROVE
+  # customer so the demo's three requests don't collide with the smoke
+  # trio. Add further clean customers here as the demo grows.
+  #
+  # Profile mirrors Alice exactly: salaried at a registry-active employer
+  # (Acme Tech Ltd), score 742 (>= caution-band upper 670), low debt, a
+  # $10k personal loan in SUBMITTED. That lands her in APPROVE.
+  #
+  # Runs under context: seed (skipped with --contexts="!seed").
+
+  - changeSet:
+      id: 016-seed-demo-approve-customer
+      author: paf-poc
+      context: seed
+      changes:
+        - sql:
+            sql: |-
+              INSERT INTO APP.customer
+                (full_name, date_of_birth, residency, email, phone, kyc_status, kyc_updated_at)
+              VALUES
+                ('Mia Salaried', DATE '1989-05-09', 'RESIDENT', 'mia@example.com', '+10000000013', 'PASSED', SYSTIMESTAMP)
+        - sql:
+            sql: |-
+              INSERT INTO APP.customer_protected_attrs (customer_id, attrs)
+              SELECT customer_id, JSON('{"age_band":"30-39","gender":"F"}')
+                FROM APP.customer WHERE full_name='Mia Salaried'
+
+  - changeSet:
+      id: 016-seed-demo-approve-employment
+      author: paf-poc
+      context: seed
+      changes:
+        - sql:
+            sql: |-
+              INSERT INTO APP.employment
+                (customer_id, employer_name, employment_type, monthly_salary, tenure_months)
+              SELECT customer_id, 'Acme Tech Ltd', 'SALARIED', 5500, 36
+                FROM APP.customer WHERE full_name='Mia Salaried'
+
+  - changeSet:
+      id: 016-seed-demo-approve-credit-bureau
+      author: paf-poc
+      context: seed
+      changes:
+        - sql:
+            sql: |-
+              INSERT INTO APP.credit_bureau_snapshot
+                (customer_id, snapshot_date, score, score_scale_min, score_scale_max,
+                 bureau_name, total_debt, num_open_facilities, num_late_payments_12m)
+              SELECT customer_id, TRUNC(SYSDATE)-15, 742, 300, 850,
+                     'Demo Bureau', 1500, 1, 0
+                FROM APP.customer WHERE full_name='Mia Salaried'
+
+  - changeSet:
+      id: 016-seed-demo-approve-existing-facility
+      author: paf-poc
+      context: seed
+      changes:
+        - sql:
+            sql: |-
+              INSERT INTO APP.existing_facility
+                (customer_id, lender_name, facility_type, balance, monthly_payment, opened_at)
+              SELECT customer_id, 'First Bank', 'CREDIT_CARD', 1500, 150, ADD_MONTHS(SYSDATE,-12)
+                FROM APP.customer WHERE full_name='Mia Salaried'
+
+  - changeSet:
+      id: 016-seed-demo-approve-account
+      author: paf-poc
+      context: seed
+      changes:
+        - sql:
+            sql: |-
+              INSERT INTO APP.account (customer_id, account_type, currency, opened_at)
+              SELECT customer_id, 'CURRENT', 'USD', ADD_MONTHS(SYSDATE,-36)
+                FROM APP.customer WHERE full_name='Mia Salaried'
+
+  - changeSet:
+      id: 016-seed-demo-approve-transactions
+      author: paf-poc
+      context: seed
+      changes:
+        - sql:
+            sql: |-
+              INSERT INTO APP.account_transaction
+                (account_id, txn_date, amount, currency, txn_type, description, balance_after)
+              SELECT a.account_id, TRUNC(SYSDATE)-30, 5500, 'USD', 'SALARY', 'Acme payroll', 8200
+                FROM APP.account a JOIN APP.customer c ON c.customer_id = a.customer_id
+               WHERE c.full_name='Mia Salaried' AND a.account_type='CURRENT'
+        - sql:
+            sql: |-
+              INSERT INTO APP.account_transaction
+                (account_id, txn_date, amount, currency, txn_type, description, balance_after)
+              SELECT a.account_id, TRUNC(SYSDATE)-25, -1200, 'USD', 'RENT', 'Monthly rent', 7000
+                FROM APP.account a JOIN APP.customer c ON c.customer_id = a.customer_id
+               WHERE c.full_name='Mia Salaried' AND a.account_type='CURRENT'
+        - sql:
+            sql: |-
+              INSERT INTO APP.account_transaction
+                (account_id, txn_date, amount, currency, txn_type, description, balance_after)
+              SELECT a.account_id, TRUNC(SYSDATE)-15, -150, 'USD', 'CARD_PURCHASE', 'Card payment', 6850
+                FROM APP.account a JOIN APP.customer c ON c.customer_id = a.customer_id
+               WHERE c.full_name='Mia Salaried' AND a.account_type='CURRENT'
+
+  - changeSet:
+      id: 016-seed-demo-approve-loan-application
+      author: paf-poc
+      context: seed
+      changes:
+        - sql:
+            sql: |-
+              INSERT INTO APP.loan_application
+                (customer_id, product_id, amount_requested, term_months, purpose, channel, status, submitted_at)
+              SELECT c.customer_id, p.product_id, 10000, 24, 'Home renovation', 'CHAT', 'SUBMITTED', SYSTIMESTAMP
+                FROM APP.customer c, APP.product_catalog p
+               WHERE c.full_name='Mia Salaried' AND p.name='Personal Loan'
+
+  - changeSet:
+      id: 016-seed-demo-approve-document
+      author: paf-poc
+      context: seed
+      changes:
+        - sql:
+            sql: |-
+              INSERT INTO APP.loan_application_document
+                (application_id, requested_type, storage_uri, ocr_status)
+              SELECT la.application_id, 'PAYSLIP', 'oci://bucket/seed/mia-payslip.pdf', 'PENDING'
+                FROM APP.loan_application la
+                JOIN APP.customer c ON c.customer_id = la.customer_id
+               WHERE c.full_name='Mia Salaried'

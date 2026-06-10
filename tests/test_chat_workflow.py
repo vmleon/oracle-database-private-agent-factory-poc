@@ -16,6 +16,7 @@ Customer-to-application mapping (from the synthetic seed in Liquibase 010):
     6            5               Frank (mid-band score → warn[])
     10           9               Jane  (employer not registered)
     11           10              Kyle  (employer dormant)
+    21           21              Mia   (clean profile — demo APPROVE, seed 016)
 """
 from __future__ import annotations
 
@@ -42,6 +43,9 @@ SCENARIOS = [
     pytest.param("kyle",  11, 10, "REVIEW",
                  r"(?i)dormant|employer",
                  id="kyle-dormant"),
+    pytest.param("mia",   21, 21, "APPROVE",
+                 r"(?i)no deny|no warn|no adverse|employer.*(active|verified)",
+                 id="mia-clean"),
 ]
 
 # Customer-facing reply substring per tier — the compliance-safe hint sentences
