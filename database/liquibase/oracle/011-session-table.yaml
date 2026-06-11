@@ -55,8 +55,12 @@ databaseChangeLog:
   # table in paf/flows/CHAT_WORKFLOW.md into the PAF canvas Text Input).
   # In production these are opaque random strings minted at login.
   #
-  # customer_id / application_id values mirror the test-prompts table
-  # in paf/flows/CHAT_WORKFLOW.md — keep them in sync if either changes.
+  # customer_id / application_id are resolved by customer name joined to
+  # their loan_application, not hardcoded: APP.customer and
+  # APP.loan_application use IDENTITY columns whose values are non-
+  # contiguous (a rolled-back insert still consumes a number), so the
+  # surrogate keys cannot be assumed. Each scenario customer owns exactly
+  # one application.
   - changeSet:
       id: 011-seed-test-sessions
       author: paf-poc
@@ -64,28 +68,54 @@ databaseChangeLog:
         - sql:
             sql: |-
               INSERT INTO APP.auth_session (session_token, customer_id, application_id, scenario_label)
-                VALUES ('paf-test-alice-1',   1,  1, 'Alice — clean APPROVE')
+              SELECT 'paf-test-alice-1', la.customer_id, la.application_id, 'Alice — clean APPROVE'
+                FROM APP.loan_application la
+                JOIN APP.customer c ON c.customer_id = la.customer_id
+               WHERE c.full_name = 'Alice Salaried'
         - sql:
             sql: |-
               INSERT INTO APP.auth_session (session_token, customer_id, application_id, scenario_label)
-                VALUES ('paf-test-david-3',   4,  3, 'David — DTI hard cap → DECLINE')
+              SELECT 'paf-test-david-3', la.customer_id, la.application_id, 'David — DTI hard cap → DECLINE'
+                FROM APP.loan_application la
+                JOIN APP.customer c ON c.customer_id = la.customer_id
+               WHERE c.full_name = 'David HighDti'
         - sql:
             sql: |-
               INSERT INTO APP.auth_session (session_token, customer_id, application_id, scenario_label)
-                VALUES ('paf-test-eva-4',     5,  4, 'Eva — score below floor → DECLINE')
+              SELECT 'paf-test-eva-4', la.customer_id, la.application_id, 'Eva — score below floor → DECLINE'
+                FROM APP.loan_application la
+                JOIN APP.customer c ON c.customer_id = la.customer_id
+               WHERE c.full_name = 'Eva LowScore'
         - sql:
             sql: |-
               INSERT INTO APP.auth_session (session_token, customer_id, application_id, scenario_label)
-                VALUES ('paf-test-frank-5',   6,  5, 'Frank — mid-band → REVIEW')
+              SELECT 'paf-test-frank-5', la.customer_id, la.application_id, 'Frank — mid-band → REVIEW'
+                FROM APP.loan_application la
+                JOIN APP.customer c ON c.customer_id = la.customer_id
+               WHERE c.full_name = 'Frank MidBand'
         - sql:
             sql: |-
               INSERT INTO APP.auth_session (session_token, customer_id, application_id, scenario_label)
-                VALUES ('paf-test-jane-9',   10,  9, 'Jane — unknown employer → DECLINE')
+              SELECT 'paf-test-jane-9', la.customer_id, la.application_id, 'Jane — unknown employer → DECLINE'
+                FROM APP.loan_application la
+                JOIN APP.customer c ON c.customer_id = la.customer_id
+               WHERE c.full_name = 'Jane UnknownEmployer'
         - sql:
             sql: |-
               INSERT INTO APP.auth_session (session_token, customer_id, application_id, scenario_label)
-                VALUES ('paf-test-kyle-10',  11, 10, 'Kyle — dormant employer → REVIEW')
+              SELECT 'paf-test-kyle-10', la.customer_id, la.application_id, 'Kyle — dormant employer → REVIEW'
+                FROM APP.loan_application la
+                JOIN APP.customer c ON c.customer_id = la.customer_id
+               WHERE c.full_name = 'Kyle DormantEmployer'
+        # Valid session for Alice, but pointing at an application that
+        # belongs to a different customer (Bob) — exercises the cross-
+        # customer guard, which must reject even though the token is valid.
         - sql:
             sql: |-
               INSERT INTO APP.auth_session (session_token, customer_id, application_id, scenario_label)
-                VALUES ('paf-test-mismatch',  1,  3, 'Mismatch — valid session, app belongs to another customer')
+              SELECT 'paf-test-mismatch', alice.customer_id, bob_app.application_id,
+                     'Mismatch — valid session, app belongs to another customer'
+                FROM APP.customer alice
+                JOIN APP.loan_application bob_app
+                  ON bob_app.customer_id = (SELECT customer_id FROM APP.customer WHERE full_name = 'Bob Selfemployed')
+               WHERE alice.full_name = 'Alice Salaried'
