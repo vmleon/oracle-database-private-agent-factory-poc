@@ -43,12 +43,12 @@ Changes vs. today:
 
 ## Live validation — PASSED (2026-06-04)
 
-Built the minimal flow below in Agent Builder and ran `[[SESSION paf-test-alice-1]] hello` in the Playground:
+Built the minimal flow below in Agent Builder and ran `[[SESSION paf-test-alice-salaried]] hello` in the Playground:
 
 1. **Wired input accepted — PASS (code + live).** `MCPToolExecutionStep.toolInputJson` is a JSON-typed wireable port (`UnionProperty(Dict | String)`); the wired chain feeds it a real JSON object. Confirmed the Type Convert bridge is required: Prompt outputs Message, `toolInputJson` wants JSON.
 2. **Token byte-exact, no transcription — PASS (live).** `banking-mcp` log:
    ```
-   [get_context] called session_token='paf-test-alice-1'
+   [get_context] called session_token='paf-test-alice-salaried'
    [get_context] -> customer_id=1 has_app=True missing=[] kyc_stale=False
    ```
    The token arrived intact (no dropped/duplicated char), and the Playground rendered the full context JSON. The entire chain is LLM-free, so corruption is structurally impossible on this path.
@@ -60,8 +60,8 @@ PAF UI driving is out of scope (per `paf bootstrap`), so run this by hand after 
 
 1. Build: **Chat input → RegexExtractor `(?<=\[\[SESSION )[^\]]+` → Prompt `{"session_token":"{{token}}"}` → Deterministic MCP node (server `banking-mcp`, tool `get_context`, `toolInputJson` wired from the Prompt) → Chat output**.
 2. In one terminal: `podman logs -f paf-banking-mcp`.
-3. Run the flow in Playground with message: `[[SESSION paf-test-alice-1]] hello` (customer 1, application 1 SUBMITTED → rich context).
-4. Pass = the log shows `[get_context] called session_token='paf-test-alice-1'` (byte-exact) and `-> customer_id=1 has_app=True`, and the Chat output carries the context JSON. Re-run ~20× → zero `invalid_or_expired_session`.
+3. Run the flow in Playground with message: `[[SESSION paf-test-alice-salaried]] hello` (customer 1, application 1 SUBMITTED → rich context).
+4. Pass = the log shows `[get_context] called session_token='paf-test-alice-salaried'` (byte-exact) and `-> customer_id=1 has_app=True`, and the Chat output carries the context JSON. Re-run ~20× → zero `invalid_or_expired_session`.
 
 ## Out of scope
 

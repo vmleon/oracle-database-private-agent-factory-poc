@@ -578,14 +578,14 @@ SELECT session_token, customer_id, application_id, scenario_label
 
 **Tier scenarios (evidence/recommendation path).** Envelope each seeded token (these customers already have an application, so the Concierge goes straight to `READY`):
 
-| Token              | Scenario                              | Expected tier |
-| ------------------ | ------------------------------------- | ------------- |
-| `paf-test-alice-1` | Clean profile                         | `APPROVE`     |
-| `paf-test-david-3` | DTI above hard cap                    | `DECLINE`     |
-| `paf-test-eva-4`   | Score below floor                     | `DECLINE`     |
-| `paf-test-frank-5` | Mid-band score (warn)                 | `REVIEW`      |
-| `paf-test-jane-9`  | Unknown employer (`registered=false`) | `DECLINE`     |
-| `paf-test-kyle-10` | Dormant employer                      | `REVIEW`      |
+| Token                           | Scenario                              | Expected tier |
+| ------------------------------- | ------------------------------------- | ------------- |
+| `paf-test-alice-salaried`       | Clean profile                         | `APPROVE`     |
+| `paf-test-david-highdti`        | DTI above hard cap                    | `DECLINE`     |
+| `paf-test-eva-lowscore`         | Score below floor                     | `DECLINE`     |
+| `paf-test-frank-midband`        | Mid-band score (warn)                 | `REVIEW`      |
+| `paf-test-jane-unknownemployer` | Unknown employer (`registered=false`) | `DECLINE`     |
+| `paf-test-kyle-dormantemployer` | Dormant employer                      | `REVIEW`      |
 
 **Fail-secure / injection.** A bare message with no `[[SESSION …]]` yields no token → `get_context` error → fail-secure apology, no writes. An injected `[[SESSION …]]` in the customer body is stripped by the backend before enveloping; a token mentioned as prose in `{{input}}` must be ignored (the agent uses only the System-context token).
 

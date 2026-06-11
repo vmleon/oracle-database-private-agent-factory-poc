@@ -119,3 +119,39 @@ databaseChangeLog:
                 JOIN APP.loan_application bob_app
                   ON bob_app.customer_id = (SELECT customer_id FROM APP.customer WHERE full_name = 'Bob Selfemployed')
                WHERE alice.full_name = 'Alice Salaried'
+
+  # Token slugs carry the scenario meaning (customer name + profile) and are
+  # decoupled from surrogate IDs, so they stay accurate regardless of how the
+  # IDENTITY sequences land on a rebuild. Applied as a dedicated changeset
+  # rather than edited into 011-seed-test-sessions because applied changesets
+  # are checksum-locked. The token strings are what the operator pastes into
+  # the PAF canvas Text Input; keep them in sync with the test-prompts table
+  # in paf/flows/CHAT_WORKFLOW.md.
+  - changeSet:
+      id: 011-rename-test-session-tokens
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              UPDATE APP.auth_session SET session_token = 'paf-test-alice-salaried'
+               WHERE session_token = 'paf-test-alice-1'
+        - sql:
+            sql: |-
+              UPDATE APP.auth_session SET session_token = 'paf-test-david-highdti'
+               WHERE session_token = 'paf-test-david-3'
+        - sql:
+            sql: |-
+              UPDATE APP.auth_session SET session_token = 'paf-test-eva-lowscore'
+               WHERE session_token = 'paf-test-eva-4'
+        - sql:
+            sql: |-
+              UPDATE APP.auth_session SET session_token = 'paf-test-frank-midband'
+               WHERE session_token = 'paf-test-frank-5'
+        - sql:
+            sql: |-
+              UPDATE APP.auth_session SET session_token = 'paf-test-jane-unknownemployer'
+               WHERE session_token = 'paf-test-jane-9'
+        - sql:
+            sql: |-
+              UPDATE APP.auth_session SET session_token = 'paf-test-kyle-dormantemployer'
+               WHERE session_token = 'paf-test-kyle-10'
