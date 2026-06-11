@@ -122,6 +122,30 @@ def db(env):
 
 
 @pytest.fixture
+def resolve(db):
+    """Resolve a customer's (customer_id, application_id) by full_name.
+
+    Surrogate keys are IDENTITY values and are non-contiguous, so tests address
+    rows by the stable full_name from the synthetic seed rather than by hardcoded
+    IDs. Each scenario customer owns exactly one application."""
+    def _resolve(full_name: str) -> tuple[int, int]:
+        with db.cursor() as cur:
+            cur.execute(
+                "SELECT c.customer_id, la.application_id "
+                "FROM APP.customer c "
+                "JOIN APP.loan_application la ON la.customer_id = c.customer_id "
+                "WHERE c.full_name = :n",
+                n=full_name,
+            )
+            row = cur.fetchone()
+        if row is None:
+            pytest.fail(f"no customer+application found for full_name={full_name!r}")
+        return int(row[0]), int(row[1])
+
+    return _resolve
+
+
+@pytest.fixture
 def mint_session(db):
     """Per-test: mint unique opaque session tokens in APP.auth_session and clean
     them up on teardown. Returns mint(customer_id, application_id) -> token.
