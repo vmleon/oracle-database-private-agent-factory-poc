@@ -6,7 +6,7 @@ You walk through five steps:
 
 1. [Install prereqs and extract the PAF kit.](#1-install-prereqs-and-extract-the-paf-kit)
 2. [Boot the stack (`local up`).](#2-boot-the-stack)
-3. [Install PAF and register the LLM through its UI wizard.](#3-install-paf)
+3. [Install PAF, register the LLM through its UI wizard, and apply the 26.4 patch.](#3-install-paf)
 4. [Register the MCP servers and datasources in PAF.](#4-register-tools-and-datasources)
 5. [Load the `CHAT_WORKFLOW` flow — import the `.paf` or build it.](#5-load-chat_workflow)
 
@@ -127,6 +127,18 @@ It prints the installer URL plus the exact values to paste into each wizard step
 Smaller / heavily-quantised generative models are not recommended for the 4-tool pipeline — they drop the marker emissions `CHAT_WORKFLOW` relies on (see [`paf/flows/CHAT_WORKFLOW.md §Operating constraints`](paf/flows/CHAT_WORKFLOW.md)).
 
 After install completes, sign in as the admin user.
+
+### 3b. Apply the AgentStep patch (required for multi-agent flows)
+
+```bash
+bash paf/patches/agentstep-unique-tool-names.sh
+```
+
+PAF 26.4 names every Agent node's executable `agent_step` and keys its tool registry by that name, first-write-wins — so in a multi-agent flow **every agent silently runs with the first agent's tools** ([`issues/01`](issues/01-multi-agent-tool-binding-collapses-to-first-agent.md)). `CHAT_WORKFLOW` cannot work without this patch: `Docs & Employer` would be handed `upsert_application`, never emit its `[[EVIDENCE …]]` block, and the flow would end in its static error with zero HITL rows.
+
+The script rewrites `agent_factory/app/models/agentBuilder/steps/customSteps/AgentStep.py` inside the `paf-agent-factory` container so each node registers a unique tool name, byte-compiles the result, and runs the kit's `manage_app.sh` to restart the app. It is idempotent (it backs up the file and no-ops when already applied) and takes a few seconds.
+
+**The patch lives in the container filesystem, not in the image** — re-run it after every fresh install, `local down --purge`, or PAF image rebuild. Confirm it took effect with a two-agent smoke test: each agent should call only its own tools in the Playground trace.
 
 ## 4. Register tools and datasources
 
@@ -273,13 +285,14 @@ If anything hangs or errors, `python manage.py local logs paf` shows the backend
 
 ## Day-2
 
-| Command                                 | What it does                                                                                                                                                                                                                                                                                           |
-| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `python manage.py local up`             | Idempotent: starts containers if down, runs Liquibase if any pending changesets.                                                                                                                                                                                                                       |
-| `python manage.py local provision`      | Re-runs Liquibase + grants only (no podman restart). Use after editing the changelog.                                                                                                                                                                                                                  |
-| `python manage.py local logs <service>` | Tails a service (`oracle-free-26ai`, `paf`, `opa`, `opa-mcp`, `ocr-mcp`, `hitl-mcp`, `application-mcp`, `banking-mcp`, `registry-api`, `application-backend`).                                                                                                                                         |
-| `python manage.py local down`           | Stops and removes containers. State persists in the `paf-oradata` volume and PAF's bind-mounted `paf-kit/applied-ai/{volume,dev-shared}` directories.                                                                                                                                                  |
-| `python manage.py local down --purge`   | Also removes the Oracle data volume **and** resets PAF's bind-mounted `applied-ai/{volume,dev-shared}` directories to the kit-shipped defaults (snapshotted at `paf prepare` time). Next `local up` starts with a fresh DB and PAF presents the install wizard again. Does **not** re-extract the kit. |
+| Command                                           | What it does                                                                                                                                                                                                                                                                                           |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `python manage.py local up`                       | Idempotent: starts containers if down, runs Liquibase if any pending changesets.                                                                                                                                                                                                                       |
+| `python manage.py local provision`                | Re-runs Liquibase + grants only (no podman restart). Use after editing the changelog.                                                                                                                                                                                                                  |
+| `python manage.py local logs <service>`           | Tails a service (`oracle-free-26ai`, `paf`, `opa`, `opa-mcp`, `ocr-mcp`, `hitl-mcp`, `application-mcp`, `banking-mcp`, `registry-api`, `application-backend`).                                                                                                                                         |
+| `python manage.py local down`                     | Stops and removes containers. State persists in the `paf-oradata` volume and PAF's bind-mounted `paf-kit/applied-ai/{volume,dev-shared}` directories.                                                                                                                                                  |
+| `python manage.py local down --purge`             | Also removes the Oracle data volume **and** resets PAF's bind-mounted `applied-ai/{volume,dev-shared}` directories to the kit-shipped defaults (snapshotted at `paf prepare` time). Next `local up` starts with a fresh DB and PAF presents the install wizard again. Does **not** re-extract the kit. |
+| `bash paf/patches/agentstep-unique-tool-names.sh` | Re-applies the 26.4 per-node Agent tool-name patch (§3b) — needed after any fresh install or PAF image rebuild.                                                                                                                                                                                        |
 
 Editing OPA policy: change a `.rego` file under `opa/packages/`, then `podman restart paf-opa`. The `opa-mcp` wrapper is stateless and picks up the new policy on the next call — no rebuild needed.
 
