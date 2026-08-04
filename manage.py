@@ -1007,7 +1007,7 @@ def setup_local() -> None:
     ENV_FILE.write_text(env_content)
     ENV_FILE.chmod(0o600)
     console.print(f"[green]✓[/green] Wrote {ENV_FILE}")
-    console.print("\nNext: [cyan]python manage.py local up[/cyan]")
+    console.print("\nNext: [cyan]python manage.py paf prepare[/cyan]")
 
 
 @setup.command("cloud")
