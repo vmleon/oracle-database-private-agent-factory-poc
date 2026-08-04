@@ -20,7 +20,7 @@ This is the **factory moment**. One chat agent today; tomorrow Lina clones the p
 
 ## Interactions at a glance
 
-The narrative above tells the story; the diagrams below are abstract visual anchors — one per actor.
+The narrative above tells the story; the diagrams below are abstract visual anchors — one per actor, plus the chat flow's agents and data sources.
 
 ### Lina — authors the agents in PAF
 
@@ -51,6 +51,63 @@ sequenceDiagram
     HITL-->>Chat: final outcome appended to thread
     Chat-->>Customer: sees outcome on next chat load
 ```
+
+### The chat flow — agents and their data
+
+Same flow, one level deeper: which agent talks to which tool, and where that tool's data actually lives.
+
+```mermaid
+flowchart LR
+    cust(["Customer"]) --> be["App Service<br/>mints session token"]
+    be -->|"[[SESSION token]] + message"| entry
+
+    subgraph flow["CHAT_WORKFLOW (PAF)"]
+        direction TB
+        entry["Deterministic entry<br/>token in → context + eligibility out"]
+        conc["Concierge<br/>intake"]
+        docs["Docs &amp; Employer<br/>evidence"]
+        rec["Recommendation<br/>tier + reason codes"]
+        entry -->|context| conc
+        conc -->|"INTAKE = READY"| docs
+        docs -->|evidence| rec
+        entry -->|"context + eligibility"| rec
+    end
+
+    rec -->|"customer hint"| be
+    be --> cust
+
+    subgraph tools["Tools"]
+        direction TB
+        bmcp["banking-mcp<br/>get_context ·<br/>evaluate_eligibility_for_session"]
+        amcp["application-mcp<br/>upsert_application"]
+        omcp["opa-mcp<br/>required_documents"]
+        reg["registry-api<br/>REST · verify_employer"]
+        hmcp["hitl-mcp<br/>create_hitl_task"]
+    end
+
+    entry --> bmcp
+    conc --> amcp
+    docs --> omcp
+    docs --> reg
+    rec --> hmcp
+
+    subgraph data["Data"]
+        direction TB
+        db[("Oracle AI Database 26ai")]
+        opa["OPA policy engine"]
+        q[["TxEventQ · HITL_REQUEST"]]
+    end
+
+    bmcp -->|read| db
+    bmcp --> opa
+    amcp -->|write DRAFT| db
+    omcp --> opa
+    hmcp -->|write task| db
+    hmcp -->|enqueue| q
+    q --> sam(["Sam · HITL queue"])
+```
+
+Everything the agents know about the customer arrives as **data** from the deterministic entry — no agent resolves an identity, and only `application-mcp` and `hitl-mcp` write.
 
 ### Diego — builds the platform
 
