@@ -1,6 +1,6 @@
 # Local deployment
 
-End-to-end runbook for the Decisioning Engine PoC on rootless podman. The architecture and the four-agent rationale live in [`docs/DESIGN.md`](docs/DESIGN.md) (deployment strategy in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)); the flow itself is [`paf/flows/CHAT_WORKFLOW.md`](paf/flows/CHAT_WORKFLOW.md). This file is the click-by-click runbook.
+End-to-end runbook for the Decisioning Engine PoC on rootless podman. The architecture and the agent-split rationale live in [`docs/DESIGN.md`](docs/DESIGN.md) (deployment strategy in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)); the flow itself is [`paf/flows/CHAT_WORKFLOW.md`](paf/flows/CHAT_WORKFLOW.md). This file is the click-by-click runbook.
 
 You walk through five steps:
 
@@ -26,7 +26,7 @@ When you're done you have:
 
 > **Note — Caddy / HTTPS-from-DB removed.** Oracle's `DBMS_CLOUD` requires an HTTPS callout, so an earlier iteration ran a Caddy TLS terminator in front of vLLM (self-signed cert added to the Oracle SSL wallet) plus a network ACL. That has been removed: Select AI never worked locally anyway (`ORA-20401`), so the Caddy proxy, SSL wallet, and ACL were pure inconsistency. **If you ever wire Select AI locally** you'd need to re-introduce TLS termination in front of vLLM, add its CA to the Oracle wallet, and grant the ACL — but the `ORA-20401` validator still blocks it, so Select AI stays a cloud/ADB feature. `CHAT_WORKFLOW` reaches the LLM through PAF's vLLM provider directly.
 
-The Spring Boot backend (`application-backend`) is part of the compose and comes up with `local up`. The two Angular UIs (customer chat, backoffice) are not yet implemented, and the OCR service is a stub (real YOLO/Tesseract pipeline is a separate workstream). The next-steps list in [`README.md`](README.md#current-state) shows the order the rest land in.
+The Spring Boot backend (`application-backend`) and the two React/Vite UIs (customer chat, reviewer portal) are part of the compose and come up with `local up`, served through the Caddy proxy on `localhost:5173`. The OCR service is a stub (real YOLO/Tesseract pipeline is a separate workstream). The next-steps list in [`README.md`](README.md#current-state) shows the order the rest land in.
 
 ## Prereqs
 
@@ -265,7 +265,7 @@ A password-protected 26.4 export ships in the repo at **[`paf/flows/chat_flow.pa
 
 ### 5b. Build from scratch (the blueprint)
 
-Prefer to build it node-by-node — or the import didn't resolve cleanly? The full blueprint (node graph, the four agents' custom instructions, the 23-step build sequence, the wiring checklist, test prompts, and operating constraints) is **[`paf/flows/CHAT_WORKFLOW.md`](paf/flows/CHAT_WORKFLOW.md)**. Build it there; this runbook only gets you to Agent Builder with the tools (§4) and the LLM (§3) registered.
+Prefer to build it node-by-node — or the import didn't resolve cleanly? The full blueprint (node graph, the three agents' custom instructions, the 23-step build sequence, the wiring checklist, test prompts, and operating constraints) is **[`paf/flows/CHAT_WORKFLOW.md`](paf/flows/CHAT_WORKFLOW.md)**. Build it there; this runbook only gets you to Agent Builder with the tools (§4) and the LLM (§3) registered.
 
 ### Verify
 
