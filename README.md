@@ -54,60 +54,31 @@ sequenceDiagram
 
 ### The chat flow — agents and their data
 
-Same flow, one level deeper: which agent talks to which tool, and where that tool's data actually lives.
+Same flow, one level deeper: agent by agent, and what each one reads or writes.
 
 ```mermaid
-flowchart LR
-    cust(["Customer"]) --> be["App Service<br/>mints session token"]
-    be -->|"[[SESSION token]] + message"| entry
+flowchart TD
+    cust(["Customer"]) --> be["Chat backend"]
+    be --> entry["Session context<br/><i>deterministic — no LLM</i>"]
+    entry --> ctx[("Customer + application context<br/>Oracle AI Database · MCP")]
+    entry --> elig{{"Eligibility decision<br/>OPA policy engine · MCP"}}
 
-    subgraph flow["CHAT_WORKFLOW (PAF)"]
-        direction TB
-        entry["Deterministic entry<br/>token in → context + eligibility out"]
-        conc["Concierge<br/>intake"]
-        docs["Docs &amp; Employer<br/>evidence"]
-        rec["Recommendation<br/>tier + reason codes"]
-        entry -->|context| conc
-        conc -->|"INTAKE = READY"| docs
-        docs -->|evidence| rec
-        entry -->|"context + eligibility"| rec
-    end
+    entry -->|context| conc["Concierge<br/>conversational intake"]
+    conc --> draft[("Loan application draft<br/>Oracle AI Database · MCP")]
 
-    rec -->|"customer hint"| be
-    be --> cust
+    conc -->|"intake complete"| docs["Docs &amp; Employer<br/>evidence gathering"]
+    docs --> reqd{{"Required documents<br/>OPA policy engine · MCP"}}
+    docs --> reg[/"Employer verification<br/>Company Registry · REST API"/]
 
-    subgraph tools["Tools"]
-        direction TB
-        bmcp["banking-mcp<br/>get_context ·<br/>evaluate_eligibility_for_session"]
-        amcp["application-mcp<br/>upsert_application"]
-        omcp["opa-mcp<br/>required_documents"]
-        reg["registry-api<br/>REST · verify_employer"]
-        hmcp["hitl-mcp<br/>create_hitl_task"]
-    end
+    docs -->|evidence| rec["Recommendation<br/>tier + reason codes"]
+    entry -->|"context + eligibility"| rec
+    rec --> task[("Review task + queue<br/>Oracle AI Database · MCP")]
 
-    entry --> bmcp
-    conc --> amcp
-    docs --> omcp
-    docs --> reg
-    rec --> hmcp
-
-    subgraph data["Data"]
-        direction TB
-        db[("Oracle AI Database 26ai")]
-        opa["OPA policy engine"]
-        q[["TxEventQ · HITL_REQUEST"]]
-    end
-
-    bmcp -->|read| db
-    bmcp --> opa
-    amcp -->|write DRAFT| db
-    omcp --> opa
-    hmcp -->|write task| db
-    hmcp -->|enqueue| q
-    q --> sam(["Sam · HITL queue"])
+    task --> sam(["Sam · reviews and decides"])
+    rec -->|"customer-safe reply"| be
 ```
 
-Everything the agents know about the customer arrives as **data** from the deterministic entry — no agent resolves an identity, and only `application-mcp` and `hitl-mcp` write.
+Every agent gets the customer's facts as **data** from the deterministic session context — no agent resolves an identity itself. Only two edges write: the `Concierge`'s draft application and the `Recommendation`'s review task.
 
 ### Diego — builds the platform
 
