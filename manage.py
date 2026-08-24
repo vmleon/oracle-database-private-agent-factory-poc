@@ -14,12 +14,17 @@ import time
 from pathlib import Path
 
 import click
+import requests
+import urllib3
 from dotenv import load_dotenv
 from InquirerPy import inquirer
 from rich.console import Console
 from rich.panel import Panel
 
 console = Console()
+
+# PAF terminates TLS with a self-signed certificate on the local instance.
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 PROJECT_ROOT = Path(__file__).parent
 ENV_FILE = PROJECT_ROOT / ".env"
@@ -31,6 +36,7 @@ PAF_KIT_DIR = PROJECT_ROOT / "paf-kit"
 PAF_VERSION_FILE = PAF_KIT_DIR / "applied-ai" / "kit" / "agent_factory" / "internal" / "version.json"
 PAF_BUILD_SCRIPT = PAF_KIT_DIR / "build-image.sh"
 PAF_IMAGE_REPO = "localhost/applied-ai-label"
+PAF_BASE_URL = "https://localhost:8080"
 
 # TCPS (encrypted SQL*Net) for the PAF → Oracle connection. The Free image's
 # /opt/oracle/configTcps.sh generates a self-signed server cert (CN = the host
@@ -43,23 +49,12 @@ TCPS_CLIENT_WALLET = "/opt/oracle/oradata/clientWallet/FREE"   # in the containe
 TCPS_WALLET_DIR = PROJECT_ROOT / "tcps-wallet"                 # exported to host
 TCPS_WALLET_ZIP = PROJECT_ROOT / "tcps-wallet.zip"            # upload into PAF
 
-# TLS gateway for the MCP servers. PAF 26.4 rejects http:// MCP URLs, so a Caddy
-# proxy (mcp-proxy) terminates TLS and forwards to each plain-HTTP MCP app. PAF
-# trusts the self-signed cert via SSL_CERT_FILE = certifi + our cert.
+# TLS gateway for the MCP servers. A Caddy proxy (mcp-proxy) terminates TLS and
+# forwards to each plain-HTTP MCP app. PAF trusts the self-signed certificate
+# through its administrator certificate store — see `paf trust-ca`.
 MCP_TLS_DIR = PROJECT_ROOT / "mcp-tls"
 MCP_PROXY_HOST = "mcp-proxy"
 MCP_PROXY_PORT = "8443"
-KIT_CERTIFI = (
-    PAF_KIT_DIR / "applied-ai" / "kit" / "agent_factory" / "third_party"
-    / "python3" / "lib" / "python3.12" / "site-packages" / "certifi" / "cacert.pem"
-)
-# certifi bundle *inside the paf container* (image path). SSL_CERT_FILE doesn't
-# reach all of PAF's worker processes, so we also append our cert here — the
-# bundle every httpx client falls back to via certifi.where().
-PAF_CERTIFI = (
-    "/home/aaiuser/install/agent_factory/third_party/python3/lib/python3.12"
-    "/site-packages/certifi/cacert.pem"
-)
 # path-prefix -> internal MCP app, used both by Caddyfile.mcp and the URL hints.
 MCP_ROUTES = {
     "banking": "banking-mcp:8503",
@@ -366,17 +361,14 @@ def _configure_tcps(container: str = "paf-oracle-free-26ai") -> None:
 
 
 def _configure_mcp_tls() -> None:
-    """Generate the self-signed cert for the MCP TLS gateway (mcp-proxy) and
-    build the PAF trust bundle (certifi + our cert).
+    """Generate the self-signed certificate for the MCP TLS gateway (mcp-proxy).
 
-    Idempotent: the cert is generated once and reused (regenerating would
-    invalidate the bundle PAF already mounted); the bundle is always rebuilt
-    (cheap). Runs before `podman compose up` because the files are bind-mounted
-    into mcp-proxy and paf at container start.
+    Idempotent: the certificate is generated once and reused — regenerating it
+    would invalidate the copy PAF already trusts. Runs before `podman compose up`
+    because the files are bind-mounted into mcp-proxy at container start.
     """
     crt = MCP_TLS_DIR / "mcp-proxy.crt"
     key = MCP_TLS_DIR / "mcp-proxy.key"
-    bundle = MCP_TLS_DIR / "paf-ca-bundle.pem"
     MCP_TLS_DIR.mkdir(exist_ok=True)
 
     if crt.exists() and key.exists():
@@ -407,51 +399,11 @@ def _configure_mcp_tls() -> None:
         ])
         cfg.unlink()
 
-    if not KIT_CERTIFI.exists():
-        console.print(
-            f"[red]certifi bundle not found at {KIT_CERTIFI}.[/red] "
-            "Run `python manage.py paf prepare` first."
-        )
-        sys.exit(1)
-    # SSL_CERT_FILE replaces (not augments) the default trust store, so the
-    # bundle must carry the public CAs *and* our cert.
-    bundle.write_text(KIT_CERTIFI.read_text() + "\n" + crt.read_text())
     key.chmod(0o600)
-    bundle.chmod(0o600)
     console.print(
-        f"[green]✓[/green] MCP TLS ready: gateway [cyan]{MCP_PROXY_HOST}:{MCP_PROXY_PORT}[/cyan], "
-        f"PAF trust bundle → [cyan]{bundle.name}[/cyan]."
+        f"[green]✓[/green] MCP TLS ready: gateway [cyan]{MCP_PROXY_HOST}:{MCP_PROXY_PORT}[/cyan]. "
+        f"Register the CA with [cyan]python manage.py paf trust-ca[/cyan]."
     )
-
-
-def _inject_mcp_ca_into_paf(container: str = "paf-agent-factory") -> None:
-    """Append the MCP-gateway cert to PAF's in-container certifi bundle.
-
-    SSL_CERT_FILE (set in compose) only reaches some of PAF's processes — its
-    async MCP-discovery worker falls back to certifi.where(), which lacks our
-    self-signed cert, so the connection test fails with CERTIFICATE_VERIFY_FAILED.
-    certifi's cacert.pem is the one bundle every httpx client trusts, so we
-    append our cert there. It lives in the image (not a bind mount), so this
-    re-runs every `local up` (the container is recreated). Idempotent: the prior
-    appended block is stripped and the current cert re-appended (handles a
-    regenerated cert too).
-    """
-    crt = MCP_TLS_DIR / "mcp-proxy.crt"
-    if not crt.exists():
-        return
-    if subprocess.run(["podman", "exec", container, "true"], capture_output=True).returncode != 0:
-        console.print("[dim]PAF container not running; skipping certifi injection.[/dim]")
-        return
-    subprocess.run(["podman", "cp", str(crt), f"{container}:/tmp/mcp-proxy.crt"], capture_output=True)
-    script = (
-        f"sed -i '/# mcp-proxy-self-signed/,$d' {PAF_CERTIFI} && "
-        f"{{ echo; echo '# mcp-proxy-self-signed'; cat /tmp/mcp-proxy.crt; }} >> {PAF_CERTIFI}"
-    )
-    rc = subprocess.run(["podman", "exec", container, "bash", "-lc", script], capture_output=True)
-    if rc.returncode == 0:
-        console.print("[green]✓[/green] MCP gateway cert injected into PAF's certifi trust bundle.")
-    else:
-        console.print(f"[yellow]Could not inject cert into PAF certifi:[/yellow] {rc.stderr.decode().strip()}")
 
 
 def _is_dbms_cloud_installed(container: str = "paf-oracle-free-26ai") -> bool:
@@ -889,6 +841,59 @@ def _provision_local() -> None:
     ])
 
 
+def _paf_session() -> requests.Session:
+    """Administrator-authenticated session against the local PAF instance."""
+    load_dotenv(ENV_FILE)
+    user = os.getenv("PAF_ADMIN_USER", "").strip()
+    password = os.getenv("PAF_ADMIN_PASS", "").strip()
+    if not user or not password:
+        console.print(
+            "[red]PAF_ADMIN_USER / PAF_ADMIN_PASS are not set in .env.[/red] "
+            "They are the credentials created in the PAF install wizard."
+        )
+        sys.exit(1)
+    session = requests.Session()
+    session.verify = False
+    try:
+        r = session.get(
+            f"{PAF_BASE_URL}/agentFactory/v1/loginValidation",
+            auth=(user, password),
+            headers={"Origin": PAF_BASE_URL},
+            timeout=30,
+        )
+    except requests.RequestException as exc:
+        console.print(f"[red]Cannot reach PAF at {PAF_BASE_URL}:[/red] {exc}")
+        sys.exit(1)
+    if r.status_code != 200:
+        console.print(
+            f"[red]PAF login failed: HTTP {r.status_code}.[/red] "
+            f"Check PAF_ADMIN_USER / PAF_ADMIN_PASS in .env.\n{r.text[:300]}"
+        )
+        sys.exit(1)
+    return session
+
+
+def _discover_chat_workflow_id(session: requests.Session) -> str:
+    """Resolve CHAT_WORKFLOW's agent id by name."""
+    r = session.get(f"{PAF_BASE_URL}/agentFactory/v1/agents", timeout=30)
+    if r.status_code != 200:
+        console.print(f"[red]Could not list agents: HTTP {r.status_code}.[/red]\n{r.text[:300]}")
+        sys.exit(1)
+    body = r.json()
+    data = body.get("data") if isinstance(body, dict) else body
+    agents = data.get("items", []) if isinstance(data, dict) else data
+    for agent in agents or []:
+        if agent.get("name") == "CHAT_WORKFLOW":
+            agent_id = agent.get("agentId") or agent.get("agent_id")
+            if agent_id:
+                return str(agent_id)
+    console.print(
+        "[red]CHAT_WORKFLOW not found in PAF's agent list.[/red] "
+        "Import and publish it per paf/flows/CHAT_WORKFLOW.md."
+    )
+    sys.exit(1)
+
+
 @click.group()
 def cli() -> None:
     """Oracle PAF Decisioning Engine PoC."""
@@ -1034,9 +1039,9 @@ def local_up() -> None:
         console.print(f"[bold]PAF image {paf_tag} missing — building from kit...[/bold]")
         _run(["bash", str(PAF_BUILD_SCRIPT), "aai"], cwd=str(PAF_KIT_DIR))
     services = ["oracle-free-26ai", "opa", "opa-mcp", "ocr-mcp", "hitl-mcp", "application-mcp", "banking-mcp", "registry-api", "application-backend", "customer-ui", "backoffice-ui", "proxy", "mcp-proxy"]
-    # The MCP TLS cert + PAF trust bundle are bind-mounted into mcp-proxy and
-    # paf, so they must exist before compose starts those containers.
-    console.print("[bold]Preparing MCP TLS gateway cert + PAF trust bundle...[/bold]")
+    # The MCP TLS cert is bind-mounted into mcp-proxy, so it must exist before
+    # compose starts that container.
+    console.print("[bold]Preparing MCP TLS gateway cert...[/bold]")
     _configure_mcp_tls()
     # Always export so compose substitution succeeds even when paf isn't started.
     os.environ["PAF_APP_VERSION"] = _paf_app_version() or "unset"
@@ -1077,8 +1082,6 @@ def local_up() -> None:
     if paf_ready:
         console.print("[bold]Configuring PAF container (post-start handshake)...[/bold]")
         _paf_post_start()
-        console.print("[bold]Injecting MCP gateway cert into PAF's trust bundle...[/bold]")
-        _inject_mcp_ca_into_paf()
     # `up --build` rebuilds the application-backend image when src/backend
     # changed, but podman leaves the already-running container on the old
     # image — so code changes were silently ignored. Force-recreate just the
@@ -1121,18 +1124,17 @@ def local_tcps() -> None:
 
 @local.command("mcp-tls")
 def local_mcp_tls() -> None:
-    """(Re)generate the MCP TLS gateway cert + PAF trust bundle.
+    """(Re)generate the MCP TLS gateway certificate.
 
-    Runs automatically as part of `local up`. The cert is reused if present —
-    delete ./mcp-tls/ first to force a fresh one. After regenerating, restart
-    the affected containers to pick it up:
-        podman restart paf-mcp-proxy paf-agent-factory
+    Runs automatically as part of `local up`. The certificate is reused if
+    present — delete ./mcp-tls/ first to force a fresh one, then re-register it
+    with `paf trust-ca` and restart the gateway.
     """
     _ensure_env()
     _configure_mcp_tls()
-    _inject_mcp_ca_into_paf()
     console.print(
-        "[dim]If the cert changed, restart the gateway to serve it: "
+        "[dim]If the certificate changed, re-register it with "
+        "[cyan]python manage.py paf trust-ca[/cyan] and restart the gateway: "
         "[cyan]podman restart paf-mcp-proxy[/cyan][/dim]"
     )
 
@@ -1352,6 +1354,43 @@ def paf_allow_internal_mcp() -> None:
         sys.exit(1)
     console.print("[green]✓[/green] BLOCK_PRIVATE_OUTBOUND_URLS=false — internal MCP URLs allowed.")
     console.print("[dim]Register MCP servers as https://mcp-proxy:8443/<svc>/mcp/ (see LOCAL.md §4a).[/dim]")
+
+
+@paf.command("trust-ca")
+def paf_trust_ca() -> None:
+    """Register the MCP gateway CA in PAF's administrator certificate store.
+
+    PAF's outbound HTTP clients read this store when they dial MCP servers, so
+    the https://mcp-proxy:8443 URLs verify. The store lives on PAF's mounted
+    volume and survives image rebuilds. Run once per install, after the wizard.
+    """
+    _ensure_env()
+    crt = MCP_TLS_DIR / "mcp-proxy.crt"
+    if not crt.exists():
+        console.print(
+            f"[red]{crt} not found.[/red] Run `python manage.py local mcp-tls` first."
+        )
+        sys.exit(1)
+    session = _paf_session()
+    with crt.open("rb") as handle:
+        r = session.post(
+            f"{PAF_BASE_URL}/agentFactory/v1/certs",
+            headers={"Origin": PAF_BASE_URL},
+            files={"certificate": (crt.name, handle, "application/x-pem-file")},
+            timeout=30,
+        )
+    if r.status_code == 201:
+        console.print("[green]✓[/green] MCP gateway CA registered in PAF's trust store.")
+    elif r.status_code == 200:
+        console.print("[green]✓[/green] MCP gateway CA already registered.")
+    else:
+        console.print(
+            f"[red]Certificate upload failed: HTTP {r.status_code}[/red]\n{r.text[:500]}"
+        )
+        sys.exit(1)
+    console.print(
+        "[dim]MCP connection tests pick up the new trust store on the next test.[/dim]"
+    )
 
 
 @paf.command("bootstrap")
