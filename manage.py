@@ -1393,6 +1393,46 @@ def paf_trust_ca() -> None:
     )
 
 
+@paf.command("api-key")
+def paf_api_key() -> None:
+    """Mint an integration API key for CHAT_WORKFLOW and store it in .env.
+
+    Writes PAF_AGENT_ID and PAF_API_KEY. The flow must be published first — PAF
+    refuses to run an unpublished workflow through an integration key. Keys last
+    at most 90 days; re-run this to mint a replacement.
+    """
+    _ensure_env()
+    session = _paf_session()
+    agent_id = _discover_chat_workflow_id(session)
+    r = session.post(
+        f"{PAF_BASE_URL}/agentFactory/v1/integrations/agents/{agent_id}/keys",
+        headers={"Origin": PAF_BASE_URL},
+        json={"name": "application-backend"},
+        timeout=30,
+    )
+    if r.status_code != 201:
+        console.print(
+            f"[red]Key creation failed: HTTP {r.status_code}[/red]\n{r.text[:500]}"
+        )
+        sys.exit(1)
+    body = r.json()
+    key = body.get("key")
+    if not key:
+        console.print(f"[red]PAF returned no key value.[/red] {body}")
+        sys.exit(1)
+    _write_env_key("PAF_AGENT_ID", agent_id)
+    _write_env_key("PAF_API_KEY", key)
+    console.print(
+        f"[green]✓[/green] Key minted for agent [cyan]{agent_id}[/cyan] "
+        f"(prefix [cyan]{body.get('keyPrefix', '')}[/cyan]), expires "
+        f"[cyan]{body.get('expiresAt', 'in 90 days')}[/cyan]."
+    )
+    console.print(
+        "[dim]PAF_AGENT_ID and PAF_API_KEY written to .env. Restart the backend "
+        "to pick them up: [cyan]podman restart application-backend[/cyan][/dim]"
+    )
+
+
 @paf.command("bootstrap")
 def paf_bootstrap() -> None:
     """Print the PAF UI installer URL and the connection details to paste into it."""

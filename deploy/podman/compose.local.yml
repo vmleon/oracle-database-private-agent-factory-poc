@@ -203,8 +203,8 @@ services:
       DB_USER: "APP"
       DB_PASSWORD: "${DB_PASSWORD}"
       PAF_BASE_URL: "https://paf:8080"
-      PAF_ADMIN_USER: "${PAF_ADMIN_USER}"
-      PAF_ADMIN_PASS: "${PAF_ADMIN_PASS}"
+      PAF_AGENT_ID: "${PAF_AGENT_ID:-}"
+      PAF_API_KEY: "${PAF_API_KEY:-}"
 
   # Customer chat SPA (React/Vite, nginx static). Internal-only — the proxy
   # front door publishes the public port and routes / here.
