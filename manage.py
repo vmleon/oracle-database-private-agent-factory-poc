@@ -1403,6 +1403,106 @@ def paf_trust_ca() -> None:
     )
 
 
+def _live_mcp_source_ids(session: requests.Session) -> dict:
+    """Map each registered MCP server name to its numeric source id."""
+    r = session.get(f"{PAF_BASE_URL}/agentFactory/v1/tools/mcp/sources", timeout=30)
+    if r.status_code != 200:
+        console.print(
+            f"[red]Could not list MCP servers: HTTP {r.status_code}.[/red]\n{r.text[:300]}"
+        )
+        sys.exit(1)
+    body = r.json()
+    items = body if isinstance(body, list) else body.get("data") or body.get("items") or []
+    if isinstance(items, dict):
+        items = items.get("items", [])
+    return {i["SERVER_NAME"]: i["ID"] for i in items if i.get("SERVER_NAME")}
+
+
+def _iter_server_source_fields(node):
+    """Yield every `serverSource` template field in a flow graph."""
+    if isinstance(node, dict):
+        field = node.get("serverSource")
+        if isinstance(field, dict) and "componentProps" in field:
+            yield field
+        for value in node.values():
+            yield from _iter_server_source_fields(value)
+    elif isinstance(node, list):
+        for value in node:
+            yield from _iter_server_source_fields(value)
+
+
+@paf.command("link-flow")
+def paf_link_flow() -> None:
+    """Bind each MCP tool node in CHAT_WORKFLOW to the right MCP server.
+
+    A flow stores its MCP servers as numeric source ids, which depend on the
+    order the servers were registered. This rebinds every node by server name,
+    so the flow works whatever ids this instance assigned. Run after importing
+    the flow, and again after re-registering any MCP server.
+    """
+    _ensure_env()
+    session = _paf_session()
+    agent_id = _discover_chat_workflow_id(session)
+
+    r = session.get(f"{PAF_BASE_URL}/agentFactory/v1/agents/{agent_id}", timeout=30)
+    if r.status_code != 200:
+        console.print(f"[red]Could not read the flow: HTTP {r.status_code}.[/red]\n{r.text[:300]}")
+        sys.exit(1)
+    payload = r.json()
+    record = payload.get("data", payload)
+    graph = record.get("data")
+    if not isinstance(graph, dict):
+        console.print(
+            "[red]The flow has no visual graph to rebind.[/red] "
+            "Import it per paf/flows/CHAT_WORKFLOW.md first."
+        )
+        sys.exit(1)
+
+    live = _live_mcp_source_ids(session)
+    changes, unknown = [], set()
+    for field in _iter_server_source_fields(graph):
+        options = field.get("componentProps", {}).get("options") or []
+        name = next((o.get("label") for o in options if o.get("label")), None)
+        if not name:
+            continue
+        target = live.get(name)
+        if target is None:
+            unknown.add(name)
+            continue
+        if field.get("value") != target:
+            changes.append((name, field.get("value"), target))
+        field["value"] = target
+        for option in options:
+            option["value"] = target
+
+    if unknown:
+        console.print(
+            f"[red]These MCP servers are not registered:[/red] {', '.join(sorted(unknown))}\n"
+            f"Registered: {', '.join(sorted(live)) or '(none)'}\n"
+            "Register them per LOCAL.md §4a, then re-run."
+        )
+        sys.exit(1)
+
+    if not changes:
+        console.print("[green]✓[/green] Every MCP node already points at the right server.")
+        return
+
+    r = session.put(
+        f"{PAF_BASE_URL}/agentFactory/v1/agents/{agent_id}/data",
+        headers={"Origin": PAF_BASE_URL},
+        json={"data": graph},
+        timeout=60,
+    )
+    if r.status_code != 200:
+        console.print(f"[red]Could not save the flow: HTTP {r.status_code}.[/red]\n{r.text[:500]}")
+        sys.exit(1)
+
+    for name, before, after in changes:
+        console.print(f"  [cyan]{name}[/cyan]: {before} → {after}")
+    console.print(f"[green]✓[/green] Rebound {len(changes)} MCP node(s) in CHAT_WORKFLOW.")
+    console.print("[dim]Publish the flow so the change reaches the integration endpoint.[/dim]")
+
+
 @paf.command("api-key")
 def paf_api_key() -> None:
     """Mint an integration API key for CHAT_WORKFLOW and store it in .env.
