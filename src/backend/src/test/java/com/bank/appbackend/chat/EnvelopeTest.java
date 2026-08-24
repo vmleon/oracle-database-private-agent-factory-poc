@@ -47,7 +47,7 @@ class EnvelopeTest {
 
     @Test
     void extractReplyReadsLivePafShape() throws Exception {
-        // The shape live PAF actually returns from agentBuilder/run.
+        // The shape live PAF actually returns from the integration run endpoint.
         var root = mapper.readTree("{\"message\":\"top reply\",\"roomId\":\"r1\"}");
         assertThat(Envelope.extractReply(root)).isEqualTo("top reply");
     }

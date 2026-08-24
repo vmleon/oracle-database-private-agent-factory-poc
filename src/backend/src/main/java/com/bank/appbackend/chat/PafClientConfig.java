@@ -43,9 +43,8 @@ public class PafClientConfig {
                         .setSoTimeout(Timeout.ofMinutes(8))
                         .build())
                 .build();
-        // PafClient manages the session cookie explicitly (Cookie header it sets per request).
-        // Disable Apache's automatic cookie store so a stale cookie can't be auto-replayed and
-        // defeat a re-login after the session expires.
+        // PafClient authenticates with a Bearer key and carries no session state, so disable
+        // Apache's automatic cookie store to keep any incidental Set-Cookie from PAF unused.
         CloseableHttpClient httpClient = HttpClients.custom()
                 .setConnectionManager(connectionManager)
                 .disableCookieManagement()
