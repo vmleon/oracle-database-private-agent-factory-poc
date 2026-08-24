@@ -29,6 +29,13 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 PROJECT_ROOT = Path(__file__).parent
 ENV_FILE = PROJECT_ROOT / ".env"
 PODMAN_COMPOSE = PROJECT_ROOT / "deploy" / "podman" / "compose.local.yml"
+# Recreates application-backend with its current environment substitution
+# (container env is fixed at creation, so `podman restart` alone would keep
+# stale/empty PAF_AGENT_ID / PAF_API_KEY).
+RECREATE_BACKEND_CMD = [
+    "podman", "compose", "-f", str(PODMAN_COMPOSE),
+    "up", "-d", "--force-recreate", "--no-deps", "application-backend",
+]
 ANSIBLE_DIR = PROJECT_ROOT / "deploy" / "ansible" / "database-setup"
 ANSIBLE_VARS_FILE = ANSIBLE_DIR / ".vars.local.yml"
 
@@ -279,12 +286,12 @@ def _grant_sysdba_post_liquibase(container: str = "paf-oracle-free-26ai") -> Non
     Also grants EXECUTE on DBMS_CLOUD / DBMS_CLOUD_AI to AGENT_FACTORY
     (the packages are installed by `_install_dbms_cloud` earlier).
 
-    Also creates the read-only worker user AAI_RO_AGENT_FACTORY. PAF 26.4
-    requires this user to pre-exist before the install wizard's DB step
-    (25.3.9 created it during install); without it the DB step fails with
-    "Required read-only user AAI_RO_AGENT_FACTORY does not exist". It needs
-    only CREATE SESSION and a password equal to the runtime user's
-    (AGENT_FACTORY = DB_PASSWORD); PAF grants the read-only SELECTs itself.
+    Also creates the read-only worker user AAI_RO_AGENT_FACTORY. PAF
+    requires this user to pre-exist before the install wizard's DB step;
+    without it the DB step fails with "Required read-only user
+    AAI_RO_AGENT_FACTORY does not exist". It needs only CREATE SESSION and
+    a password equal to the runtime user's (AGENT_FACTORY = DB_PASSWORD);
+    PAF grants the read-only SELECTs itself.
 
     Note: Select AI is not wired locally, so no outbound-HTTPS network ACL
     is added here. Wiring Select AI locally would also need an ACL to the
@@ -510,12 +517,10 @@ def _bootstrap_select_ai_profiles(container: str = "paf-oracle-free-26ai") -> No
     Uses the `openai` provider with a `provider_endpoint` pointed at an
     HTTPS endpoint in front of vLLM (`VLLM_HOST:VLLM_GEN_PORT`).
 
-    NOTE: DBMS_CLOUD requires an HTTPS callout. The local POC previously ran
-    a Caddy TLS terminator in front of vLLM (self-signed cert added to the
-    Oracle SSL wallet) to satisfy this; that has been removed because Select
-    AI never worked locally anyway (see LOCAL CONSTRAINT below). If you wire
-    Select AI locally again you must re-introduce TLS termination in front of
-    vLLM, add its CA to the Oracle wallet, and grant a network ACL to it.
+    NOTE: DBMS_CLOUD requires an HTTPS callout in front of vLLM (see LOCAL
+    CONSTRAINT below for why this isn't wired locally). Wiring Select AI
+    locally requires TLS termination in front of vLLM, its CA added to the
+    Oracle wallet, and a network ACL granted to it.
 
     A `credential_name` is mandatory on every DBMS_CLOUD_AI profile;
     vLLM doesn't enforce auth by default, so we create a dummy `VLLM_CRED`
@@ -958,14 +963,21 @@ def setup_local() -> None:
         default=existing.get("OCR_PORT", "8500"),
     ).execute()
 
+    paf_tarball_default = existing.get("PAF_TARBALL", "")
+    paf_tarball_hint = (
+        f"Enter keeps the current value: {paf_tarball_default}"
+        if paf_tarball_default
+        else "e.g. ~/Downloads/oracle_agent_factory_arm64_26.7.0.tar.gz"
+    )
     paf_tarball = inquirer.text(
-        message="Path to the PAF kit tarball (e.g. ~/Downloads/oracle_agent_factory_arm64_26.4.0.tar.gz):",
-        default=existing.get("PAF_TARBALL", ""),
+        message=f"Path to the PAF kit tarball ({paf_tarball_hint}):",
+        default=paf_tarball_default,
     ).execute()
 
-    # PAF admin creds — used by the test harness for programmatic login via
-    # /v1/loginValidation. Manual install-wizard input, no auto-generation;
-    # leave blank to keep whatever's already in .env on a re-run.
+    # PAF admin creds — used by manage.py's own `paf trust-ca` and `paf
+    # api-key` commands to authenticate against PAF as an administrator.
+    # Manual install-wizard input, no auto-generation; leave blank to keep
+    # whatever's already in .env on a re-run.
     paf_admin_user = inquirer.text(
         message="PAF admin username (the one entered in the install wizard, leave blank to keep existing):",
         default=existing.get("PAF_ADMIN_USER", ""),
@@ -1004,8 +1016,9 @@ def setup_local() -> None:
         "# PAF kit tarball (read by `manage.py paf prepare` when no path is given)\n"
         f"PAF_TARBALL={paf_tarball}\n"
         "\n"
-        "# PAF admin login (used by the pytest harness for programmatic\n"
-        "# /v1/loginValidation against PAF — NOT for runtime services)\n"
+        "# PAF admin login (used by manage.py's own `paf trust-ca` and\n"
+        "# `paf api-key` commands to authenticate against PAF as an\n"
+        "# administrator; not used by the backend or the test harness)\n"
         f"PAF_ADMIN_USER={paf_admin_user}\n"
         f"PAF_ADMIN_PASS={paf_admin_pass}\n"
     )
@@ -1088,10 +1101,7 @@ def local_up() -> None:
     # application-backend (DB is healthy by now) so it always lands on the
     # freshly built image.
     console.print("[bold]Recreating application-backend onto the latest image...[/bold]")
-    _run([
-        "podman", "compose", "-f", str(PODMAN_COMPOSE),
-        "up", "-d", "--force-recreate", "--no-deps", "application-backend",
-    ])
+    _run(RECREATE_BACKEND_CMD)
     console.print("\n[green]✓ Local stack up.[/green]")
     if paf_ready:
         console.print(
@@ -1323,7 +1333,7 @@ def paf_allow_internal_mcp() -> None:
     registered: sets BLOCK_PRIVATE_OUTBOUND_URLS=false in PAF's app settings.
 
     Required because mcp-proxy (and every MCP) resolves to a private podman IP,
-    which PAF 26.4 blocks by default — even over https. ALLOW_INSECURE_HTTP_URLS
+    which PAF blocks by default — even over https. ALLOW_INSECURE_HTTP_URLS
     is left false: MCPs are served over https via mcp-proxy. Run once after the
     PAF install wizard completes; re-run after a `local down --purge` reinstall
     (the setting resets to the secure default on a fresh install).
@@ -1428,8 +1438,8 @@ def paf_api_key() -> None:
         f"[cyan]{body.get('expiresAt', 'in 90 days')}[/cyan]."
     )
     console.print(
-        "[dim]PAF_AGENT_ID and PAF_API_KEY written to .env. Restart the backend "
-        "to pick them up: [cyan]podman restart application-backend[/cyan][/dim]"
+        "[dim]PAF_AGENT_ID and PAF_API_KEY written to .env. Recreate the backend "
+        f"to pick them up: [cyan]{' '.join(RECREATE_BACKEND_CMD)}[/cyan][/dim]"
     )
 
 

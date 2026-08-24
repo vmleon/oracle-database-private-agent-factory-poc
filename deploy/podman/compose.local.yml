@@ -181,7 +181,8 @@ services:
 
   # Spring Boot Application Service — the customer chat slice. Mints session
   # tokens, persists chat_message, and bridges customer turns to PAF's
-  # CHAT_WORKFLOW (login cookie + run). Connects to Oracle as APP (owns
+  # CHAT_WORKFLOW via an agent-scoped API key (PAF_AGENT_ID / PAF_API_KEY)
+  # against PAF's integration run endpoint. Connects to Oracle as APP (owns
   # auth_session + chat_message). Reaches PAF on the compose network at
   # https://paf:8080 (self-signed cert; the client skips TLS verification).
   application-backend:
@@ -228,7 +229,7 @@ services:
 
   # Single front door for the browser-facing surface. Routes / -> customer-ui,
   # /backoffice -> backoffice-ui, /v1 -> application-backend, re-resolving each
-  # container name per request so a backend restart no longer 502s. See Caddyfile.
+  # container name per request so a backend restart never 502s. See Caddyfile.
   proxy:
     image: docker.io/library/caddy:2-alpine
     container_name: paf-proxy
@@ -242,7 +243,7 @@ services:
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
 
-  # TLS gateway for the MCP servers. PAF 26.4 rejects http:// MCP URLs, so this
+  # TLS gateway for the MCP servers. PAF requires https:// MCP URLs, so this
   # terminates TLS (self-signed cert, SAN=mcp-proxy) on :8443 and reverse-proxies
   # each path prefix to the plain-HTTP MCP app (/banking/mcp/ -> banking-mcp:8503/mcp/).
   # PAF reaches it over the compose network and trusts the certificate through its

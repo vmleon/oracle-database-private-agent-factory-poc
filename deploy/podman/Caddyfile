@@ -1,8 +1,7 @@
 # Single front door for the browser-facing surface. Caddy re-resolves each
 # upstream container name on every request, so recreating application-backend
-# (manage.py does this on every `local up`) no longer 502s the way the
-# per-UI nginx did. /v1 -> backend, /backoffice -> reviewer SPA, everything
-# else -> customer SPA.
+# (manage.py does this on every `local up`) never 502s. /v1 -> backend,
+# /backoffice -> reviewer SPA, everything else -> customer SPA.
 :80 {
 	handle /v1/* {
 		reverse_proxy application-backend:8090 {

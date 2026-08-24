@@ -127,7 +127,7 @@ def mint_session(db):
     them up on teardown. Returns mint(customer_id, application_id) -> token.
 
     Each call issues a fresh `sess_<hex>` token with a 15-minute expiry, so tests
-    never contend on a shared row (unlike the old fixed-token approach)."""
+    never contend on a shared row."""
     minted: list[str] = []
 
     def _mint(customer_id: int, application_id: int) -> str:
