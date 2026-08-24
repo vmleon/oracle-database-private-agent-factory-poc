@@ -26,8 +26,8 @@ spring:
 
 paf:
   base-url: ${PAF_BASE_URL:https://paf:8080}
-  admin-user: ${PAF_ADMIN_USER:}
-  admin-pass: ${PAF_ADMIN_PASS:}
+  api-key: ${PAF_API_KEY:}
+  agent-id: ${PAF_AGENT_ID:}
 
 session:
   ttl-hours: ${SESSION_TTL_HOURS:8}

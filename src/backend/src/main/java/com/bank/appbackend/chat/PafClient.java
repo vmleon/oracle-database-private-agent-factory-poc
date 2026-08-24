@@ -9,9 +9,10 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.util.List;
 import java.util.Map;
 
 import static org.springframework.http.HttpStatus.BAD_GATEWAY;
@@ -20,27 +21,20 @@ import static org.springframework.http.HttpStatus.BAD_GATEWAY;
 public class PafClient {
 
     private static final Logger log = LoggerFactory.getLogger(PafClient.class);
-    private static final String LOGIN_PATH = "/agentFactory/v1/loginValidation";
-    private static final String AGENTS_PATH = "/agentFactory/v1/agents";
-    private static final String RUN_PATH = "/agentFactory/v1/agentBuilder/run/";
+    private static final String RUN_PATH_PREFIX = "/agentFactory/v1/integrations/agents/";
+    private static final String RUN_PATH_SUFFIX = "/run";
 
     private final RestClient http;
-    private final String adminUser;
-    private final String adminPass;
-    private final String baseUrl;
+    private final String apiKey;
+    private final String agentId;
     private final ObjectMapper mapper = new ObjectMapper();
 
-    private volatile String cookie;
-    private volatile String agentId;
-
     public PafClient(RestClient pafRestClient,
-                     @Value("${paf.admin-user}") String adminUser,
-                     @Value("${paf.admin-pass}") String adminPass,
-                     @Value("${paf.base-url}") String baseUrl) {
+                     @Value("${paf.api-key}") String apiKey,
+                     @Value("${paf.agent-id}") String agentId) {
         this.http = pafRestClient;
-        this.adminUser = adminUser;
-        this.adminPass = adminPass;
-        this.baseUrl = baseUrl;
+        this.apiKey = apiKey;
+        this.agentId = agentId;
     }
 
     /** Agent reply text plus PAF's own roomId (its conversation thread id); roomId may be null. */
@@ -49,140 +43,66 @@ public class PafClient {
 
     /** Run CHAT_WORKFLOW with an already-enveloped message; returns the reply text and PAF roomId. */
     public Result run(String envelopedMessage) {
-        ensureCookie();
-        String id = ensureAgentId();
-        String body = postRunWithSessionRetry(id, envelopedMessage);
+        String body = postRun(envelopedMessage);
         JsonNode root = readTree(body);
         JsonNode errs = root.path("errorMessages");
         if (errs.isArray() && !errs.isEmpty()) {
-            log.warn("PAF returned errorMessages (agentId={}): {}", id, errs);
+            log.warn("PAF returned errorMessages (agentId={}): {}", agentId, errs);
             throw new ResponseStatusException(BAD_GATEWAY, "PAF returned errors: " + errs);
         }
         String reply;
         try {
             reply = Envelope.extractReply(root);
         } catch (IllegalStateException e) {
-            log.warn("PAF reply shape not recognized (agentId={}): {}", id, body, e);
+            log.warn("PAF reply shape not recognized (agentId={}): {}", agentId, body, e);
             throw new ResponseStatusException(BAD_GATEWAY, "PAF reply shape not recognized", e);
         }
         return new Result(reply, root.path("roomId").asText(null));
     }
 
-    /**
-     * POST the run, transparently re-authenticating once if the cached cookie has expired.
-     * PAF signals expiry two ways: a 401, or a 303 redirect to /agentFactory/login whose
-     * (auto-followed) body is the HTML login page rather than JSON. Both are handled here so
-     * a long-lived backend doesn't 502 every turn once its session ages out (~30 min).
-     */
-    private String postRunWithSessionRetry(String id, String envelopedMessage) {
-        String body;
+    private String postRun(String envelopedMessage) {
         try {
-            body = postRun(id, envelopedMessage);
-        } catch (org.springframework.web.client.RestClientResponseException e) {
-            if (e.getStatusCode().value() != 401) {
-                log.warn("PAF run returned HTTP {} (agentId={}): {}",
-                        e.getStatusCode().value(), id, e.getResponseBodyAsString(), e);
-                throw new ResponseStatusException(BAD_GATEWAY, "PAF run returned HTTP error", e);
-            }
-            body = null; // 401 -> session expired; fall through to re-login + retry
-        } catch (org.springframework.web.client.RestClientException e) {
-            log.warn("PAF run failed (agentId={})", id, e);
+            return http.post()
+                    .uri(RUN_PATH_PREFIX + agentId + RUN_PATH_SUFFIX)
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(Map.of("message", envelopedMessage))
+                    .retrieve()
+                    .body(String.class);
+        } catch (RestClientResponseException e) {
+            throw new ResponseStatusException(BAD_GATEWAY, describeFailure(e), e);
+        } catch (RestClientException e) {
+            log.warn("PAF run failed (agentId={})", agentId, e);
             throw new ResponseStatusException(BAD_GATEWAY, "PAF run failed", e);
         }
-        if (body == null || !looksLikeJson(body)) {
-            // Cached cookie expired — drop it, re-login, and retry once.
-            this.cookie = null;
-            ensureCookie();
-            try {
-                return postRun(id, envelopedMessage);
-            } catch (org.springframework.web.client.RestClientException retry) {
-                log.warn("PAF run failed after re-login (agentId={})", id, retry);
-                throw new ResponseStatusException(BAD_GATEWAY, "PAF run failed after re-login", retry);
-            }
-        }
-        return body;
     }
 
     /**
-     * A valid run response is a JSON object. When the session cookie has expired PAF instead
-     * 303-redirects the run to its login/home pages and the followed body is HTML — so any
-     * non-JSON body means "re-authenticate", regardless of which page the redirect landed on.
+     * PAF answers a rejected integration call with {"error":{"code","message"}} and a real
+     * status code, so each failure maps to an operator-actionable sentence rather than a
+     * raw body. An unrecognized code still surfaces as a 502.
      */
-    private static boolean looksLikeJson(String body) {
-        return body != null && body.stripLeading().startsWith("{");
-    }
-
-    private String postRun(String id, String envelopedMessage) {
-        return http.post()
-                .uri(RUN_PATH + id)
-                .header(HttpHeaders.COOKIE, cookie)
-                // PAF 26.4 enforces a same-origin CSRF check on state-changing routes
-                // (auth.py: CSRF_ORIGIN_REQUIRED). Programmatic callers must send an
-                // Origin matching PAF's own host, else the run is 403'd.
-                .header(HttpHeaders.ORIGIN, baseUrl)
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(Map.of("message", envelopedMessage))
-                .retrieve()
-                .body(String.class);
-    }
-
-    private void ensureCookie() {
-        if (cookie != null) {
-            return;
+    private String describeFailure(RestClientResponseException e) {
+        String responseBody = e.getResponseBodyAsString();
+        String code = "";
+        try {
+            code = mapper.readTree(responseBody).path("error").path("code").asText("");
+        } catch (Exception ignored) {
+            // Not the typed envelope; fall through to the generic message.
         }
-        login();
-    }
-
-    private synchronized void login() {
-        if (cookie != null) {
-            return;
-        }
-        HttpHeaders headers = http.get()
-                .uri(LOGIN_PATH)
-                .headers(h -> h.setBasicAuth(adminUser, adminPass))
-                .retrieve()
-                .toBodilessEntity()
-                .getHeaders();
-        List<String> setCookies = headers.get(HttpHeaders.SET_COOKIE);
-        if (setCookies == null || setCookies.isEmpty()) {
-            throw new ResponseStatusException(BAD_GATEWAY, "PAF login returned no Set-Cookie");
-        }
-        this.cookie = setCookies.get(0).split(";", 2)[0];
-    }
-
-    private String ensureAgentId() {
-        if (agentId != null) {
-            return agentId;
-        }
-        return discoverAgentId();
-    }
-
-    private synchronized String discoverAgentId() {
-        if (agentId != null) {
-            return agentId;
-        }
-        String body = http.get()
-                .uri(AGENTS_PATH)
-                .header(HttpHeaders.COOKIE, cookie)
-                .retrieve()
-                .body(String.class);
-        JsonNode root = readTree(body);
-        JsonNode data = root.has("data") ? root.get("data") : root;
-        JsonNode items = data.has("items") ? data.get("items") : data;
-        if (items.isArray()) {
-            for (JsonNode agent : items) {
-                if ("CHAT_WORKFLOW".equals(agent.path("name").asText())) {
-                    String id = agent.hasNonNull("agentId") ? agent.get("agentId").asText()
-                            : agent.path("agent_id").asText(null);
-                    if (id != null && !id.isBlank()) {
-                        this.agentId = id;
-                        return id;
-                    }
-                }
-            }
-        }
-        throw new ResponseStatusException(BAD_GATEWAY,
-                "CHAT_WORKFLOW not found in PAF agent list; build and publish it per paf/flows/CHAT_WORKFLOW.md");
+        String message = switch (code) {
+            case "INTEGRATION_KEY_EXPIRED" ->
+                    "PAF integration key has expired; mint a new one with `manage.py paf api-key`";
+            case "INTEGRATION_KEY_INVALID", "INTEGRATION_KEY_INACTIVE" ->
+                    "PAF rejected the integration key; check PAF_API_KEY";
+            case "INTEGRATION_KEY_NOT_AUTHORIZED_FOR_TARGET" ->
+                    "PAF integration key is not authorized for agent " + agentId;
+            case "INTEGRATION_AGENT_NOT_PUBLISHED" ->
+                    "CHAT_WORKFLOW is not published; publish it in Agent Builder";
+            default -> "PAF run returned HTTP " + e.getStatusCode().value();
+        };
+        log.warn("{} (agentId={}, body={})", message, agentId, responseBody);
+        return message;
     }
 
     private JsonNode readTree(String body) {
