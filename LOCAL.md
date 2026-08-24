@@ -15,7 +15,6 @@ When you're done you have:
 - Oracle Database Free 26ai on `localhost:1521` (service `FREEPDB1`), `max_string_size=EXTENDED`, schema users `APP` / `REPORTING` / `AGENT_TOOLS` / `AGENT_FACTORY`, full banking + decisioning schema, and `DBMS_CLOUD` + `DBMS_CLOUD_AI` installed.
 - Private Agent Factory at `https://localhost:8080/`, installed against the local 26ai database under `AGENT_FACTORY`.
 - An `opa` container (Open Policy Agent in server mode loading every `.rego` under `opa/packages/`) and a sibling `opa-mcp` container — a FastMCP wrapper exposing each Rego rule as a typed MCP tool at `http://opa-mcp:8500/mcp/`. PAF reaches it as an **MCP Server node** wired to `CHAT_WORKFLOW` only.
-- A stub `ocr-mcp` container — FastMCP wrapper with one `extract_document` tool at `http://ocr-mcp:8501/mcp/`. Returns canned classification + extraction results keyed on the document filename (placeholder for the real YOLO + PaddleOCR/Tesseract pipeline).
 - A `registry-api` container — synthetic FastAPI Company Registry with a single `verify_employer(name)` route. OpenAPI 3.1 spec at `http://registry-api:8600/openapi.json`. Registered with PAF as an **HTTP datasource** wired to `CHAT_WORKFLOW` only.
 - An `application-backend` container — the Spring Boot Application Service on `localhost:8090`. (It stands in for the bank's **existing application backend, extended to drive PAF flows** — it is the PAF _client_, not part of the PAF platform.) It lists demo customers (`GET /v1/customers`), mints the opaque session token at `POST /v1/login`, brokers each chat turn at `POST /v1/chat` (enveloping the token, stripping the agent's internal marker blocks), and replays history at `GET /v1/chat/history`. It is the client that drives `CHAT_WORKFLOW`.
 - An `application-mcp` container — FastMCP write tool `upsert_application(session_token, amount?, term_months?, purpose?)` at `http://application-mcp:8504/mcp/`. The intake agent uses it to create / patch a customer's `DRAFT` loan application. Connects as `AGENT_FACTORY`; the customer is resolved from the token server-side.
@@ -26,7 +25,7 @@ When you're done you have:
 
 > **Note — Caddy / HTTPS-from-DB removed.** Oracle's `DBMS_CLOUD` requires an HTTPS callout, so an earlier iteration ran a Caddy TLS terminator in front of vLLM (self-signed cert added to the Oracle SSL wallet) plus a network ACL. That has been removed: Select AI never worked locally anyway (`ORA-20401`), so the Caddy proxy, SSL wallet, and ACL were pure inconsistency. **If you ever wire Select AI locally** you'd need to re-introduce TLS termination in front of vLLM, add its CA to the Oracle wallet, and grant the ACL — but the `ORA-20401` validator still blocks it, so Select AI stays a cloud/ADB feature. `CHAT_WORKFLOW` reaches the LLM through PAF's vLLM provider directly.
 
-The Spring Boot backend (`application-backend`) and the two React/Vite UIs (customer chat, reviewer portal) are part of the compose and come up with `local up`, served through the Caddy proxy on `localhost:5173`. The OCR service is a stub (real YOLO/Tesseract pipeline is a separate workstream). The next-steps list in [`README.md`](README.md#current-state) shows the order the rest land in.
+The Spring Boot backend (`application-backend`) and the two React/Vite UIs (customer chat, reviewer portal) are part of the compose and come up with `local up`, served through the Caddy proxy on `localhost:5173`. The next-steps list in [`README.md`](README.md#current-state) shows the order the rest land in.
 
 ## Prereqs
 
@@ -45,7 +44,7 @@ Install these on the host once.
 You also need network access to pull:
 
 - `container-registry.oracle.com/database/free:latest` (Oracle Database Free 26ai image; ~9 GB).
-- `docker.io/openpolicyagent/opa:latest`, `docker.io/python:3.12-slim` (the slim base is built once each for `opa-mcp`, `ocr-mcp`, and `registry-api`).
+- `docker.io/openpolicyagent/opa:latest`, `docker.io/python:3.12-slim` (the slim base is built once each for `opa-mcp` and `registry-api`).
 - `ojdbc11` JDBC driver from Maven Central (the Ansible role caches it to `~/.cache/paf-poc/liquibase-libs/`).
 
 ## 1. Install prereqs and extract the PAF kit
@@ -85,7 +84,7 @@ What this does, in order:
 - Applies post-Liquibase sysdba grants (`EXECUTE` on `DBMS_CLOUD` / `DBMS_CLOUD_AI` to `AGENT_FACTORY`) and **creates the read-only worker user `AAI_RO_AGENT_FACTORY`** — 26.4 requires it to pre-exist before the PAF install wizard's DB step.
 - **Configures TCPS** on the Oracle listener (port `2484`, self-signed cert CN=`oracle-free-26ai`) and exports the client wallet to `./tcps-wallet.zip` for the PAF install. TCP/1521 stays up alongside.
 - **Generates the MCP TLS gateway cert + PAF trust bundle**, then starts the `mcp-proxy` Caddy gateway (terminates TLS for the MCP servers on `:8443`) and **injects the gateway cert into PAF's `certifi` bundle** so PAF trusts it.
-- Builds the `opa-mcp`, `ocr-mcp`, and `registry-api` images (first run only) and starts the `opa`, `opa-mcp`, `ocr-mcp`, `hitl-mcp`, `application-mcp`, `banking-mcp`, `registry-api`, `application-backend`, `mcp-proxy`, and `paf` containers.
+- Builds the `opa-mcp` and `registry-api` images (first run only) and starts the `opa`, `opa-mcp`, `hitl-mcp`, `application-mcp`, `banking-mcp`, `registry-api`, `application-backend`, `mcp-proxy`, and `paf` containers.
 - Writes PAF's `.config_complete.marker` and `version.json` so the kit's startup script unblocks.
 
 The command is idempotent — re-running it from any state is safe and converges to a healthy stack.
@@ -96,7 +95,7 @@ Confirm everything is up:
 python manage.py info
 ```
 
-Prints the JDBC URL, service users, PAF URL, OPA URL, OPA MCP URL, OCR MCP URL, and Registry API URL.
+Prints the JDBC URL, service users, PAF URL, OPA URL, OPA MCP URL, and Registry API URL.
 
 ## 3. Install PAF
 
@@ -161,7 +160,6 @@ Admin → **MCP Servers** → **Add MCP server**, five times. The form has three
 | Server name       | Server URL                                | Tools                                                                                                                                                                                                                               |
 | ----------------- | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `opa-mcp`         | `https://mcp-proxy:8443/opa/mcp/`         | seven typed tools wrapping the Rego rules — see table below                                                                                                                                                                         |
-| `ocr-mcp`         | `https://mcp-proxy:8443/ocr/mcp/`         | one stub tool `extract_document(storage_uri, requested_doc_type?)` returning canned classification + OCR responses                                                                                                                  |
 | `hitl-mcp`        | `https://mcp-proxy:8443/hitl/mcp/`        | one side-effect tool `create_hitl_task(...)` — calls the in-DB PL/SQL function in `AGENT_TOOLS.PKG_AGENT_TOOLS`                                                                                                                     |
 | `banking-mcp`     | `https://mcp-proxy:8443/banking/mcp/`     | two read-only tools: `get_context(session_token)` (the universal token-keyed read the origination agents use — customer + application + profile + credit + `missing[]`/staleness) and the older `lookup_application(session_token)` |
 | `application-mcp` | `https://mcp-proxy:8443/application/mcp/` | one write tool `upsert_application(session_token, amount?, term_months?, purpose?)` — creates / patches the customer's `DRAFT` application via `AGENT_TOOLS.PKG_AGENT_TOOLS.upsert_draft_application`                               |
@@ -183,14 +181,12 @@ After saving, each server should report a connected status. The discovered tools
 | `required_documents`          | `decisioning.required_documents` | Document set for `(product, employment, residency, amount_band)` |
 | `evaluate_eligibility`        | `decisioning.eligibility`        | Age / DTI / PTI / score gates → `{allow, deny[], warn[]}`        |
 | `evaluate_aml`                | `decisioning.aml`                | Sanctions / PEP / suspicious-pattern flags                       |
-| `evaluate_kyc`                | `decisioning.kyc`                | ID validity, document expiry, OCR quality tier                   |
+| `evaluate_kyc`                | `decisioning.kyc`                | KYC status and ID expiry gates                                   |
 | `evaluate_fair_lending_flags` | `decisioning.fair_lending`       | Disparate-impact pre-flight against monitored patterns           |
 | `lookup_pricing`              | `decisioning.pricing.quote`      | Risk-band → indicative rate from the configured rate card        |
 | `list_policy_versions`        | `/v1/policies`                   | Audit: list loaded Rego modules                                  |
 
 Each tool's input schema is auto-derived from the FastMCP type hints in `src/ai/opa-mcp/server.py`. Outputs mirror Rego's `{allow, deny[], warn[]}` signal model — the agent folds them into the recommendation packet as evidence, never as automatic gates.
-
-`ocr-mcp` is a stub. Its single `extract_document` tool returns canned responses keyed on the filename in `storage_uri` so the test-bench scenarios from `010-seed-synthetic.yaml` resolve correctly (e.g. `henry-payslip.pdf` → `MARGINAL`, `iris-*.pdf` → `UNUSABLE`, anything else → a `USABLE` fallback). Source: `src/ai/ocr-mcp/server.py`. Real OCR (YOLO + PaddleOCR/Tesseract, async via `OCR_REQUEST` queue) is a separate workstream.
 
 ### 4b. Database datasource (Banking Application DB)
 
@@ -252,7 +248,7 @@ The trust-boundary rationale (token-only envelope, customer resolved server-side
 
 ## 5. Load `CHAT_WORKFLOW`
 
-`CHAT_WORKFLOW` is the customer-facing Agent Builder flow that combines OPA, OCR, Company Registry, and the in-DB HITL tool into the three-tier recommendation contract documented in `docs/DECISIONING-ENGINE-USE-CASE.md`. It is the only Agent Builder flow you need in this runbook. Two ways to get it in: **import the pre-built export** (fast) or **build it from scratch** (the blueprint).
+`CHAT_WORKFLOW` is the customer-facing Agent Builder flow that combines OPA, Company Registry, and the in-DB HITL tool into the three-tier recommendation contract documented in `docs/DECISIONING-ENGINE-USE-CASE.md`. It is the only Agent Builder flow you need in this runbook. Two ways to get it in: **import the pre-built export** (fast) or **build it from scratch** (the blueprint).
 
 ### 5a. Import the pre-built flow (recommended)
 
@@ -289,21 +285,21 @@ If anything hangs or errors, `python manage.py local logs paf` shows the backend
 | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `python manage.py local up`                       | Idempotent: starts containers if down, runs Liquibase if any pending changesets.                                                                                                                                                                                                                       |
 | `python manage.py local provision`                | Re-runs Liquibase + grants only (no podman restart). Use after editing the changelog.                                                                                                                                                                                                                  |
-| `python manage.py local logs <service>`           | Tails a service (`oracle-free-26ai`, `paf`, `opa`, `opa-mcp`, `ocr-mcp`, `hitl-mcp`, `application-mcp`, `banking-mcp`, `registry-api`, `application-backend`).                                                                                                                                         |
+| `python manage.py local logs <service>`           | Tails a service (`oracle-free-26ai`, `paf`, `opa`, `opa-mcp`, `hitl-mcp`, `application-mcp`, `banking-mcp`, `registry-api`, `application-backend`).                                                                                                                                         |
 | `python manage.py local down`                     | Stops and removes containers. State persists in the `paf-oradata` volume and PAF's bind-mounted `paf-kit/applied-ai/{volume,dev-shared}` directories.                                                                                                                                                  |
 | `python manage.py local down --purge`             | Also removes the Oracle data volume **and** resets PAF's bind-mounted `applied-ai/{volume,dev-shared}` directories to the kit-shipped defaults (snapshotted at `paf prepare` time). Next `local up` starts with a fresh DB and PAF presents the install wizard again. Does **not** re-extract the kit. |
 | `bash paf/patches/agentstep-unique-tool-names.sh` | Re-applies the 26.4 per-node Agent tool-name patch (§3b) — needed after any fresh install or PAF image rebuild.                                                                                                                                                                                        |
 
 Editing OPA policy: change a `.rego` file under `opa/packages/`, then `podman restart paf-opa`. The `opa-mcp` wrapper is stateless and picks up the new policy on the next call — no rebuild needed.
 
-Rebuilding a wrapper image after editing `src/ai/opa-mcp/`, `src/ai/ocr-mcp/`, `src/ai/hitl-mcp/`, or `src/api/registry/`: re-run `python manage.py local up`. It passes `--build` to compose, so changed contexts get a fresh image (layer cache makes unchanged ones near-instant). Force a single-service rebuild without restarting the stack with:
+Rebuilding a wrapper image after editing `src/ai/opa-mcp/`, `src/ai/hitl-mcp/`, or `src/api/registry/`: re-run `python manage.py local up`. It passes `--build` to compose, so changed contexts get a fresh image (layer cache makes unchanged ones near-instant). Force a single-service rebuild without restarting the stack with:
 
 ```bash
 podman compose -f deploy/podman/compose.local.yml build <service>
 podman compose -f deploy/podman/compose.local.yml up -d <service>
 ```
 
-…where `<service>` is `opa-mcp`, `ocr-mcp`, `hitl-mcp`, or `registry-api`.
+…where `<service>` is `opa-mcp`, `hitl-mcp`, or `registry-api`.
 
 (No `-p <name>` flag — `manage.py local up` uses the default project name derived from the compose dir, so all containers share network `podman_default`. Passing `-p paf` here would put the rebuilt container on a separate `paf_default` network and break DNS to its siblings.)
 

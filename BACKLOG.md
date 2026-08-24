@@ -45,7 +45,7 @@ A separate Python component that trains an **XGBoost** model in **OML4Py** (Orac
 
 `predict_credit_score(customer_id)` → `{score, top_features}`
 
-The agent appends this to the evidence packet alongside OPA outputs, OCR quality, and employer verification. The backoffice reviewer then sees in the recommendation panel something like: _"Customer 12345 has a credit-risk score of 0.42, driven by (1) low transaction velocity in the last 90 days, (2) recent salary increase, (3) no late payments in the last 12 months."_
+The agent appends this to the evidence packet alongside OPA outputs and employer verification. The backoffice reviewer then sees in the recommendation panel something like: _"Customer 12345 has a credit-risk score of 0.42, driven by (1) low transaction velocity in the last 90 days, (2) recent salary increase, (3) no late payments in the last 12 months."_
 
 Shape of the new component:
 
@@ -83,7 +83,7 @@ Outcome: TOON encoding happens either inside the PAF flow (clean, one place to l
 ## Execution order
 
 1. **End-to-end test the built `CHAT_WORKFLOW`** across the seeded scenarios (the deterministic flow is built, published, and exported; the `get_context` entry is validated). Run `tests/test_chat_workflow.py` + the tier table in `paf/flows/CHAT_WORKFLOW.md §Test prompts`.
-2. Finish the loan-decisioning end-to-end: real OCR pipeline, the remaining Application Service bits, the two Angular UIs, Blockchain `decision` write at HITL close.
+2. Finish the loan-decisioning end-to-end: the remaining Application Service bits, the two Angular UIs, Blockchain `decision` write at HITL close.
 3. §3 — XGBoost credit-scoring tool (reads the shipped `REPORTING.cust_360`).
 4. §1 — product-recommendation workflow. Consumes the credit-score tool from §3 as one of its signals.
 5. §4 — TOON spike. Independent of the steps above, can happen in parallel.

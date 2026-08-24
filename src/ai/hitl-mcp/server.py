@@ -65,12 +65,12 @@ def create_hitl_task(
                          context (the customer-safe REPORTING views surface
                          this when the customer chats).
       - recommendation — one of "APPROVE" / "REVIEW" / "DECLINE" based on
-                         the signals gathered (OPA outputs, document quality,
-                         employer verification, etc.). REVIEW for any
-                         non-strong-signal case.
+                         the signals gathered (OPA outputs, document
+                         completeness, employer verification, etc.).
+                         REVIEW for any non-strong-signal case.
       - reasoning      — short prose explaining the recommendation. Cite
                          the tool outputs (e.g. "OPA eligibility allow=true,
-                         PAYSLIP quality MARGINAL on first upload, employer
+                         all required documents supplied, employer
                          verified active").
       - explore_hints  — REVIEW-only: JSON string array of follow-up
                          questions/checks the reviewer should examine.

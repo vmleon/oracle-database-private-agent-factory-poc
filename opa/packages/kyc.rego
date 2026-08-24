@@ -1,10 +1,9 @@
-# KYC — ID validity, doc expiry, document quality gates.
+# KYC — customer KYC status and ID expiry gates.
 #
 # Input shape:
 #   {
 #     "customer":  { "kyc_status": "PASSED|PENDING|FAILED" },
-#     "documents": [ {"doc_type": "ID", "expires_at": "2027-01-15",
-#                     "quality_tier": "USABLE|MARGINAL|UNUSABLE"}, ... ],
+#     "documents": [ {"doc_type": "ID", "expires_at": "2027-01-15"}, ... ],
 #     "today":     "2026-05-21"
 #   }
 package decisioning.kyc
@@ -25,21 +24,9 @@ deny contains msg if {
     msg := sprintf("ID document expired on %v", [doc.expires_at])
 }
 
-deny contains msg if {
-    some doc in input.documents
-    doc.quality_tier == "UNUSABLE"
-    msg := sprintf("Document %v is UNUSABLE (re-upload required)", [doc.doc_type])
-}
-
 warn contains msg if {
     input.customer.kyc_status == "PENDING"
     msg := "KYC status is PENDING — reviewer should verify before approval"
-}
-
-warn contains msg if {
-    some doc in input.documents
-    doc.quality_tier == "MARGINAL"
-    msg := sprintf("Document %v quality is MARGINAL", [doc.doc_type])
 }
 
 allow if {

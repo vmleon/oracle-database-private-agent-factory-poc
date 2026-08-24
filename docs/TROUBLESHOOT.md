@@ -27,8 +27,6 @@ podman exec paf-oracle-free-26ai curl -s http://opa:8181/v1/data/decisioning/eli
 # 2. MCP wrappers — do the FastMCP processes accept the streamable-http handshake?
 podman exec paf-oracle-free-26ai curl -sf -o /dev/null -w "opa-mcp HTTP %{http_code}\n" \
   http://opa-mcp:8500/mcp/ -X POST -d '{}' -H 'content-type: application/json'
-podman exec paf-oracle-free-26ai curl -sf -o /dev/null -w "ocr-mcp HTTP %{http_code}\n" \
-  http://ocr-mcp:8501/mcp/ -X POST -d '{}' -H 'content-type: application/json'
 # Expect: HTTP 307 (FastMCP's trailing-slash redirect) or HTTP 4xx with a JSON-RPC error.
 #         Anything else (timeout, connection refused) = wrapper isn't healthy.
 
@@ -39,7 +37,6 @@ podman exec paf-oracle-free-26ai curl -sf -o /dev/null -w "registry-api HTTP %{h
 
 # 4. Logs
 podman logs paf-opa-mcp           # FastMCP startup banner + per-request log
-podman logs paf-ocr-mcp           # same
 podman logs paf-registry-api      # uvicorn startup + per-request log
 podman logs paf-opa               # OPA bundle load + per-request log
 ```
@@ -135,13 +132,12 @@ touch paf-kit/applied-ai/volume/.config_complete.marker
 podman compose -f deploy/podman/compose.local.yml up -d --build <service>
 ```
 
-### PAF MCP discovery for `opa-mcp` or `ocr-mcp` returns 0 tools, or "connection refused"
+### PAF MCP discovery for `opa-mcp` returns 0 tools, or "connection refused"
 
-Most common cause is using `localhost` instead of `opa-mcp` / `ocr-mcp` in the URL — PAF must reach the wrapper over the compose network, not the host. Confirm with:
+Most common cause is using `localhost` instead of `opa-mcp` in the URL — PAF must reach the wrapper over the compose network, not the host. Confirm with:
 
 ```bash
 podman exec paf-agent-factory getent hosts opa-mcp   # should print the container IP
-podman exec paf-agent-factory getent hosts ocr-mcp   # same
 ```
 
 If the address resolves but tool discovery still fails, run the [Sanity-check curls](#sanity-check-curls-paf--tools--datasources) above. The second most common cause is a network mismatch from rebuilding the container with `-p paf` — see the rebuild snippet in [`../LOCAL.md` §Day-2](../LOCAL.md#day-2).
