@@ -14,10 +14,11 @@ Concierge prompt's session_token, and one on `(?<=\]\])[\s\S]+` feeds its
 input. See paf/flows/CHAT_WORKFLOW.md.
 
 Required env vars (.env, loaded automatically):
-  - PAF_ADMIN_USER, PAF_ADMIN_PASS — programmatic login via /v1/loginValidation
+  - PAF_API_KEY, PAF_AGENT_ID — integration key for the published CHAT_WORKFLOW,
+    minted by `python manage.py paf api-key`
   - DB_HOST, DB_PORT, DB_SERVICE, DB_PASSWORD — Oracle connection as APP
 
-The CHAT_WORKFLOW agent_id is discovered by name from /v1/agents.
+The key is bound to one published workflow, so no agent lookup is needed.
 """
 from __future__ import annotations
 
@@ -57,56 +58,31 @@ def _envelope(token: str, message: str, *, sanitize: bool = True) -> str:
 def env() -> dict[str, str]:
     """Load .env once and validate the keys the harness needs."""
     load_dotenv(PROJECT_ROOT / ".env")
-    required = ("PAF_ADMIN_USER", "PAF_ADMIN_PASS", "DB_HOST", "DB_PORT",
+    required = ("PAF_API_KEY", "PAF_AGENT_ID", "DB_HOST", "DB_PORT",
                 "DB_SERVICE", "DB_PASSWORD")
     missing = [k for k in required if not os.getenv(k)]
     if missing:
         pytest.exit(
             f"Missing required env vars: {', '.join(missing)}.\n"
-            f"Run `python manage.py setup local` and fill in the prompts."
+            f"Run `python manage.py setup local`, then `python manage.py paf api-key` "
+            f"once CHAT_WORKFLOW is published."
         )
     return {k: os.environ[k] for k in required}
 
 
 @pytest.fixture(scope="session")
 def paf(env) -> requests.Session:
-    """Authenticated PAF requests.Session. Cookie set once; reused per test."""
+    """PAF session carrying the integration key. Reused across tests."""
     s = requests.Session()
     s.verify = False
-    r = s.get(
-        f"{PAF_BASE}/agentFactory/v1/loginValidation",
-        auth=(env["PAF_ADMIN_USER"], env["PAF_ADMIN_PASS"]),
-        timeout=30,
-    )
-    if r.status_code != 200:
-        pytest.exit(
-            f"PAF login failed: HTTP {r.status_code}. "
-            f"Check PAF_ADMIN_USER / PAF_ADMIN_PASS in .env.\n"
-            f"Response: {r.text[:300]}"
-        )
+    s.headers["Authorization"] = f"Bearer {env['PAF_API_KEY']}"
     return s
 
 
 @pytest.fixture(scope="session")
-def agent_id(paf) -> str:
-    """Discover CHAT_WORKFLOW's agent_id by name from /v1/agents."""
-    r = paf.get(f"{PAF_BASE}/agentFactory/v1/agents", timeout=30)
-    r.raise_for_status()
-    body = r.json()
-    data = body.get("data") if isinstance(body, dict) else body
-    # PAF wraps the list as {"data": {"count": N, "items": [...]}}.
-    agents = data.get("items", []) if isinstance(data, dict) else data
-    if not isinstance(agents, list):
-        pytest.exit(f"Unexpected /v1/agents response shape: {body}")
-    for a in agents:
-        if a.get("name") == "CHAT_WORKFLOW":
-            aid = a.get("agentId") or a.get("agent_id")
-            if aid:
-                return aid
-    pytest.exit(
-        "CHAT_WORKFLOW not found in PAF's agent list. "
-        "Build and publish it per paf/flows/CHAT_WORKFLOW.md."
-    )
+def agent_id(env) -> str:
+    """The published CHAT_WORKFLOW the integration key is bound to."""
+    return env["PAF_AGENT_ID"]
 
 
 @pytest.fixture(scope="session")
@@ -182,16 +158,13 @@ def mint_session(db):
 
 @pytest.fixture
 def chat(paf, agent_id):
-    """POST a chat turn through the published CHAT_WORKFLOW endpoint, wrapping
-    token + message in the [[SESSION ...]] envelope the flow's RegexExtractor
-    splits. Returns the unwrapped response body (PAF wraps as {data, ...})."""
+    """POST a chat turn through the published CHAT_WORKFLOW integration endpoint,
+    wrapping token + message in the [[SESSION ...]] envelope the flow's
+    RegexExtractor splits. Returns the unwrapped response body."""
     def _run(token: str, message: str, *, sanitize: bool = True) -> dict:
         r = paf.post(
-            f"{PAF_BASE}/agentFactory/v1/agentBuilder/run/{agent_id}",
+            f"{PAF_BASE}/agentFactory/v1/integrations/agents/{agent_id}/run",
             json={"message": _envelope(token, message, sanitize=sanitize)},
-            # PAF 26.4 enforces a same-origin CSRF check (auth.py: CSRF_ORIGIN_REQUIRED);
-            # state-changing routes need an Origin matching PAF's host or they 403.
-            headers={"Origin": PAF_BASE},
             timeout=300,  # vLLM 72B can take 60-90s for a full agent turn
         )
         r.raise_for_status()
