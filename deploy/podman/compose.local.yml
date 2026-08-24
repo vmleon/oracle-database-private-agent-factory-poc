@@ -154,20 +154,6 @@ services:
       BACKEND_URL: "http://application-backend:8090"
       OPA_URL: "http://opa:8181"
 
-  # STUB OCR MCP — placeholder for the YOLO + PaddleOCR/Tesseract pipeline.
-  # Exposes a single `extract_document` MCP tool whose canned responses are
-  # keyed on filename, aligned with the documents seeded by
-  # 010-seed-synthetic.yaml so the test-bench scenarios resolve end-to-end
-  # without a real ML stack. PAF reaches it at http://ocr-mcp:8501/mcp/.
-  # Wired to CHAT_WORKFLOW only per the two-agent security model.
-  ocr-mcp:
-    build:
-      context: ../../src/ai/ocr-mcp
-    container_name: paf-ocr-mcp
-    restart: unless-stopped
-    environment:
-      PORT: "8501"
-
   # Synthetic Company Registry — FastAPI service with JSON-backed data,
   # OpenAPI 3.1 spec at /openapi.json. Registered with PAF as an HTTP
   # datasource for CHAT_WORKFLOW (the third PAF datasource type, alongside
@@ -256,7 +242,6 @@ services:
     depends_on:
       - banking-mcp
       - opa-mcp
-      - ocr-mcp
       - hitl-mcp
       - application-mcp
     volumes:

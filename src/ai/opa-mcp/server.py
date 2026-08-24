@@ -124,7 +124,7 @@ def evaluate_kyc(
     documents: list[dict[str, Any]],
     today: str,
 ) -> dict[str, Any]:
-    """KYC — ID validity, doc expiry, OCR quality gates."""
+    """KYC — ID validity, doc expiry, document quality gates."""
     result = opa_client.eval_rule(
         "decisioning.kyc",
         {"customer": customer, "documents": documents, "today": today},

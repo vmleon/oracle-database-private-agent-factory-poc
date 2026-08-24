@@ -66,7 +66,6 @@ MCP_PROXY_PORT = "8443"
 MCP_ROUTES = {
     "banking": "banking-mcp:8503",
     "opa": "opa-mcp:8500",
-    "ocr": "ocr-mcp:8501",
     "hitl": "hitl-mcp:8502",
     "application": "application-mcp:8504",
 }
@@ -954,15 +953,6 @@ def setup_local() -> None:
         message="Embedding dimension:",
         default=existing.get("VLLM_EMBED_DIM", "1024"),
     ).execute()
-    ocr_host = inquirer.text(
-        message="OCR host:",
-        default=existing.get("OCR_HOST", "127.0.0.1"),
-    ).execute()
-    ocr_port = inquirer.text(
-        message="OCR port:",
-        default=existing.get("OCR_PORT", "8500"),
-    ).execute()
-
     paf_tarball_default = existing.get("PAF_TARBALL", "")
     paf_tarball_hint = (
         f"Enter keeps the current value: {paf_tarball_default}"
@@ -1009,10 +999,6 @@ def setup_local() -> None:
         f"VLLM_EMBED_MODEL={vllm_embed_model}\n"
         f"VLLM_EMBED_DIM={vllm_embed_dim}\n"
         "\n"
-        "# OCR\n"
-        f"OCR_HOST={ocr_host}\n"
-        f"OCR_PORT={ocr_port}\n"
-        "\n"
         "# PAF kit tarball (read by `manage.py paf prepare` when no path is given)\n"
         f"PAF_TARBALL={paf_tarball}\n"
         "\n"
@@ -1051,7 +1037,7 @@ def local_up() -> None:
     if paf_ready and not _paf_image_present(paf_tag):
         console.print(f"[bold]PAF image {paf_tag} missing — building from kit...[/bold]")
         _run(["bash", str(PAF_BUILD_SCRIPT), "aai"], cwd=str(PAF_KIT_DIR))
-    services = ["oracle-free-26ai", "opa", "opa-mcp", "ocr-mcp", "hitl-mcp", "application-mcp", "banking-mcp", "registry-api", "application-backend", "customer-ui", "backoffice-ui", "proxy", "mcp-proxy"]
+    services = ["oracle-free-26ai", "opa", "opa-mcp", "hitl-mcp", "application-mcp", "banking-mcp", "registry-api", "application-backend", "customer-ui", "backoffice-ui", "proxy", "mcp-proxy"]
     # The MCP TLS cert is bind-mounted into mcp-proxy, so it must exist before
     # compose starts that container.
     console.print("[bold]Preparing MCP TLS gateway cert...[/bold]")
@@ -1212,10 +1198,8 @@ def info() -> None:
         console.print(f"App schemas:    APP, REPORTING, AGENT_TOOLS, AGENT_FACTORY")
         console.print(f"vLLM (gen):     http://{os.getenv('VLLM_HOST')}:{os.getenv('VLLM_GEN_PORT')}/v1   model={os.getenv('VLLM_GEN_MODEL')}")
         console.print(f"vLLM (embed):   http://{os.getenv('VLLM_HOST')}:{os.getenv('VLLM_EMBED_PORT')}/v1   model={os.getenv('VLLM_EMBED_MODEL')}")
-        console.print(f"OCR:            http://{os.getenv('OCR_HOST')}:{os.getenv('OCR_PORT')}")
         console.print(f"OPA:            http://opa:8181 (compose-internal)")
         console.print(f"OPA MCP:        http://opa-mcp:8500/mcp/ (compose-internal — wire as PAF MCP server)")
-        console.print(f"OCR MCP (stub): http://ocr-mcp:8501/mcp/ (compose-internal — wire as PAF MCP server)")
         console.print(f"HITL MCP:       http://hitl-mcp:8502/mcp/ (compose-internal — wire as PAF MCP server; create_hitl_task side effect)")
         console.print(f"Registry API:   http://registry-api:8600/openapi.json (compose-internal — wire as PAF HTTP datasource)")
         console.print(f"Application API:http://localhost:8090 (application-backend — /v1/customers, /v1/login, /v1/chat)")

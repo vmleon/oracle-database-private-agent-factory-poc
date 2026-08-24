@@ -1,4 +1,4 @@
-# KYC — ID validity, doc expiry, OCR quality gates.
+# KYC — ID validity, doc expiry, document quality gates.
 #
 # Input shape:
 #   {

@@ -29,12 +29,6 @@
 			flush_interval -1
 		}
 	}
-	handle_path /ocr/* {
-		uri strip_suffix /
-		reverse_proxy ocr-mcp:8501 {
-			flush_interval -1
-		}
-	}
 	handle_path /hitl/* {
 		uri strip_suffix /
 		reverse_proxy hitl-mcp:8502 {

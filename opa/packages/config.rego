@@ -18,10 +18,6 @@ pti_hard_cap := 0.25
 score_floor := 600
 score_caution_band_upper := 670
 
-# OCR document quality thresholds
-ocr_usable_min_confidence := 0.85
-ocr_marginal_floor := 0.60
-
 # Fair-lending 4/5 rule threshold
 fair_lending_dpi_ratio := 0.80
 

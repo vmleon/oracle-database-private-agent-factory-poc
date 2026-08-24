@@ -42,9 +42,6 @@ deploy/ansible/**/*.retry
 # Liquibase
 **/liquibase.properties
 
-# OCR
-ocr/models/
-
 # PAF kit — extracted from the vendor tarball; ~6 GB on disk, never commit
 paf-kit/
 
