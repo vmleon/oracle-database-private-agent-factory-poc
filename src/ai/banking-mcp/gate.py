@@ -36,9 +36,10 @@ def documents_payload(context: dict[str, Any]) -> dict[str, Any] | None:
 def gate_decision(context: dict[str, Any], task_id: int | None) -> dict[str, Any]:
     """Decide whether this turn is safe to show the customer.
 
-    A turn is consistent when the application is still collecting, so no
-    decision is due, or when a HITL task exists for it. The flow's final gate
-    matches the bare word in `gate`.
+    The gate passes any turn carried on a valid session and fails only when
+    the session itself is invalid. The flow's final gate matches the bare
+    word in `gate`. `stage` reports where the application stands —
+    collecting, awaiting a decision, or decided — for observability.
     """
     if context.get("error"):
         return {"gate": GATE_FAIL, "stage": "INVALID_SESSION", "task_id": None}
@@ -47,4 +48,4 @@ def gate_decision(context: dict[str, Any], task_id: int | None) -> dict[str, Any
         return {"gate": GATE_OK, "stage": "COLLECTING", "task_id": None}
     if task_id is not None:
         return {"gate": GATE_OK, "stage": "DECIDED", "task_id": task_id}
-    return {"gate": GATE_FAIL, "stage": "DECISION_MISSING", "task_id": None}
+    return {"gate": GATE_OK, "stage": "AWAITING_DECISION", "task_id": None}

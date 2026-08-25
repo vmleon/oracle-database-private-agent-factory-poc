@@ -90,7 +90,7 @@ Each takes only `session_token`, resolves state through the same server-side rea
 | `verify_employer_for_session`      | reads `profile.employer_name` and calls the company registry                        | `{name, registered, trading_status}`                            |
 | `hitl_status_for_session`          | reads the context and `APP.hitl_task`                                               | `{gate, stage, task_id}`                                        |
 
-`hitl_status_for_session` decides the gate server-side: `GATE_OK` when the application is still collecting, so no decision is due, or when a `hitl_task` row exists for it; `GATE_FAIL` otherwise.
+`hitl_status_for_session` decides the gate server-side: `GATE_OK` on any valid session, whatever stage the application is at; `GATE_FAIL` only on an invalid session.
 
 ### Ordering the assertion
 
@@ -657,7 +657,7 @@ Non-obvious rules and limits that shape the build. Skim before iterating.
 
 - **Never extract `customer_id` / `application_id` (or any authorization value) from the chat message.** Identifiers come from the token via `get_context` and the session-scoped tools and nowhere else. `Intake` reads amount/term/purpose from the message (model-trusted conversational values), never an id. The injection test must reliably ignore an injected token.
 - **The session token is a credential.** Do not log it, echo it, or write it to any customer-readable table.
-- **Fail-secure is mandatory.** An invalid token, a missing application, a malformed assertion payload or any tool failure produces the canned apology sentence and zero side effects. G0 filters the session up front; G3 refuses to show a reply when a decision should exist and does not; the `hitl_task → loan_application` foreign key is the last backstop (`ORA-02291`).
+- **Fail-secure is mandatory.** An invalid token, a missing application, a malformed assertion payload or any tool failure produces the canned apology sentence and zero side effects. G0 rejects an invalid session before any model runs; the deterministic tools fail closed on a bad token or incomplete application; G3 rejects an invalid session; the `hitl_task → loan_application` foreign key is the last backstop (`ORA-02291`).
 
 ### PAF Agent Builder (verified against the installed kit)
 

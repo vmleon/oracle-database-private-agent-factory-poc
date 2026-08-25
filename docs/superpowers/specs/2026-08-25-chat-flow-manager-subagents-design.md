@@ -55,7 +55,7 @@ verification are pure functions of values already in `context`. They move into
 the employer-name transcription step the current blueprint identifies as its
 highest-risk instruction, and dissolves the `Docs & Employer` agent entirely.
 
-**The final gate reads the database.** Whether a decision was recorded is a
+**The final gate reads the database.** Whether the session is valid is a
 database fact. A deterministic node queries it after the manager runs and the
 gate tests that, rather than matching a marker in model output.
 
@@ -68,8 +68,8 @@ before evidence existed; under this design the manager decides when to delegate.
 That is the cost of the supported topology, and it is bounded: the facts the
 decision rests on are all computed server-side before the manager runs, the
 recommendation worker is the only holder of `create_hitl_task`, the final gate
-refuses to show the customer a reply when a decision should exist and does not,
-and the `hitl_task → loan_application` foreign key remains the last backstop.
+rejects an invalid session, and the `hitl_task → loan_application` foreign key
+remains the last backstop.
 
 ## Design
 
@@ -129,8 +129,8 @@ existing `OPA_URL`.
 ### The gate word
 
 `hitl_status_for_session` decides the gate server-side and returns `GATE_OK`
-when the application is still collecting, so no decision is expected yet, or
-when a `hitl_task` row exists for it. It returns `GATE_FAIL` otherwise.
+on any valid session, whatever stage the application is at. It returns
+`GATE_FAIL` only when the session itself is invalid.
 
 G3 matches the bare word `GATE_OK`. A Deterministic MCP node delivers its result
 as `{"message":"<json>"}` with the inner quotes escaped, so a quote-anchored

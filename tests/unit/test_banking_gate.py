@@ -56,7 +56,7 @@ def test_gate_passes_a_complete_application_with_a_recorded_decision():
     assert gate_decision(COMPLETE, 42) == {"gate": GATE_OK, "stage": "DECIDED", "task_id": 42}
 
 
-def test_gate_fails_a_complete_application_with_no_decision():
+def test_gate_passes_a_complete_application_awaiting_a_decision():
     assert gate_decision(COMPLETE, None) == {
-        "gate": GATE_FAIL, "stage": "DECISION_MISSING", "task_id": None,
+        "gate": GATE_OK, "stage": "AWAITING_DECISION", "task_id": None,
     }

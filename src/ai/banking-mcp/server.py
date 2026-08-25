@@ -468,10 +468,13 @@ def verify_employer_for_session(session_token: str) -> dict:
 def hitl_status_for_session(session_token: str) -> dict:
     """Deterministic turn check: token in -> {"gate", "stage", "task_id"} out.
 
-    Reads the context and the HITL queue and reports whether this turn is
-    consistent: still collecting, so no decision is due, or complete with a task
-    recorded. The flow's final gate matches the bare word in `gate`, because a
-    Deterministic MCP node escapes the inner quotes of its JSON envelope.
+    Reads the context and the HITL queue and reports where the application
+    stands: still collecting, awaiting a decision, or complete with a task
+    recorded. `gate` passes any turn on a valid session and fails only when
+    the session itself is invalid; `stage` carries the rest for
+    observability. The flow's final gate matches the bare word in `gate`,
+    because a Deterministic MCP node escapes the inner quotes of its JSON
+    envelope.
     """
     started = _now_utc()
     print(f"[hitl_status_for_session] called session_token={session_token!r}", flush=True)
