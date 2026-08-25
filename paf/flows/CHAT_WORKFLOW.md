@@ -88,6 +88,8 @@ The [node graph](#node-graph) above is the map; this section is the turn-by-turn
 - Use **`{{input}}`**, never `{{message}}`, as a placeholder name — `{{message}}` collides with the `Message` output-port id and the wire misbehaves (suspected PAF bug).
 - To remove a tool from an agent, **delete the MCP/REST node**, not just the wire — orphan nodes fail the validator.
 - Each **`Condition`** (type `conditionComponent`, category Processing) has a dense form: `Text Input` (the value tested), `True Message` / `False Message` (the value **forwarded** on each branch), `Match Text` (the regex), Operator **`Regex match`**, and two branch outputs (`True` / `False`). A branch edge does **double duty** — wiring `True`/`False` into a node both **sequences** that node (control flow) **and binds the branch's message into the target input port** (data flow). There is no trigger-only wire, so the message you forward _is_ the value the next step receives. Fill all of it in the step where you drop the node — only one branch fires per turn (BranchingStep semantics).
+- **A `Condition` branch output takes exactly one target.** Wiring `True` (or `False`) to two or more nodes turns those targets into a control chain between themselves, and the step that should have run between them is skipped — the flow then fails with `No step is transitioning to step <node id>` naming a node you wired correctly. Each gate's `True` and `False` each go to exactly one place; where a later stage needs the context, take it from the `get_context` node directly, never by fanning a gate's branch.
+- **Custom Instructions take no `{{placeholder}}`.** An Agent node's system prompt is parsed for placeholders and each one becomes a required input the node does not supply, so the run fails with `1 validation error for ExtendedAgent … expected a property titled ...` ([`issues/11`](../../issues/11-agent-custom-instructions-placeholders.md)). Refer to the values by name in prose — the Prompt node feeding the agent carries them. Placeholders in **Prompt** nodes are fine and expected.
 - There are **four terminal Chat outputs**, one per branch — never converge two branches onto one node (Wayflow rejects it, [`issues/08`](../../issues/08-non-descriptive-flow-validator-error.md)). Close each Condition's `False` branch with its own Chat output **immediately**, in the step right after the gate.
 
 All three agents (Concierge, Docs & Employer, Recommendation) use LLM Configuration **`gen-model`** (the generic generative config registered at install — see [LOCAL.md §3](../../LOCAL.md#3-install-paf)) at temperature **`0.01`**. An agent's tool surface is whatever MCP/REST nodes you wire to it (PAF has no per-tool filter) — wire each agent only the tools its step lists. (Eligibility is a deterministic node, not an agent.)
@@ -257,7 +259,7 @@ flowchart LR
 - **Configure** — LLM `gen-model`, temperature `0.01`, name `Concierge`, and paste these Custom Instructions:
 
 ```
-The customer's state is in the provided context ({{context}}) — read it directly;
+The customer's state is in the customer context provided in your prompt — read it directly;
 NEVER call get_context. Never take an id/amount used for authorization from the
 Customer message. (G0 already guaranteed the session is valid before you ran.)
 
@@ -268,7 +270,7 @@ term_months / purpose), profile, credit. Act as follows:
 1. STILL COLLECTING — application is null OR application.missing is non-empty:
    Read the Customer message. If it supplies amount, term (months), or purpose,
    normalize them ("20k" -> 20000, "3 years" -> 36) and call
-   upsert_application(session_token = <the {{token}} value>, amount?, term_months?, purpose?)
+   upsert_application(session_token = <the session token provided in your prompt>, amount?, term_months?, purpose?)
    with ONLY the field(s) you just learned. Then your final message is:
      [[INTAKE status=COLLECTING]]
      <one friendly sentence asking for the NEXT missing field>
@@ -356,7 +358,7 @@ flowchart LR
 - **Configure** — LLM `gen-model`, temp `0.01`, name `Docs & Employer`, Custom Instructions:
 
 ```
-The application context is provided as {{context}} — read it; NEVER call get_context.
+The application context is provided in your prompt — read it; NEVER call get_context.
 From context bind: application.id, application.amount_requested, application.term_months,
 application.product_type; profile.employment_type, profile.employer_name;
 customer.residency.
@@ -458,19 +460,19 @@ flowchart LR
 - **Configure** — LLM `gen-model`, temp `0.01`, name `Recommendation`, Custom Instructions:
 
 ```
-The application context is provided as {{context}} — read it; NEVER call get_context.
+The application context is provided in your prompt — read it; NEVER call get_context.
 Take the authoritative application_id from context.application.id.
 
 You are given two AUTHORITATIVE inputs — do NOT recompute or second-guess them:
-  {{eligibility}} — server-computed OPA result, shaped {"allow":bool,"deny":[...],"warn":[...]}.
-  {{evidence}}    — the [[EVIDENCE ...]] block with required_documents and verify_employer
+  eligibility — server-computed OPA result, shaped {"allow":bool,"deny":[...],"warn":[...]}.
+  evidence    — the [[EVIDENCE ...]] block with required_documents and verify_employer
                     (registered, trading_status) JSON.
 
 Decide the tier STRICTLY from those two — never invent a signal that isn't present:
   DECLINE if eligibility.deny is non-empty OR verify_employer.registered is false.
   REVIEW  if eligibility.warn is non-empty OR verify_employer.trading_status is "dormant".
   APPROVE otherwise.
-(Read deny/warn from {{eligibility}} verbatim. If both arrays are empty and the employer
+(Read deny/warn from the eligibility signals verbatim. If both arrays are empty and the employer
 is registered and active, it is APPROVE — do not manufacture a caution.)
 
 Map the signals to reason codes (zero or more, from this fixed set ONLY):
