@@ -280,6 +280,7 @@ def _get_context_impl(session_token: str) -> dict:
                     "status": a["status"],
                     "amount_requested": _f(a["amount_requested"]),
                     "term_months": _i(a["term_months"]),
+                    "product_type": a["product_type"],
                     "purpose": a["purpose"],
                     "missing": missing,
                 }

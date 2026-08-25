@@ -69,7 +69,7 @@ services:
 
   # MCP wrapper around OPA — exposes each Rego rule as a typed MCP
   # tool over streamable-http. PAF's MCP Server node connects to
-  # http://opa-mcp:8500/mcp/. Wired to CHAT_WORKFLOW only per the
+  # http://opa-mcp:8500/mcp/. Wired to CHAT_FLOW only per the
   # two-agent security model.
   opa-mcp:
     build:
@@ -88,7 +88,7 @@ services:
   # design, so anything with side effects (insert + enqueue) has to go
   # through MCP/REST per docs/PAF.md §10. Connects to Oracle as
   # AGENT_FACTORY (granted EXECUTE on the package in changeset 007).
-  # PAF reaches it at http://hitl-mcp:8502/mcp/. Wired to CHAT_WORKFLOW only.
+  # PAF reaches it at http://hitl-mcp:8502/mcp/. Wired to CHAT_FLOW only.
   hitl-mcp:
     build:
       context: ../../src/ai/hitl-mcp
@@ -106,10 +106,10 @@ services:
       DB_PASSWORD: "${DB_PASSWORD}"
 
   # Application MCP — write surface for conversational loan intake.
-  # Exposes upsert_draft_application as an MCP tool so the Concierge agent
-  # can create/patch a customer's DRAFT loan application as it collects
-  # loan details. Connects to Oracle as AGENT_FACTORY (same as hitl-mcp).
-  # PAF reaches it at http://application-mcp:8504/mcp/.
+  # Exposes upsert_application as an MCP tool so the Intake worker in
+  # CHAT_FLOW can create/patch a customer's DRAFT loan application as it
+  # collects loan details. Connects to Oracle as AGENT_FACTORY (same as
+  # hitl-mcp). PAF reaches it at http://application-mcp:8504/mcp/.
   application-mcp:
     build:
       context: ../../src/ai/application-mcp
@@ -127,15 +127,16 @@ services:
       DB_PASSWORD: "${DB_PASSWORD}"
       BACKEND_URL: "http://application-backend:8090"
 
-  # Banking MCP — opaque-session lookup. Resolves a token (set by login,
-  # held by the operator in a PAF Text Input node for POC) to the customer's
-  # current loan-application context, using cx_Oracle bind variables. This
-  # is CHAT_WORKFLOW's trust boundary: the token is the only thing that
-  # crosses from untrusted input to the authoritative (customer_id,
-  # application_id) the workflow acts on. Connects as REPORTING (same user
-  # as the existing Banking Application DB datasource); REPORTING is granted
-  # SELECT on APP.session by Liquibase changeset 011. PAF reaches it at
-  # http://banking-mcp:8503/mcp/. Wired to CHAT_WORKFLOW only.
+  # Banking MCP — opaque-session lookup. Resolves a token (carried in-band
+  # in the chat message and split out by CHAT_FLOW's RegexExtractor) to the
+  # customer's current loan-application context, using cx_Oracle bind
+  # variables. This is CHAT_FLOW's trust boundary: the token is the only
+  # thing that crosses from untrusted input to the authoritative
+  # (customer_id, application_id) the flow acts on. Connects as REPORTING
+  # (same user as the existing Banking Application DB datasource);
+  # REPORTING is granted SELECT on APP.auth_session by Liquibase changeset
+  # 011. PAF reaches it at http://banking-mcp:8503/mcp/. Wired to
+  # CHAT_FLOW only.
   banking-mcp:
     build:
       context: ../../src/ai/banking-mcp
@@ -157,7 +158,7 @@ services:
 
   # Synthetic Company Registry — FastAPI service with JSON-backed data,
   # OpenAPI 3.1 spec at /openapi.json. Registered with PAF as an HTTP
-  # datasource for CHAT_WORKFLOW (the third PAF datasource type, alongside
+  # datasource for CHAT_FLOW (the third PAF datasource type, alongside
   # Database and File). No host port published — only the compose
   # network reaches it as http://registry-api:8600.
   registry-api:
@@ -168,7 +169,7 @@ services:
 
   # Spring Boot Application Service — the customer chat slice. Mints session
   # tokens, persists chat_message, and bridges customer turns to PAF's
-  # CHAT_WORKFLOW via an agent-scoped API key (PAF_AGENT_ID / PAF_API_KEY)
+  # CHAT_FLOW via an agent-scoped API key (PAF_AGENT_ID / PAF_API_KEY)
   # against PAF's integration run endpoint. Connects to Oracle as APP (owns
   # auth_session + chat_message). Reaches PAF on the compose network at
   # https://paf:8080 (self-signed cert; the client skips TLS verification).

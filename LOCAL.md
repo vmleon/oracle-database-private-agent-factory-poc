@@ -6,7 +6,7 @@ You walk through five steps:
 
 1. [Install prereqs and extract the PAF kit.](#1-install-prereqs-and-extract-the-paf-kit)
 2. [Boot the stack (`local up`).](#2-boot-the-stack)
-3. [Install PAF, register the LLM through its UI wizard, and apply the 26.4 patch.](#3-install-paf)
+3. [Install PAF, register the LLM through its UI wizard, and raise the agent iteration budget.](#3-install-paf)
 4. [Register the MCP servers and datasources in PAF.](#4-register-tools-and-datasources)
 5. [Load the `CHAT_FLOW` flow — build it from the blueprint.](#5-load-chat_flow)
 
@@ -57,7 +57,7 @@ pip install -r requirements.txt
 python manage.py setup local
 ```
 
-Download the ARM64 PAF tarball from Oracle first (e.g. `oracle_agent_factory_arm64_26.4.0.tar.gz`, ~2.4 GB) so you can point `setup local` at it.
+Download the ARM64 PAF tarball from Oracle first (~2.4 GB) so you can point `setup local` at it.
 
 `setup local` checks the prereqs in the table above and writes a `.env` with your Oracle password, vLLM host / port / model choices, and the path to the PAF tarball (stored as `PAF_TARBALL`).
 
@@ -81,7 +81,7 @@ What this does, in order:
 - Installs `DBMS_CLOUD` (if missing) via `catcon.pl`.
 - Applies pre-Liquibase sysdba grants (TABLE RETENTION, required before the Blockchain `decision` table is created).
 - Runs Liquibase against `database/liquibase/oracle/` (via Ansible).
-- Applies post-Liquibase sysdba grants (`EXECUTE` on `DBMS_CLOUD` / `DBMS_CLOUD_AI` to `AGENT_FACTORY`) and **creates the read-only worker user `AAI_RO_AGENT_FACTORY`** — 26.4 requires it to pre-exist before the PAF install wizard's DB step.
+- Applies post-Liquibase sysdba grants (`EXECUTE` on `DBMS_CLOUD` / `DBMS_CLOUD_AI` to `AGENT_FACTORY`) and **creates the read-only worker user `AAI_RO_AGENT_FACTORY`** — PAF requires it to pre-exist before the install wizard's DB step.
 - **Configures TCPS** on the Oracle listener (port `2484`, self-signed cert CN=`oracle-free-26ai`) and exports the client wallet to `./tcps-wallet.zip` for the PAF install. TCP/1521 stays up alongside.
 - **Generates the MCP TLS gateway cert + PAF trust bundle**, then starts the `mcp-proxy` Caddy gateway (terminates TLS for the MCP servers on `:8443`) and **injects the gateway cert into PAF's `certifi` bundle** so PAF trusts it.
 - Builds the `opa-mcp` and `registry-api` images (first run only) and starts the `opa`, `opa-mcp`, `hitl-mcp`, `application-mcp`, `banking-mcp`, `registry-api`, `application-backend`, `mcp-proxy`, and `paf` containers.
@@ -108,8 +108,8 @@ python manage.py paf bootstrap
 It prints the installer URL plus the exact values to paste into each wizard step. Open the URL it shows (PAF serves a self-signed cert, so your browser will warn — accept and continue; plain `http://` returns HTTP 400) and follow the output, which has four sections:
 
 - **Step 1 — admin user.** Pick a name and password; you sign in as this user after install.
-- **Step 2 — database (TCPS / wallet).** 26.4 connects over **TCPS**, so pick **Connection type: Wallet**, drop the `tcps-wallet.zip` that `local up` exported, pick the `freepdb1` network alias from the wallet, and supply user `AGENT_FACTORY` / password `DB_PASSWORD`. The wallet carries the TCPS host (`oracle-free-26ai:2484`) + trusted cert, so you don't type host/port/protocol. After the connection succeeds PAF asks two more questions — answer **air-gapped? No** and **OCI certificates in wallet? No** (the Knowledge Assistant is skipped, which is fine — we don't use it). `paf bootstrap` prints all of this verbatim; follow its output. _(Fallback if PAF rejects the self-signed wallet: Basic / TCP / `oracle-free-26ai` / 1521 / no wallet.)_
-- **Step 3 — install.** Click Install. PAF creates its metadata tables under `AGENT_FACTORY`. (The read-only worker user `AAI_RO_AGENT_FACTORY` was already created by `local up` — 26.4 requires it to pre-exist.) After install, before §4, relax the private-network guard once: `python manage.py paf allow-internal-mcp`.
+- **Step 2 — database (TCPS / wallet).** PAF connects over **TCPS**, so pick **Connection type: Wallet**, drop the `tcps-wallet.zip` that `local up` exported, pick the `freepdb1` network alias from the wallet, and supply user `AGENT_FACTORY` / password `DB_PASSWORD`. The wallet carries the TCPS host (`oracle-free-26ai:2484`) + trusted cert, so you don't type host/port/protocol. After the connection succeeds PAF asks two more questions — answer **air-gapped? No** and **OCI certificates in wallet? No** (the Knowledge Assistant is skipped, which is fine — we don't use it). `paf bootstrap` prints all of this verbatim; follow its output. _(Fallback if PAF rejects the self-signed wallet: Basic / TCP / `oracle-free-26ai` / 1521 / no wallet.)_
+- **Step 3 — install.** Click Install. PAF creates its metadata tables under `AGENT_FACTORY`. (The read-only worker user `AAI_RO_AGENT_FACTORY` was already created by `local up` — PAF requires it to pre-exist.) After install, before §4, relax the private-network guard once: `python manage.py paf allow-internal-mcp`.
 - **Step 4 — LLM Management.** Register two **LLM Configurations** against your vLLM endpoint, using **generic configuration names** so they survive a model swap:
   - **`gen-model`** — generative; Model ID = `VLLM_GEN_MODEL` from `.env`.
   - **`emb-model`** — embeddings; Model ID = `VLLM_EMBED_MODEL` from `.env`.
@@ -141,7 +141,7 @@ It rewrites `agent_factory/app/models/agentBuilder/steps/customSteps/AgentStep.p
 
 ## 4. Register tools and datasources
 
-Six post-install registrations in the PAF admin area — five MCP servers and one HTTP datasource. (A Database datasource is no longer required by `CHAT_FLOW` — the agents read through `banking-mcp.get_context`, not a SQL Query node; see §4b.) All target the `CHAT_FLOW` flow; the `RESEARCH_WORKFLOW` flow has no external tools by design.
+Six post-install registrations in the PAF admin area — five MCP servers and one HTTP datasource. (`CHAT_FLOW` needs no Database datasource — the agents read through `banking-mcp.get_context`, not a SQL Query node; see §4b.) All target the `CHAT_FLOW` flow; the `RESEARCH_WORKFLOW` flow has no external tools by design.
 
 > ⚠️ **Run this once before any registration below — every install, including after `--purge`:**
 >
@@ -149,20 +149,20 @@ Six post-install registrations in the PAF admin area — five MCP servers and on
 > python manage.py paf allow-internal-mcp
 > ```
 >
-> PAF 26.4 blocks private-network URLs by default. Skip this and the **first** MCP server (or the Company Registry datasource) fails with _"400 Bad Request: MCP server URL resolves to a private or non-routable network address and is not allowed"_. The setting lives in PAF's metadata DB and **resets to the secure default on every reinstall**, so re-run it after each fresh install.
+> PAF blocks private-network URLs by default. Skip this and the **first** MCP server (or the Company Registry datasource) fails with _"400 Bad Request: MCP server URL resolves to a private or non-routable network address and is not allowed"_. The setting lives in PAF's metadata DB and **resets to the secure default on every reinstall**, so re-run it after each fresh install.
 
 ### 4a. MCP servers
 
 Admin → **MCP Servers** → **Add MCP server**, five times. The form has three fields each time; use the same `Direct` authentication mode for all (no auth — the wrappers are internal to the compose network, not published to the host).
 
-> **26.4 — MCPs go through the `mcp-proxy` TLS gateway.** PAF 26.4 rejects `http://` MCP URLs and blocks private-network URLs by default. So the MCP apps are fronted by a Caddy TLS gateway (`mcp-proxy:8443`, self-signed cert PAF trusts via `SSL_CERT_FILE` — both wired by `local up`), and you must relax the private-network guard once per install: `python manage.py paf allow-internal-mcp`. URLs below are the gateway routes, **not** the raw `http://<svc>:<port>` (those still exist internally; the gateway forwards to them).
+> **MCPs go through the `mcp-proxy` TLS gateway.** PAF rejects `http://` MCP URLs and blocks private-network URLs by default. So the MCP apps are fronted by a Caddy TLS gateway (`mcp-proxy:8443`, self-signed cert PAF trusts via `SSL_CERT_FILE` — both wired by `local up`), and you must relax the private-network guard once per install: `python manage.py paf allow-internal-mcp`. URLs below are the gateway routes, **not** the raw `http://<svc>:<port>` (those still exist internally; the gateway forwards to them).
 
-| Server name       | Server URL                                | Tools                                                                                                                                                                                                                               |
-| ----------------- | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `opa-mcp`         | `https://mcp-proxy:8443/opa/mcp/`         | seven typed tools wrapping the Rego rules — see table below                                                                                                                                                                         |
-| `hitl-mcp`        | `https://mcp-proxy:8443/hitl/mcp/`        | one side-effect tool `create_hitl_task(...)` — calls the in-DB PL/SQL function in `AGENT_TOOLS.PKG_AGENT_TOOLS`                                                                                                                     |
-| `banking-mcp`     | `https://mcp-proxy:8443/banking/mcp/`     | two read-only tools: `get_context(session_token)` (the universal token-keyed read the origination agents use — customer + application + profile + credit + `missing[]`/staleness) and the older `lookup_application(session_token)` |
-| `application-mcp` | `https://mcp-proxy:8443/application/mcp/` | one write tool `upsert_application(session_token, amount?, term_months?, purpose?)` — creates / patches the customer's `DRAFT` application via `AGENT_TOOLS.PKG_AGENT_TOOLS.upsert_draft_application`                               |
+| Server name       | Server URL                                | Tools                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ----------------- | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `opa-mcp`         | `https://mcp-proxy:8443/opa/mcp/`         | seven typed tools wrapping the Rego rules — see table below                                                                                                                                                                                                                                                                                                                                                                 |
+| `hitl-mcp`        | `https://mcp-proxy:8443/hitl/mcp/`        | one side-effect tool `create_hitl_task(...)` — calls the in-DB PL/SQL function in `AGENT_TOOLS.PKG_AGENT_TOOLS`                                                                                                                                                                                                                                                                                                             |
+| `banking-mcp`     | `https://mcp-proxy:8443/banking/mcp/`     | six read-only tools, all token-keyed: `get_context(session_token)` (the universal read the origination agents use — customer + application + profile + credit + `missing[]`/staleness), `lookup_application(session_token)`, `evaluate_eligibility_for_session(session_token)`, `required_documents_for_session(session_token)`, `verify_employer_for_session(session_token)`, and `hitl_status_for_session(session_token)` |
+| `application-mcp` | `https://mcp-proxy:8443/application/mcp/` | one write tool `upsert_application(session_token, amount?, term_months?, purpose?)` — creates / patches the customer's `DRAFT` application via `AGENT_TOOLS.PKG_AGENT_TOOLS.upsert_draft_application`                                                                                                                                                                                                                       |
 
 **Do not use `localhost`** in any URL — PAF must reach the gateway over the compose network, not the host.
 

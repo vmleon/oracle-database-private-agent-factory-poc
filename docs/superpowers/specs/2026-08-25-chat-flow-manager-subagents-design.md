@@ -140,10 +140,14 @@ same lesson G0 already encodes by testing for `customer` rather than
 
 ### Agent contracts
 
-**Manager** — no tools. Five prompt ports: `context`, `input`, `eligibility`,
-`documents`, `employer`. Reads `application.missing` to choose the stage,
-delegates to one worker, and returns a single customer-facing sentence carrying
-no marker, tier, identifier or number.
+**Manager** — no tools. Six prompt ports: `context`, `input`, `eligibility`,
+`documents`, `employer`, `token`. A sub-agent is built from its Custom
+Instructions and tools only — its own `Prompt` input cannot be wired — so the
+manager carries the token in its own message and hands it to the `Intake`
+worker, which needs it to call `upsert_application`. Reads
+`application.missing` to choose the stage, delegates to one worker, and
+returns a single customer-facing sentence carrying no marker, tier, identifier
+or number.
 
 **Intake worker** — `upsert_application` only. Collects amount, term and purpose
 conversationally, normalises them, writes the draft, and reads the values back

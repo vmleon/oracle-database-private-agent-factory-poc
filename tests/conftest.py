@@ -10,8 +10,8 @@ per-test tokens mean no shared-row contention.
 
 Required canvas setup (one-time, manual): the published CHAT_FLOW must
 split the envelope — a RegexExtractor on `(?<=\[\[SESSION )[^\]]+` feeds the
-Concierge prompt's session_token, and one on `(?<=\]\])[\s\S]+` feeds its
-input. See paf/flows/CHAT_FLOW.md.
+manager prompt's `token` port, and one on `(?<=\]\])[\s\S]+` feeds its
+`input` port. See paf/flows/CHAT_FLOW.md.
 
 Required env vars (.env, loaded automatically):
   - PAF_API_KEY, PAF_AGENT_ID — integration key for the published CHAT_FLOW,

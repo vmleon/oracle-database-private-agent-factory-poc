@@ -90,21 +90,21 @@ Heavy data work — SQL over banking views, vector search over `policy_corpus` a
 
 Mapping the use case to PAF's component types:
 
-| Capability                                                  | PAF construct                                                  | Wired to            | Where it runs                |
-| ----------------------------------------------------------- | -------------------------------------------------------------- | ------------------- | ---------------------------- |
-| Chat orchestration (customer)                               | Agent Builder flow, Agent node                                 | `CHAT_FLOW`         | Near-DB, PAF container       |
-| Research orchestration (backoffice)                         | Agent Builder flow, Agent node                                 | `RESEARCH_WORKFLOW` | Near-DB, PAF container       |
-| LLM rationale + research composition                        | LLM node, configured vLLM endpoint                             | Both                | Self-hosted GPU host         |
-| Per-tool audit envelope                                     | Agent run → `decision_audit` writer                            | `CHAT_FLOW`         | Tool wrapper inside PAF flow |
-| Customer profile / transactions / bureau queries            | Select AI profile + tasks over curated views                   | `CHAT_FLOW`         | In-DB                        |
-| Broader read scope (audit, parameter history, deeper cases) | Select AI profile + tasks over backoffice view set             | `RESEARCH_WORKFLOW` | In-DB                        |
-| Policy citations, similar cases                             | Select AI RAG tool over Oracle AI Vector Search                | Both                | In-DB                        |
-| OPA eligibility/AML/KYC/escalation/fair-lending/pricing     | MCP Server node → OPA MCP (Python FastMCP)                     | `CHAT_FLOW`         | Near-DB                      |
-| Employer / company registry lookup                          | HTTP datasource (OpenAPI 3.1 over FastAPI)                     | `CHAT_FLOW`         | Near-DB (`app` compute)      |
-| HITL task creation (recommendation packet)                  | In-DB SQL tool in `AGENT_TOOLS` package                        | `CHAT_FLOW`         | In-DB                        |
-| Final decision write (Blockchain)                           | Application Service on HITL close                              | Application Service | In-DB (Blockchain Table)     |
-| Customer chat surface                                       | Published Agent Builder run URL via Application Service bridge | `CHAT_FLOW`         | Near-DB + external           |
-| Backoffice research surface                                 | Published Agent Builder run URL via Application Service bridge | `RESEARCH_WORKFLOW` | Near-DB + external           |
+| Capability                                                  | PAF construct                                                         | Wired to            | Where it runs                |
+| ----------------------------------------------------------- | --------------------------------------------------------------------- | ------------------- | ---------------------------- |
+| Chat orchestration (customer)                               | Agent Builder flow, Agent node                                        | `CHAT_FLOW`         | Near-DB, PAF container       |
+| Research orchestration (backoffice)                         | Agent Builder flow, Agent node                                        | `RESEARCH_WORKFLOW` | Near-DB, PAF container       |
+| LLM rationale + research composition                        | LLM node, configured vLLM endpoint                                    | Both                | Self-hosted GPU host         |
+| Per-tool audit envelope                                     | Agent run → `decision_audit` writer                                   | `CHAT_FLOW`         | Tool wrapper inside PAF flow |
+| Customer profile / transactions / bureau queries            | Select AI profile + tasks over curated views                          | `CHAT_FLOW`         | In-DB                        |
+| Broader read scope (audit, parameter history, deeper cases) | Select AI profile + tasks over backoffice view set                    | `RESEARCH_WORKFLOW` | In-DB                        |
+| Policy citations, similar cases                             | Select AI RAG tool over Oracle AI Vector Search                       | Both                | In-DB                        |
+| OPA eligibility/AML/KYC/escalation/fair-lending/pricing     | `banking-mcp` `*_for_session` tools call the OPA REST API server-side | `CHAT_FLOW`         | Near-DB                      |
+| Employer / company registry lookup                          | HTTP datasource (OpenAPI 3.1 over FastAPI)                            | `CHAT_FLOW`         | Near-DB (`app` compute)      |
+| HITL task creation (recommendation packet)                  | In-DB SQL tool in `AGENT_TOOLS` package                               | `CHAT_FLOW`         | In-DB                        |
+| Final decision write (Blockchain)                           | Application Service on HITL close                                     | Application Service | In-DB (Blockchain Table)     |
+| Customer chat surface                                       | Published Agent Builder run URL via Application Service bridge        | `CHAT_FLOW`         | Near-DB + external           |
+| Backoffice research surface                                 | Published Agent Builder run URL via Application Service bridge        | `RESEARCH_WORKFLOW` | Near-DB + external           |
 
 ## 6. Component breakdown
 
@@ -117,7 +117,7 @@ Mapping the use case to PAF's component types:
 | `src/api/registry/`       | Python / FastAPI      | Synthetic Company Registry API. One service, one endpoint group; auto-generated OpenAPI 3.1 spec served at `/openapi.json`. Data is a JSON file shipped with the service — no real bureau integration. Registered with PAF as an HTTP datasource for `CHAT_FLOW`. |
 | `src/customer-ui/`        | React / Vite (TS)     | Customer chat SPA — mock login picker, conversation, history replay. Served at `/` behind the Caddy front door.                                                                                                                                                   |
 | `src/backoffice-ui/`      | React / Vite (TS)     | Backoffice reviewer SPA — HITL review queue and the decision-history / audit view (recommendation packet, human decision, per-tool trace via `EvidencePanel`). Served at `/backoffice` behind the Caddy front door.                                               |
-| `deploy/podman/Caddyfile` | Caddy                 | Single front-door reverse proxy: `/` → `customer-ui`, `/backoffice` → `backoffice-ui`, `/v1` → the Application Service, re-resolving upstream container names per request so a backend restart no longer 502s.                                                    |
+| `deploy/podman/Caddyfile` | Caddy                 | Single front-door reverse proxy: `/` → `customer-ui`, `/backoffice` → `backoffice-ui`, `/v1` → the Application Service, re-resolving upstream container names per request so a backend restart does not 502.                                                      |
 
 ### 6.2 Database (`database/`)
 

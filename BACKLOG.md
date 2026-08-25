@@ -5,9 +5,9 @@ features, and platform hardening.
 
 **Maintenance convention.** When an item is done and implemented successfully, **remove it from this backlog and delete the related `issues/` file(s)** — keep the repo describing the final state, not the history. If an issue is only **partially** improved (a workaround, not a real fix), **refresh that issue** so it stays accurate instead of deleting it.
 
-## 0. PAF 26.4 — residual follow-ups
+## 0. Residual follow-ups
 
-**Shipped (26.4 fully adopted this session):** kit on 26.4 (`PAF_TARBALL`); **TCPS** DB connection + client wallet; the **`mcp-proxy` HTTPS gateway** for the MCP servers + PAF cert-trust (`SSL_CERT_FILE` + certifi injection); **`AAI_RO_AGENT_FACTORY`** pre-creation; **`paf allow-internal-mcp`**; the **deterministic `get_context`** entry (read path — closes the streamed-token corruption; built, validated end-to-end, the former `issues/09` deleted; spec: `docs/superpowers/specs/2026-06-04-deterministic-get-context-design.md`); and the `CHAT_FLOW` blueprint. What remains is optional or an alternative — **none are blocking**.
+What remains below is optional or an alternative — none are blocking.
 
 ### 0.1 Flow export/import
 
@@ -22,15 +22,15 @@ The deterministic **read** path is shipped; `upsert_application` is left **agent
 The new **Oracle PL/SQL Executor node** runs only routines visible in the connected schema metadata, with bound named/positional args, overloads, `OUT`/`IN OUT`, and an optional auto-commit toggle — a first-class, fail-secure DB path. It does not fix the unsafe SQL Query node (`issues/02` stays open as a platform caveat), but our flow can stop depending on MCP shims for DB access.
 
 - **Code.** Spike: call `AGENT_TOOLS.PKG_AGENT_TOOLS.*` (grants already in Liquibase 011/012) directly from a PL/SQL Executor node and evaluate retiring the `banking-mcp` / `application-mcp` wrapper containers (fewer moving parts). Keep MCP if the node can't resolve the token-keyed read/write cleanly — decide from the spike, don't rip out MCP blind.
-- **Docs.** If adopted: trim the `banking-mcp` / `application-mcp` registrations from `LOCAL.md §4`, update the tool-channel description in `docs/DESIGN.md`, and note in `issues/02` that the flow no longer touches the SQL Query node.
+- **Docs.** If adopted: trim the `banking-mcp` / `application-mcp` registrations from `LOCAL.md §4`, update the tool-channel description in `docs/DESIGN.md`, and note in `issues/02` that the flow does not touch the SQL Query node.
 - **Guide steps.** Register a Database datasource for the node, select the approved routines, map the bound arguments; document the auto-commit setting for the `upsert` write.
 
 ### 0.4 Agent observability / OTel tracing — mitigates `issues/04` and `issues/08`
 
-26.4 adds OTel tracing (Arize Phoenix / Comet Opik / Langfuse) capturing spans for flow steps, LLM calls, and tool executions, plus a Collect-Diagnostics ZIP. This is the missing diagnostic surface for the `max_iterations=5` cliff and the ID-only validator errors (neither root cause is fixed in code).
+PAF's OTel tracing (Arize Phoenix / Comet Opik / Langfuse) captures spans for flow steps, LLM calls, and tool executions, plus a Collect-Diagnostics ZIP. This is the missing diagnostic surface for the `max_iterations=5` cliff and the ID-only validator errors (neither root cause is fixed in code).
 
 - **Code.** Optional: add a local trace-collector service (e.g. Phoenix or Langfuse) to `deploy/podman/compose.local.yml` if we want traces without a cloud account; otherwise no code.
-- **Docs.** Add an "enable tracing" recipe to `docs/TROUBLESHOOT.md` and an optional step in `LOCAL.md`. Note in `issues/04` / `issues/08` that 26.4 makes the conditions observable even though the messages/cap are unchanged.
+- **Docs.** Add an "enable tracing" recipe to `docs/TROUBLESHOOT.md` and an optional step in `LOCAL.md`. Note in `issues/04` / `issues/08` that tracing makes the conditions observable even though the messages/cap are unchanged.
 - **Guide steps.** PAF Settings → tracing provider → point at the collector, enable masking; show where a `CHAT_FLOW` run's per-tool spans land.
 
 ## 1. Proactive product recommendation as a second workflow
