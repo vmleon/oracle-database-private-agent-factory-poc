@@ -108,14 +108,20 @@ throughout and never transcribed by a model.
 
 A Deterministic MCP node needs a `toolInputJson`. Taking the token directly
 would let the node sort ahead of the manager, since PAF derives control flow
-from a topological order over the drawn edges. The assert-wrap Prompt consumes
-the manager's message and renders `{"session_token":"{{token}}"}` from the token
-extractor, so the node depends on the manager and runs after it.
+from a topological order over the drawn edges. The assert-wrap Prompt renders
+`{"session_token":"{{token}}","reply":"{{reply}}"}` — `token` from the token
+extractor, `reply` from the manager's message — so the node depends on the
+manager and runs after it. Consuming the manager's message is what forces that
+ordering; `reply` also doubles as the gate's input, letting
+`hitl_status_for_session` compare what the reply says against what the
+database holds.
 
 ### New tools in `banking-mcp`
 
-Each takes only `session_token`, resolves state through `_get_context_impl`, and
-fails closed — the shape `evaluate_eligibility_for_session` already establishes.
+Each resolves state through `_get_context_impl` and fails closed — the shape
+`evaluate_eligibility_for_session` already establishes. All but
+`hitl_status_for_session` take only `session_token`; it also takes `reply`, the
+manager's message, so the gate can compare it against `APP.hitl_task`.
 
 | Tool                             | Behaviour                                                                                                                                       | Returns                           |
 | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
