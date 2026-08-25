@@ -153,6 +153,7 @@ services:
       DB_PASSWORD: "${DB_PASSWORD}"
       BACKEND_URL: "http://application-backend:8090"
       OPA_URL: "http://opa:8181"
+      REGISTRY_URL: "http://registry-api:8600"
 
   # Synthetic Company Registry — FastAPI service with JSON-backed data,
   # OpenAPI 3.1 spec at /openapi.json. Registered with PAF as an HTTP

@@ -40,6 +40,8 @@ import httpx
 import oracledb
 from fastmcp import FastMCP
 
+from gate import documents_payload, gate_decision
+
 
 def _now_utc() -> datetime:
     return datetime.now(timezone.utc)
@@ -47,6 +49,7 @@ def _now_utc() -> datetime:
 
 _AUDIT_URL = os.getenv("BACKEND_URL", "http://application-backend:8090").rstrip("/") + "/v1/audit/tool-call"
 _OPA_URL = os.getenv("OPA_URL", "http://opa:8181").rstrip("/")
+_REGISTRY_URL = os.getenv("REGISTRY_URL", "http://registry-api:8600").rstrip("/")
 
 
 def _audit(tool_name, status, started, ended, tool_input, tool_output, *, session_token):
@@ -382,6 +385,114 @@ def evaluate_eligibility_for_session(session_token: str) -> dict:
     _audit("evaluate_eligibility_for_session", "SUCCESS", started, _now_utc(), opa_input, out,
            session_token=session_token)
     print(f"[evaluate_eligibility_for_session] -> allow={out['allow']} deny={out['deny']} warn={out['warn']}", flush=True)
+    return out
+
+
+@mcp.tool()
+def required_documents_for_session(session_token: str) -> dict:
+    """Deterministic document set: token in -> the required doc_type list out.
+
+    Resolves the opaque session token and evaluates `decisioning.required_documents`
+    with the product, employment, residency and amount the DB already holds. No
+    model constructs the payload, so the policy always sees the fields where it
+    expects them.
+
+    Fails closed: an invalid token or an incomplete application returns an empty
+    list, which the manager treats as "no evidence yet".
+    """
+    started = _now_utc()
+    print(f"[required_documents_for_session] called session_token={session_token!r}", flush=True)
+    ctx = _get_context_impl(session_token)
+    payload = documents_payload(ctx)
+    if payload is None:
+        print("[required_documents_for_session] -> incomplete or invalid, fail-closed", flush=True)
+        return {"required": [], "amount_band": None, "rationale": None}
+    try:
+        resp = httpx.post(f"{_OPA_URL}/v1/data/decisioning/required_documents",
+                          json={"input": payload}, timeout=5.0)
+        resp.raise_for_status()
+        res = resp.json().get("result") or {}
+    except Exception as exc:  # noqa: BLE001
+        print(f"[required_documents_for_session] OPA error: {exc}", flush=True)
+        return {"required": [], "amount_band": None, "rationale": None}
+    out = {
+        "required": res.get("required", []),
+        "amount_band": res.get("amount_band"),
+        "rationale": res.get("rationale"),
+    }
+    _audit("required_documents_for_session", "SUCCESS", started, _now_utc(), payload, out,
+           session_token=session_token)
+    print(f"[required_documents_for_session] -> {out['required']}", flush=True)
+    return out
+
+
+@mcp.tool()
+def verify_employer_for_session(session_token: str) -> dict:
+    """Deterministic employer check: token in -> the registry record out.
+
+    Reads profile.employer_name from the DB-derived context and queries the
+    company registry directly. The name is never copied by a model, which is
+    what makes a wrong-company answer impossible.
+
+    Fails closed: an invalid token or a missing employer name returns
+    registered=false with trading_status "unknown".
+    """
+    started = _now_utc()
+    print(f"[verify_employer_for_session] called session_token={session_token!r}", flush=True)
+    closed = {"name": None, "registered": False, "trading_status": "unknown"}
+    ctx = _get_context_impl(session_token)
+    if ctx.get("error"):
+        print("[verify_employer_for_session] -> invalid session, fail-closed", flush=True)
+        return closed
+    name = ((ctx.get("profile") or {}).get("employer_name") or "").strip()
+    if not name:
+        print("[verify_employer_for_session] -> no employer name, fail-closed", flush=True)
+        return closed
+    try:
+        resp = httpx.get(f"{_REGISTRY_URL}/v1/companies/verify",
+                         params={"name": name}, timeout=5.0)
+        resp.raise_for_status()
+        out = resp.json()
+    except Exception as exc:  # noqa: BLE001
+        print(f"[verify_employer_for_session] registry error: {exc}", flush=True)
+        return {**closed, "name": name}
+    _audit("verify_employer_for_session", "SUCCESS", started, _now_utc(), {"name": name}, out,
+           session_token=session_token)
+    print(f"[verify_employer_for_session] -> registered={out.get('registered')} "
+          f"trading_status={out.get('trading_status')}", flush=True)
+    return out
+
+
+@mcp.tool()
+def hitl_status_for_session(session_token: str) -> dict:
+    """Deterministic turn check: token in -> {"gate", "stage", "task_id"} out.
+
+    Reads the context and the HITL queue and reports whether this turn is
+    consistent: still collecting, so no decision is due, or complete with a task
+    recorded. The flow's final gate matches the bare word in `gate`, because a
+    Deterministic MCP node escapes the inner quotes of its JSON envelope.
+    """
+    started = _now_utc()
+    print(f"[hitl_status_for_session] called session_token={session_token!r}", flush=True)
+    ctx = _get_context_impl(session_token)
+    task_id = None
+    application = ctx.get("application") or {}
+    application_id = application.get("id") if application else None
+    if application_id is not None:
+        with oracledb.connect(user=DB_USER, password=DB_PASSWORD, dsn=DB_DSN) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT MAX(task_id) FROM APP.hitl_task WHERE application_id = :a",
+                    a=int(application_id),
+                )
+                row = cur.fetchone()
+                if row and row[0] is not None:
+                    task_id = int(row[0])
+    out = gate_decision(ctx, task_id)
+    _audit("hitl_status_for_session", "SUCCESS", started, _now_utc(),
+           {"application_id": application_id}, out, session_token=session_token)
+    print(f"[hitl_status_for_session] -> gate={out['gate']} stage={out['stage']} "
+          f"task_id={out['task_id']}", flush=True)
     return out
 
 
