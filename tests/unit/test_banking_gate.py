@@ -11,7 +11,14 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src" / "ai" / "banking-mcp"))
 
-from gate import GATE_FAIL, GATE_OK, documents_payload, gate_decision  # noqa: E402
+from gate import (  # noqa: E402
+    DECISION_PHRASES,
+    GATE_FAIL,
+    GATE_OK,
+    announces_a_decision,
+    documents_payload,
+    gate_decision,
+)
 
 COMPLETE = {
     "customer": {"residency": "resident"},
@@ -60,3 +67,29 @@ def test_gate_passes_a_complete_application_awaiting_a_decision():
     assert gate_decision(COMPLETE, None) == {
         "gate": GATE_OK, "stage": "AWAITING_DECISION", "task_id": None,
     }
+
+
+def test_gate_rejects_a_decision_sentence_with_no_recorded_task():
+    reply = "Looks strong — it's with our team for final approval; we'll confirm shortly."
+    assert gate_decision(COMPLETE, None, reply) == {
+        "gate": GATE_FAIL, "stage": "DECISION_NOT_RECORDED", "task_id": None,
+    }
+
+
+def test_gate_passes_a_question_with_no_recorded_task():
+    reply = "Please confirm: 18000 over 36 months for home improvement. Shall I submit it?"
+    assert gate_decision(COMPLETE, None, reply) == {
+        "gate": GATE_OK, "stage": "AWAITING_DECISION", "task_id": None,
+    }
+
+
+def test_gate_passes_a_decision_sentence_when_the_task_exists():
+    reply = "Before we can proceed, a specialist needs to review this in detail."
+    assert gate_decision(COMPLETE, 42, reply) == {
+        "gate": GATE_OK, "stage": "DECIDED", "task_id": 42,
+    }
+
+
+@pytest.mark.parametrize("phrase", DECISION_PHRASES)
+def test_announces_a_decision_detects_every_phrase(phrase):
+    assert announces_a_decision(f"...{phrase}...")

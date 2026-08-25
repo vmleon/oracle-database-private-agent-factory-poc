@@ -55,9 +55,10 @@ verification are pure functions of values already in `context`. They move into
 the employer-name transcription step the current blueprint identifies as its
 highest-risk instruction, and dissolves the `Docs & Employer` agent entirely.
 
-**The final gate reads the database.** Whether the session is valid is a
-database fact. A deterministic node queries it after the manager runs and the
-gate tests that, rather than matching a marker in model output.
+**The final gate reads the database.** A deterministic node queries the session
+and the HITL queue after the manager runs, and the gate compares what the
+customer is about to be told against what the database holds, rather than
+matching a marker in model output.
 
 ### What this trades
 
@@ -120,7 +121,7 @@ fails closed — the shape `evaluate_eligibility_for_session` already establishe
 | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
 | `required_documents_for_session` | builds the OPA document payload from context and evaluates `decisioning.required_documents`, the rule `opa-mcp.required_documents` already uses | the required-document list        |
 | `verify_employer_for_session`    | reads `profile.employer_name` and calls the company registry                                                                                    | `{registered, trading_status, …}` |
-| `hitl_status_for_session`        | reads context and `APP.hitl_task`                                                                                                               | `{"gate", "stage", "task_id"}`    |
+| `hitl_status_for_session`        | reads context, `APP.hitl_task` and the manager's reply                                                                                          | `{"gate", "stage", "task_id"}`    |
 
 `verify_employer_for_session` needs the registry address; `banking-mcp` gains
 `REGISTRY_URL: "http://registry-api:8600"` in the compose environment beside its
@@ -128,9 +129,10 @@ existing `OPA_URL`.
 
 ### The gate word
 
-`hitl_status_for_session` decides the gate server-side and returns `GATE_OK`
-on any valid session, whatever stage the application is at. It returns
-`GATE_FAIL` only when the session itself is invalid.
+`hitl_status_for_session` decides the gate server-side and returns `GATE_FAIL`
+when the session itself is invalid, or when the reply announces a decision
+with no HITL task recorded for the application. It returns `GATE_OK` on every
+other turn on a valid session, whatever stage the application is at.
 
 G3 matches the bare word `GATE_OK`. A Deterministic MCP node delivers its result
 as `{"message":"<json>"}` with the inner quotes escaped, so a quote-anchored

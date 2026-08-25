@@ -465,13 +465,17 @@ def verify_employer_for_session(session_token: str) -> dict:
 
 
 @mcp.tool()
-def hitl_status_for_session(session_token: str) -> dict:
-    """Deterministic turn check: token in -> {"gate", "stage", "task_id"} out.
+def hitl_status_for_session(session_token: str, reply: str = "") -> dict:
+    """Deterministic turn check: token (+ the manager's reply) in ->
+    {"gate", "stage", "task_id"} out.
 
     Reads the context and the HITL queue and reports where the application
     stands: still collecting, awaiting a decision, or complete with a task
-    recorded. `gate` passes any turn on a valid session and fails only when
-    the session itself is invalid; `stage` carries the rest for
+    recorded. `gate` fails on an invalid session, and fails when `reply`
+    announces a decision (one of the customer-facing decision sentences) but
+    no HITL task is recorded for the application — the case where a customer
+    would be told their application is progressing with nothing recorded.
+    Every other turn on a valid session passes. `stage` carries the rest for
     observability. The flow's final gate matches the bare word in `gate`,
     because a Deterministic MCP node escapes the inner quotes of its JSON
     envelope.
@@ -492,7 +496,7 @@ def hitl_status_for_session(session_token: str) -> dict:
                 row = cur.fetchone()
                 if row and row[0] is not None:
                     task_id = int(row[0])
-    out = gate_decision(ctx, task_id)
+    out = gate_decision(ctx, task_id, reply)
     _audit("hitl_status_for_session", "SUCCESS", started, _now_utc(),
            {"application_id": application_id}, out, session_token=session_token)
     print(f"[hitl_status_for_session] -> gate={out['gate']} stage={out['stage']} "

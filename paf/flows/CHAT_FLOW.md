@@ -88,13 +88,13 @@ Each takes only `session_token`, resolves state through the same server-side rea
 | `evaluate_eligibility_for_session` | builds the OPA `applicant` from the DB-derived age/income/score/dti/pti             | `{allow, deny, warn}`                                           |
 | `required_documents_for_session`   | evaluates `decisioning.required_documents` from product/employment/residency/amount | `{required, amount_band, rationale}`                            |
 | `verify_employer_for_session`      | reads `profile.employer_name` and calls the company registry                        | `{name, registered, trading_status}`                            |
-| `hitl_status_for_session`          | reads the context and `APP.hitl_task`                                               | `{gate, stage, task_id}`                                        |
+| `hitl_status_for_session`          | reads the context, `APP.hitl_task` and the manager's reply                          | `{gate, stage, task_id}`                                        |
 
-`hitl_status_for_session` decides the gate server-side: `GATE_OK` on any valid session, whatever stage the application is at; `GATE_FAIL` only on an invalid session.
+`hitl_status_for_session` decides the gate server-side: `GATE_FAIL` on an invalid session, or on a reply that announces a decision (one of the customer-facing decision sentences) with no HITL task recorded for the application; `GATE_OK` on every other turn on a valid session, whatever stage the application is at.
 
 ### Ordering the assertion
 
-A Deterministic MCP node needs a `Tool input JSON`. Taking the token directly would let `hitl_status_for_session` sort **ahead** of the manager, since PAF derives control flow from a topological order over the drawn edges — and it would then read the database before the worker wrote to it. The assert-wrap Prompt takes both the token and the **manager's message**, so the node depends on the manager and runs after it.
+A Deterministic MCP node needs a `Tool input JSON`. Taking the token directly would let `hitl_status_for_session` sort **ahead** of the manager, since PAF derives control flow from a topological order over the drawn edges — and it would then read the database before the worker wrote to it. The assert-wrap Prompt takes both the token and the **manager's message**, so the node depends on the manager and runs after it — and the manager's message is exactly the reply text `hitl_status_for_session` needs to tell a decision sentence from a question.
 
 ## Build sequence
 
@@ -403,6 +403,8 @@ DECLINE states NO adverse reason. Never mention a number, score, tier, id, token
 DTI/PTI, AML/KYC, fair lending, or any threshold in the customer sentence.
 ```
 
+The three quoted customer sentences above are matched as substrings by `DECISION_PHRASES` in [`src/ai/banking-mcp/gate.py`](../../src/ai/banking-mcp/gate.py) and by `TIER_REPLY` in [`tests/test_chat_workflow.py`](../../tests/test_chat_workflow.py) — G3 uses them to tell a decision sentence from a question. Reword one here and you must reword all three.
+
 - **Wire:**
 
 ```mermaid
@@ -472,15 +474,14 @@ Builds the payload for the post-agent assertion **and** forces its ordering: bec
 - **Paste**, then **Save prompt** (ports `token` and `reply` appear after Save):
 
 ```
-{"session_token":"{{token}}"}
-Manager reply, wired only to order this node after the agent: {{reply}}
+{"session_token":"{{token}}","reply":"{{reply}}"}
 ```
 
 - **Wire:**
   - `Token extractor`.`Message` → `token`.
   - `Manager`.`Message` → `reply`.
 
-The Type Convert in Step 17 lifts the first `{…}` region out of this text, so the trailing line is ignored — which is why every instruction block forbids braces in an agent's answer. A reply that carries one breaks the payload, the tool call fails, and the flow falls to the apology: fail-secure, never a wrong decision.
+Consuming the manager's `Message` orders this node after the agent; `reply` also carries that message into `hitl_status_for_session`, so G3 can tell a decision sentence from a question. The payload is JSON built by string interpolation — no escaping — so a reply containing a double quote or a newline breaks it, the tool call fails, and the flow falls to the apology: fail-secure, and a known cost of carrying the reply into the gate.
 
 ```mermaid
 flowchart LR
@@ -511,7 +512,7 @@ flowchart LR
     TC2["Type Convert (assert)"] -->|JSON → Tool input JSON| AS["Deterministic MCP (hitl_status_for_session)"]
 ```
 
-### Step 19 — Condition G3 (valid session?)
+### Step 19 — Condition G3 (session valid and decision recorded?)
 
 - **Drag** a `Condition`.
 - **Configure:**
@@ -561,38 +562,38 @@ flowchart LR
 
 Every wire is created in the steps above; this table is the post-build cross-check. Walk it top-to-bottom and confirm each edge exists.
 
-| Source port                                                    | Target port                                                            |
-| -------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| Chat input.`Message`                                           | Token extractor.`Input text`                                           |
-| Chat input.`Message`                                           | Message extractor.`Input text`                                         |
-| Token extractor.`Message`                                      | Prompt (JSON-wrap).`token`                                             |
-| Prompt (JSON-wrap).`Prompt message`                            | Type Convert.`Input`                                                   |
-| Type Convert.`JSON`                                            | Deterministic MCP (get_context).`Tool input JSON`                      |
-| Type Convert.`JSON`                                            | Deterministic MCP (evaluate_eligibility_for_session).`Tool input JSON` |
-| Type Convert.`JSON`                                            | Deterministic MCP (required_documents_for_session).`Tool input JSON`   |
-| Type Convert.`JSON`                                            | Deterministic MCP (verify_employer_for_session).`Tool input JSON`      |
-| Deterministic MCP (get_context).`Message`                      | Condition G0.`Text Input`                                              |
-| Deterministic MCP (get_context).`Message`                      | Condition G0.`True Message`                                            |
-| Condition G0.`False output`                                    | Chat output (apology).`Message`                                        |
-| Condition G0.`True output`                                     | Prompt (manager).`context` _(carries context + sequences the manager)_ |
-| Token extractor.`Message`                                      | Prompt (manager).`token`                                               |
-| Message extractor.`Message`                                    | Prompt (manager).`input`                                               |
-| Deterministic MCP (evaluate_eligibility_for_session).`Message` | Prompt (manager).`eligibility`                                         |
-| Deterministic MCP (required_documents_for_session).`Message`   | Prompt (manager).`documents`                                           |
-| Deterministic MCP (verify_employer_for_session).`Message`      | Prompt (manager).`employer`                                            |
-| MCP (application-mcp).`Tools`                                  | Intake.`Tools`                                                         |
-| MCP (hitl-mcp).`Tools`                                         | Recommendation.`Tools`                                                 |
-| Prompt (manager).`Prompt message`                              | Manager.`Prompt`                                                       |
-| Intake.`Agent`                                                 | Manager.`Sub-agents` _(writes the worker id into `subAgents`)_         |
-| Recommendation.`Agent`                                         | Manager.`Sub-agents` _(writes the worker id into `subAgents`)_         |
-| Token extractor.`Message`                                      | Prompt (assert-wrap).`token`                                           |
-| Manager.`Message`                                              | Prompt (assert-wrap).`reply` _(orders the assertion after the agent)_  |
-| Prompt (assert-wrap).`Prompt message`                          | Type Convert (assert).`Input`                                          |
-| Type Convert (assert).`JSON`                                   | Deterministic MCP (hitl_status_for_session).`Tool input JSON`          |
-| Deterministic MCP (hitl_status_for_session).`Message`          | Condition G3.`Text Input`                                              |
-| Manager.`Message`                                              | Condition G3.`True Message`                                            |
-| Condition G3.`True output`                                     | Chat output (reply).`Message`                                          |
-| Condition G3.`False output`                                    | Chat output (apology).`Message`                                        |
+| Source port                                                    | Target port                                                                                              |
+| -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| Chat input.`Message`                                           | Token extractor.`Input text`                                                                             |
+| Chat input.`Message`                                           | Message extractor.`Input text`                                                                           |
+| Token extractor.`Message`                                      | Prompt (JSON-wrap).`token`                                                                               |
+| Prompt (JSON-wrap).`Prompt message`                            | Type Convert.`Input`                                                                                     |
+| Type Convert.`JSON`                                            | Deterministic MCP (get_context).`Tool input JSON`                                                        |
+| Type Convert.`JSON`                                            | Deterministic MCP (evaluate_eligibility_for_session).`Tool input JSON`                                   |
+| Type Convert.`JSON`                                            | Deterministic MCP (required_documents_for_session).`Tool input JSON`                                     |
+| Type Convert.`JSON`                                            | Deterministic MCP (verify_employer_for_session).`Tool input JSON`                                        |
+| Deterministic MCP (get_context).`Message`                      | Condition G0.`Text Input`                                                                                |
+| Deterministic MCP (get_context).`Message`                      | Condition G0.`True Message`                                                                              |
+| Condition G0.`False output`                                    | Chat output (apology).`Message`                                                                          |
+| Condition G0.`True output`                                     | Prompt (manager).`context` _(carries context + sequences the manager)_                                   |
+| Token extractor.`Message`                                      | Prompt (manager).`token`                                                                                 |
+| Message extractor.`Message`                                    | Prompt (manager).`input`                                                                                 |
+| Deterministic MCP (evaluate_eligibility_for_session).`Message` | Prompt (manager).`eligibility`                                                                           |
+| Deterministic MCP (required_documents_for_session).`Message`   | Prompt (manager).`documents`                                                                             |
+| Deterministic MCP (verify_employer_for_session).`Message`      | Prompt (manager).`employer`                                                                              |
+| MCP (application-mcp).`Tools`                                  | Intake.`Tools`                                                                                           |
+| MCP (hitl-mcp).`Tools`                                         | Recommendation.`Tools`                                                                                   |
+| Prompt (manager).`Prompt message`                              | Manager.`Prompt`                                                                                         |
+| Intake.`Agent`                                                 | Manager.`Sub-agents` _(writes the worker id into `subAgents`)_                                           |
+| Recommendation.`Agent`                                         | Manager.`Sub-agents` _(writes the worker id into `subAgents`)_                                           |
+| Token extractor.`Message`                                      | Prompt (assert-wrap).`token`                                                                             |
+| Manager.`Message`                                              | Prompt (assert-wrap).`reply` _(orders the assertion after the agent, and gives the gate the reply text)_ |
+| Prompt (assert-wrap).`Prompt message`                          | Type Convert (assert).`Input`                                                                            |
+| Type Convert (assert).`JSON`                                   | Deterministic MCP (hitl_status_for_session).`Tool input JSON`                                            |
+| Deterministic MCP (hitl_status_for_session).`Message`          | Condition G3.`Text Input`                                                                                |
+| Manager.`Message`                                              | Condition G3.`True Message`                                                                              |
+| Condition G3.`True output`                                     | Chat output (reply).`Message`                                                                            |
+| Condition G3.`False output`                                    | Chat output (apology).`Message`                                                                          |
 
 The bare **token** is wired to three Prompt nodes — JSON-wrap, manager and assert-wrap — and reaches a model only through the manager's prompt. From there it is copied twice, by the manager into its delegation message and by `Intake` into `upsert_application`. Every read is deterministic and takes the token by wire.
 
@@ -657,7 +658,7 @@ Non-obvious rules and limits that shape the build. Skim before iterating.
 
 - **Never extract `customer_id` / `application_id` (or any authorization value) from the chat message.** Identifiers come from the token via `get_context` and the session-scoped tools and nowhere else. `Intake` reads amount/term/purpose from the message (model-trusted conversational values), never an id. The injection test must reliably ignore an injected token.
 - **The session token is a credential.** Do not log it, echo it, or write it to any customer-readable table.
-- **Fail-secure is mandatory.** An invalid token, a missing application, a malformed assertion payload or any tool failure produces the canned apology sentence and zero side effects. G0 rejects an invalid session before any model runs; the deterministic tools fail closed on a bad token or incomplete application; G3 rejects an invalid session; the `hitl_task → loan_application` foreign key is the last backstop (`ORA-02291`).
+- **Fail-secure is mandatory.** An invalid token, a missing application, a malformed assertion payload or any tool failure produces the canned apology sentence and zero side effects. G0 rejects an invalid session before any model runs; the deterministic tools fail closed on a bad token or incomplete application; G3 rejects an invalid session, and rejects a reply that announces a decision with no HITL task recorded for the application; the `hitl_task → loan_application` foreign key is the last backstop (`ORA-02291`). The assert-wrap payload is JSON built by string interpolation, so a reply containing a double quote or a newline breaks the payload and the turn falls to the apology — fail-secure, and a known cost of carrying the reply into the gate.
 
 ### PAF Agent Builder (verified against the installed kit)
 
