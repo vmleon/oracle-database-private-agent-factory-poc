@@ -24,10 +24,13 @@ side-effect tools).
 
 from __future__ import annotations
 
+import datetime as dt
+import json
 import os
 import uuid
 from typing import Literal
 
+import httpx
 import oracledb
 from fastmcp import FastMCP
 
@@ -40,13 +43,37 @@ DB_DSN = (
 DB_USER = os.environ["DB_USER"]
 DB_PASSWORD = os.environ["DB_PASSWORD"]
 
+_AUDIT_URL = os.getenv("BACKEND_URL", "http://application-backend:8090").rstrip("/") + "/v1/audit/tool-call"
+
+
+def _now():
+    return dt.datetime.now(dt.timezone.utc)
+
+
+def _audit(tool_name, status, started, ended, tool_input, tool_output, *, session_token):
+    """Best-effort per-tool audit to the Application Service. The application is resolved
+    server-side from session_token — never sent as a raw id. Never raises — an audit
+    failure must not break the live tool call."""
+    try:
+        httpx.post(_AUDIT_URL, json={
+            "sessionToken": session_token,
+            "toolName": tool_name,
+            "status": status,
+            "startedAt": started.isoformat(),
+            "endedAt": ended.isoformat(),
+            "toolInput": json.dumps(tool_input, default=str),
+            "toolOutput": json.dumps(tool_output, default=str),
+        }, timeout=5.0)
+    except Exception as exc:  # noqa: BLE001 — audit is fire-and-forget
+        print(f"[audit] skipped ({tool_name}): {exc}", flush=True)
+
 
 Recommendation = Literal["APPROVE", "REVIEW", "DECLINE"]
 
 
 @mcp.tool()
 def create_hitl_task(
-    application_id: int,
+    session_token: str,
     recommendation: Recommendation,
     reasoning: str,
     explore_hints: str | None = None,
@@ -60,10 +87,13 @@ def create_hitl_task(
     with exactly one call. The human reviewer (not the agent) closes the
     task; that close is what writes the Blockchain `decision` row.
 
+    The application is resolved server-side from the opaque session token, so no
+    agent ever names one: the decision can only be recorded against the
+    application the token authenticates.
+
     Argument extraction guidance for the LLM:
-      - application_id — integer loan application id from the conversation
-                         context (the customer-safe REPORTING views surface
-                         this when the customer chats).
+      - session_token  — the opaque `sess_...` token from the manager's
+                         message. Copy it exactly; never invent one.
       - recommendation — one of "APPROVE" / "REVIEW" / "DECLINE" based on
                          the signals gathered (OPA outputs, document
                          completeness, employer verification, etc.).
@@ -84,34 +114,49 @@ def create_hitl_task(
     hallucinate non-hex strings (`a4b5c6d7-e8f9-g0h1-…`) when asked to
     produce a UUID.
     """
-    print(f"[create_hitl_task] called application_id={application_id} recommendation={recommendation!r} reasoning={reasoning!r:.120s}", flush=True)
+    started = _now()
+    print(f"[create_hitl_task] called session_token={session_token!r} recommendation={recommendation!r} reasoning={reasoning!r:.120s}", flush=True)
     agent_run_id = str(uuid.uuid4())
-    with oracledb.connect(user=DB_USER, password=DB_PASSWORD, dsn=DB_DSN) as conn:
-        with conn.cursor() as cur:
-            task_id = cur.callfunc(
-                "AGENT_TOOLS.PKG_AGENT_TOOLS.create_hitl_task",
-                int,
-                [
-                    application_id,
-                    recommendation,
-                    reasoning,
-                    explore_hints,
-                    evidence,
-                    agent_run_id,
-                ],
-            )
-        conn.commit()
-    print(f"[create_hitl_task] -> success task_id={task_id} agent_run_id={agent_run_id}", flush=True)
-    return {
+    tool_input = {"recommendation": recommendation, "reasoning": reasoning,
+                  "explore_hints": explore_hints, "evidence": evidence}
+    try:
+        with oracledb.connect(user=DB_USER, password=DB_PASSWORD, dsn=DB_DSN) as conn:
+            with conn.cursor() as cur:
+                task_id = cur.callfunc(
+                    "AGENT_TOOLS.PKG_AGENT_TOOLS.create_hitl_task",
+                    int,
+                    [
+                        session_token,
+                        recommendation,
+                        reasoning,
+                        explore_hints,
+                        evidence,
+                        agent_run_id,
+                    ],
+                )
+            conn.commit()
+    except oracledb.DatabaseError as exc:
+        # NO_DATA_FOUND inside the package: unknown/expired token, or the
+        # customer has no open application. Fail closed, and record the attempt.
+        print(f"[create_hitl_task] -> rejected: {exc}", flush=True)
+        out = {"error": "invalid_or_expired_session"}
+        _audit("create_hitl_task", "FAILED", started, _now(), tool_input, out,
+               session_token=session_token)
+        return out
+    out = {
         "task_id": task_id,
         "agent_run_id": agent_run_id,
         "state": "OPEN",
         "queue": "APP.HITL_REQUEST",
         "message": (
-            f"HITL task {task_id} created for application {application_id} "
-            f"with recommendation {recommendation}; enqueued on HITL_REQUEST."
+            f"HITL task {task_id} created with recommendation {recommendation}; "
+            f"enqueued on HITL_REQUEST."
         ),
     }
+    _audit("create_hitl_task", "SUCCESS", started, _now(), tool_input, out,
+           session_token=session_token)
+    print(f"[create_hitl_task] -> success task_id={task_id} agent_run_id={agent_run_id}", flush=True)
+    return out
 
 
 if __name__ == "__main__":

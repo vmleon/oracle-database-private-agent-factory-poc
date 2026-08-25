@@ -1,0 +1,182 @@
+databaseChangeLog:
+  # create_hitl_task resolves the application from the opaque session token,
+  # the same trust boundary upsert_draft_application already uses. The caller
+  # never names an application, so a decision can only ever be recorded
+  # against the application the token authenticates — an agent cannot write a
+  # recommendation onto another customer's application, whatever it was told.
+  #
+  # Package spec and body are replaced together: a package is replaced whole,
+  # so both restate every function the package exposes.
+  - changeSet:
+      id: 017-pkg-agent-tools-spec-session-scoped-hitl
+      author: paf-poc
+      runOnChange: true
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |-
+              CREATE OR REPLACE PACKAGE AGENT_TOOLS.PKG_AGENT_TOOLS AS
+                -- create_hitl_task: resolve the customer from the opaque
+                -- session token, write the recommendation packet to
+                -- APP.hitl_task against that customer's own open application
+                -- and return the new task_id. state defaults to 'OPEN',
+                -- created_at to SYSTIMESTAMP.
+                --
+                -- p_recommendation must be one of 'APPROVE', 'REVIEW',
+                -- 'DECLINE' (enforced by the APP.hitl_task CHECK constraint).
+                -- p_explore_hints and p_evidence are JSON text; the target
+                -- columns are JSON-typed and accept CLOB on insert.
+                FUNCTION create_hitl_task(
+                  p_session_token   IN VARCHAR2,
+                  p_recommendation  IN VARCHAR2,
+                  p_reasoning       IN CLOB,
+                  p_explore_hints   IN CLOB,
+                  p_evidence        IN CLOB,
+                  p_agent_run_id    IN VARCHAR2
+                ) RETURN NUMBER;
+                -- upsert_draft_application: resolve the customer from the
+                -- opaque session token, create their DRAFT loan application on
+                -- first call, then patch any supplied field. Returns the
+                -- application_id. NULL args leave existing values untouched.
+                FUNCTION upsert_draft_application(
+                  p_session_token IN VARCHAR2,
+                  p_amount        IN NUMBER,
+                  p_term_months   IN NUMBER,
+                  p_purpose       IN VARCHAR2
+                ) RETURN NUMBER;
+              END PKG_AGENT_TOOLS;
+
+  - changeSet:
+      id: 017-pkg-agent-tools-body-session-scoped-hitl
+      author: paf-poc
+      runOnChange: true
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |-
+              CREATE OR REPLACE PACKAGE BODY AGENT_TOOLS.PKG_AGENT_TOOLS AS
+
+                FUNCTION create_hitl_task(
+                  p_session_token   IN VARCHAR2,
+                  p_recommendation  IN VARCHAR2,
+                  p_reasoning       IN CLOB,
+                  p_explore_hints   IN CLOB,
+                  p_evidence        IN CLOB,
+                  p_agent_run_id    IN VARCHAR2
+                ) RETURN NUMBER
+                IS
+                  l_customer_id    APP.loan_application.customer_id%TYPE;
+                  l_application_id APP.loan_application.application_id%TYPE;
+                  l_task_id        NUMBER;
+                  l_enq_msgid      RAW(16);
+                  l_enq_msg_props  DBMS_AQ.MESSAGE_PROPERTIES_T;
+                  l_enq_options    DBMS_AQ.ENQUEUE_OPTIONS_T;
+                  l_payload        JSON;
+                BEGIN
+                  -- Fail-secure: unknown/expired token raises NO_DATA_FOUND,
+                  -- which the MCP wrapper maps to invalid_or_expired_session.
+                  SELECT customer_id INTO l_customer_id
+                    FROM APP.auth_session
+                   WHERE session_token = p_session_token
+                     AND (expires_at IS NULL OR expires_at > SYSTIMESTAMP);
+
+                  -- That customer's own open application. No open application
+                  -- raises NO_DATA_FOUND: there is nothing to decide on yet.
+                  SELECT application_id INTO l_application_id
+                    FROM APP.loan_application
+                   WHERE customer_id = l_customer_id
+                     AND status IN ('DRAFT','SUBMITTED','IN_REVIEW')
+                   ORDER BY application_id DESC
+                   FETCH FIRST 1 ROW ONLY;
+
+                  INSERT INTO APP.hitl_task (
+                    application_id,
+                    agent_recommendation,
+                    agent_reasoning,
+                    agent_explore_hints,
+                    agent_evidence,
+                    agent_run_id
+                  ) VALUES (
+                    l_application_id,
+                    p_recommendation,
+                    p_reasoning,
+                    p_explore_hints,
+                    p_evidence,
+                    p_agent_run_id
+                  )
+                  RETURNING task_id INTO l_task_id;
+
+                  l_payload := JSON_OBJECT(
+                    KEY 'application_id'       VALUE l_application_id,
+                    KEY 'task_id'              VALUE l_task_id,
+                    KEY 'agent_recommendation' VALUE p_recommendation,
+                    KEY 'agent_run_id'         VALUE p_agent_run_id
+                    RETURNING JSON
+                  );
+
+                  DBMS_AQ.ENQUEUE(
+                    queue_name         => 'APP.HITL_REQUEST',
+                    enqueue_options    => l_enq_options,
+                    message_properties => l_enq_msg_props,
+                    payload            => l_payload,
+                    msgid              => l_enq_msgid
+                  );
+
+                  RETURN l_task_id;
+                END create_hitl_task;
+
+                FUNCTION upsert_draft_application(
+                  p_session_token IN VARCHAR2,
+                  p_amount        IN NUMBER,
+                  p_term_months   IN NUMBER,
+                  p_purpose       IN VARCHAR2
+                ) RETURN NUMBER AS
+                  l_customer_id    APP.loan_application.customer_id%TYPE;
+                  l_application_id APP.loan_application.application_id%TYPE;
+                  l_product_id     APP.product_catalog.product_id%TYPE;
+                BEGIN
+                  -- Fail-secure: unknown/expired token raises NO_DATA_FOUND,
+                  -- which the MCP wrapper maps to invalid_or_expired_session.
+                  SELECT customer_id INTO l_customer_id
+                    FROM APP.auth_session
+                   WHERE session_token = p_session_token
+                     AND (expires_at IS NULL OR expires_at > SYSTIMESTAMP);
+
+                  SELECT product_id INTO l_product_id
+                    FROM APP.product_catalog
+                   WHERE product_type = 'PERSONAL_LOAN'
+                   FETCH FIRST 1 ROW ONLY;
+
+                  BEGIN
+                    SELECT application_id INTO l_application_id
+                      FROM APP.loan_application
+                     WHERE customer_id = l_customer_id
+                       AND status IN ('DRAFT','SUBMITTED','IN_REVIEW')
+                     ORDER BY application_id DESC
+                     FETCH FIRST 1 ROW ONLY;
+                  EXCEPTION WHEN NO_DATA_FOUND THEN
+                    l_application_id := NULL;
+                  END;
+
+                  IF l_application_id IS NULL THEN
+                    INSERT INTO APP.loan_application
+                      (customer_id, product_id, amount_requested, term_months,
+                       purpose, channel, status)
+                    VALUES
+                      (l_customer_id, l_product_id, p_amount, p_term_months,
+                       p_purpose, 'CHAT', 'DRAFT')
+                    RETURNING application_id INTO l_application_id;
+                  ELSE
+                    UPDATE APP.loan_application
+                       SET amount_requested = NVL(p_amount, amount_requested),
+                           term_months      = NVL(p_term_months, term_months),
+                           purpose          = NVL(p_purpose, purpose)
+                     WHERE application_id = l_application_id;
+                  END IF;
+
+                  RETURN l_application_id;
+                END upsert_draft_application;
+
+              END PKG_AGENT_TOOLS;
