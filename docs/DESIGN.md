@@ -169,6 +169,18 @@ Two stores; nothing belongs in code:
 
 Every write to `system_config` produces a row in `policy_parameter_history` (who, when, old value, new value, reason).
 
+### 6.5 Multi-agent in PAF
+
+A flow runs one Agent node per execution path — a second Agent node further down the same path never executes; the first agent's message is returned as the flow's result and the turn ends ([`issues/12`](../issues/12-one-agent-per-execution-path.md)). Multi-agent orchestration within a single turn is only reachable through a manager agent with workers wired to its `Sub-agents` port, as `CHAT_FLOW` does (§6.3).
+
+Rules for building any flow that needs more than one agent:
+
+- Put every agent that must run in the same turn under one manager, on the manager's `Sub-agents` port — never in series on the same path.
+- Give the manager no tools of its own; give each worker only the tools its job needs. This is what keeps a write tool unreachable from a path that must not write.
+- Wiring the `Sub-agents` edge on the canvas is not sufficient by itself — the manager's `subAgents` template value must list the worker node ids. The canvas writes that value when the wire is drawn; a graph produced any other way (hand-edited JSON, a script) can carry the edge without the template value and silently ships a manager with no workers.
+- Sub-agent calls happen inside the manager's executor, so no `Condition` node can sit between a manager and its workers. Any gate on which worker runs, or on the manager running at all, goes before the Agent node or after it, never between the manager and a sub-agent.
+- A pure function of values already in the database — a lookup, an eligibility check, anything with no judgment call — belongs in a deterministic MCP node, not in an agent. `banking-mcp`'s `*_for_session` tools are the pattern.
+
 ## 7. Source layout
 
 ```
