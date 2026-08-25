@@ -69,8 +69,9 @@ before evidence existed; under this design the manager decides when to delegate.
 That is the cost of the supported topology, and it is bounded: the facts the
 decision rests on are all computed server-side before the manager runs, the
 recommendation worker is the only holder of `create_hitl_task`, the final gate
-rejects an invalid session, and the `hitl_task → loan_application` foreign key
-remains the last backstop.
+rejects an invalid session and a reply that announces a decision with no
+recorded task, and the `hitl_task → loan_application` foreign key remains the
+last backstop.
 
 ## Design
 
