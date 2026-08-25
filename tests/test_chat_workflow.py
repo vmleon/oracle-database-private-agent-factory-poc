@@ -1,4 +1,4 @@
-"""End-to-end tests for CHAT_WORKFLOW.
+"""End-to-end tests for CHAT_FLOW.
 
 Six happy-path scenarios cover all three recommendation tiers via two distinct
 sources of deny / warn signals. Four security tests verify the fail-secure
@@ -50,7 +50,7 @@ SCENARIOS = [
 ]
 
 # Customer-facing reply substring per tier — the compliance-safe hint sentences
-# from the Recommendation agent (paf/flows/CHAT_WORKFLOW.md). The reply must
+# from the Recommendation agent (paf/flows/CHAT_FLOW.md). The reply must
 # contain the tier's phrase and must NOT leak any marker or <think> reasoning.
 TIER_REPLY = {
     "APPROVE": "final approval",

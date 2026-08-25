@@ -1,4 +1,4 @@
-r"""Pytest fixtures for the CHAT_WORKFLOW end-to-end test harness.
+r"""Pytest fixtures for the CHAT_FLOW end-to-end test harness.
 
 Strategy: each test mints a unique opaque session token (`sess_<hex>`) into
 APP.auth_session pointing at the desired (customer_id, application_id), then
@@ -8,13 +8,13 @@ start; each agent's first call is banking-mcp.get_context, which resolves the
 token — exactly what a production App Service would do at login. Unique
 per-test tokens mean no shared-row contention.
 
-Required canvas setup (one-time, manual): the published CHAT_WORKFLOW must
+Required canvas setup (one-time, manual): the published CHAT_FLOW must
 split the envelope — a RegexExtractor on `(?<=\[\[SESSION )[^\]]+` feeds the
 Concierge prompt's session_token, and one on `(?<=\]\])[\s\S]+` feeds its
-input. See paf/flows/CHAT_WORKFLOW.md.
+input. See paf/flows/CHAT_FLOW.md.
 
 Required env vars (.env, loaded automatically):
-  - PAF_API_KEY, PAF_AGENT_ID — integration key for the published CHAT_WORKFLOW,
+  - PAF_API_KEY, PAF_AGENT_ID — integration key for the published CHAT_FLOW,
     minted by `python manage.py paf api-key`
   - DB_HOST, DB_PORT, DB_SERVICE, DB_PASSWORD — Oracle connection as APP
 
@@ -65,7 +65,7 @@ def env() -> dict[str, str]:
         pytest.exit(
             f"Missing required env vars: {', '.join(missing)}.\n"
             f"Run `python manage.py setup local`, then `python manage.py paf api-key` "
-            f"once CHAT_WORKFLOW is published."
+            f"once CHAT_FLOW is published."
         )
     return {k: os.environ[k] for k in required}
 
@@ -81,7 +81,7 @@ def paf(env) -> requests.Session:
 
 @pytest.fixture(scope="session")
 def agent_id(env) -> str:
-    """The published CHAT_WORKFLOW the integration key is bound to."""
+    """The published CHAT_FLOW the integration key is bound to."""
     return env["PAF_AGENT_ID"]
 
 
@@ -158,7 +158,7 @@ def mint_session(db):
 
 @pytest.fixture
 def chat(paf, agent_id):
-    """POST a chat turn through the published CHAT_WORKFLOW integration endpoint,
+    """POST a chat turn through the published CHAT_FLOW integration endpoint,
     wrapping token + message in the [[SESSION ...]] envelope the flow's
     RegexExtractor splits. Returns the unwrapped response body."""
     def _run(token: str, message: str, *, sanitize: bool = True) -> dict:

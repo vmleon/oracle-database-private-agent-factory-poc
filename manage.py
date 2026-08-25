@@ -545,7 +545,7 @@ def _bootstrap_select_ai_profiles(container: str = "paf-oracle-free-26ai") -> No
         console.print(
             "[yellow]Select AI profile bootstrap skipped on local.[/yellow] "
             "Oracle Free 26ai's DBMS_CLOUD_AI rejects custom provider_endpoint "
-            "values pre-flight (ORA-20401). The CHAT_WORKFLOW flow uses a generic "
+            "values pre-flight (ORA-20401). The CHAT_FLOW flow uses a generic "
             "SQL Query node + LLM locally; full Select AI is the ADB path. "
             "See docs/DEPLOYMENT.md §7."
         )
@@ -877,8 +877,8 @@ def _paf_session() -> requests.Session:
     return session
 
 
-def _discover_chat_workflow_id(session: requests.Session) -> str:
-    """Resolve CHAT_WORKFLOW's agent id by name."""
+def _discover_chat_flow_id(session: requests.Session) -> str:
+    """Resolve CHAT_FLOW's agent id by name."""
     r = session.get(f"{PAF_BASE_URL}/agentFactory/v1/agents", timeout=30)
     if r.status_code != 200:
         console.print(f"[red]Could not list agents: HTTP {r.status_code}.[/red]\n{r.text[:300]}")
@@ -887,13 +887,13 @@ def _discover_chat_workflow_id(session: requests.Session) -> str:
     data = body.get("data") if isinstance(body, dict) else body
     agents = data.get("items", []) if isinstance(data, dict) else data
     for agent in agents or []:
-        if agent.get("name") == "CHAT_WORKFLOW":
+        if agent.get("name") == "CHAT_FLOW":
             agent_id = agent.get("agentId") or agent.get("agent_id")
             if agent_id:
                 return str(agent_id)
     console.print(
-        "[red]CHAT_WORKFLOW not found in PAF's agent list.[/red] "
-        "Import and publish it per paf/flows/CHAT_WORKFLOW.md."
+        "[red]CHAT_FLOW not found in PAF's agent list.[/red] "
+        "Import and publish it per paf/flows/CHAT_FLOW.md."
     )
     sys.exit(1)
 
@@ -1417,7 +1417,7 @@ def _iter_server_source_fields(node):
 
 @paf.command("link-flow")
 def paf_link_flow() -> None:
-    """Bind each MCP tool node in CHAT_WORKFLOW to the right MCP server.
+    """Bind each MCP tool node in CHAT_FLOW to the right MCP server.
 
     A flow stores its MCP servers as numeric source ids, which depend on the
     order the servers were registered. This rebinds every node by server name,
@@ -1426,7 +1426,7 @@ def paf_link_flow() -> None:
     """
     _ensure_env()
     session = _paf_session()
-    agent_id = _discover_chat_workflow_id(session)
+    agent_id = _discover_chat_flow_id(session)
 
     r = session.get(f"{PAF_BASE_URL}/agentFactory/v1/agents/{agent_id}", timeout=30)
     if r.status_code != 200:
@@ -1438,7 +1438,7 @@ def paf_link_flow() -> None:
     if not isinstance(graph, dict):
         console.print(
             "[red]The flow has no visual graph to rebind.[/red] "
-            "Import it per paf/flows/CHAT_WORKFLOW.md first."
+            "Import it per paf/flows/CHAT_FLOW.md first."
         )
         sys.exit(1)
 
@@ -1483,13 +1483,13 @@ def paf_link_flow() -> None:
 
     for name, before, after in changes:
         console.print(f"  [cyan]{name}[/cyan]: {before} → {after}")
-    console.print(f"[green]✓[/green] Rebound {len(changes)} MCP node(s) in CHAT_WORKFLOW.")
+    console.print(f"[green]✓[/green] Rebound {len(changes)} MCP node(s) in CHAT_FLOW.")
     console.print("[dim]Publish the flow so the change reaches the integration endpoint.[/dim]")
 
 
 @paf.command("api-key")
 def paf_api_key() -> None:
-    """Mint an integration API key for CHAT_WORKFLOW and store it in .env.
+    """Mint an integration API key for CHAT_FLOW and store it in .env.
 
     Writes PAF_AGENT_ID and PAF_API_KEY. The flow must be published first — PAF
     refuses to run an unpublished workflow through an integration key. Keys last
@@ -1497,7 +1497,7 @@ def paf_api_key() -> None:
     """
     _ensure_env()
     session = _paf_session()
-    agent_id = _discover_chat_workflow_id(session)
+    agent_id = _discover_chat_flow_id(session)
     r = session.post(
         f"{PAF_BASE_URL}/agentFactory/v1/integrations/agents/{agent_id}/keys",
         headers={"Origin": PAF_BASE_URL},
@@ -1559,7 +1559,7 @@ def paf_bootstrap() -> None:
     console.print(f"    OCI certificates added to wallet?  [cyan]No[/cyan]   (this is a local self-signed TCPS")
     console.print(f"        wallet, not an OCI/ADB wallet — it has no OCI certs)")
     console.print(f"  [yellow]Expected:[/yellow] PAF then warns the [bold]Knowledge Assistant won't be installed[/bold]")
-    console.print(f"  (it needs OCI certs in the wallet). [green]That is fine here[/green] — CHAT_WORKFLOW /")
+    console.print(f"  (it needs OCI certs in the wallet). [green]That is fine here[/green] — CHAT_FLOW /")
     console.print(f"  RESEARCH_WORKFLOW don't use the Knowledge Assistant, and we run vLLM locally,")
     console.print(f"  not OCI services. The DB connection still succeeds and install continues.\n")
 
@@ -1573,7 +1573,7 @@ def paf_bootstrap() -> None:
         console.print(f"  [yellow]Note:[/yellow] {advisory}")
     console.print(f"  [bold]Generative model[/bold]   (Model type radio: [cyan]Generative model[/cyan])")
     console.print(f"    LLM provider:        [cyan]vLLM[/cyan]")
-    console.print(f"    Configuration name:  [cyan]gen-model[/cyan]   (generic — keep stable across model swaps; CHAT_WORKFLOW references it)")
+    console.print(f"    Configuration name:  [cyan]gen-model[/cyan]   (generic — keep stable across model swaps; CHAT_FLOW references it)")
     console.print(f"    Model ID:            [cyan]{os.getenv('VLLM_GEN_MODEL')}[/cyan]")
     console.print(f"    Host:                [cyan]http://{vllm_host}[/cyan]   (scheme required)")
     console.print(f"    Port:                [cyan]{os.getenv('VLLM_GEN_PORT')}[/cyan]")
@@ -1606,12 +1606,12 @@ def test() -> None:
 @click.option("-v", "--verbose", "verbose", is_flag=True,
               help="Verbose pytest output (-vv)")
 def test_chat_workflow(expr: str | None, verbose: bool) -> None:
-    """Run the CHAT_WORKFLOW end-to-end test suite.
+    """Run the CHAT_FLOW end-to-end test suite.
 
     Prerequisites:
       - Stack is up (`manage.py local up`).
       - PAF is installed (admin user known).
-      - CHAT_WORKFLOW is built in Agent Builder with Text Input value
+      - CHAT_FLOW is built in Agent Builder with Text Input value
         `paf-test-runner`, saved, and Published.
       - `.env` has PAF_ADMIN_USER + PAF_ADMIN_PASS (run `setup local` to add).
     """
@@ -1641,14 +1641,14 @@ def smoke() -> None:
     """End-to-end sanity check: drive APPROVE, REVIEW and DECLINE through the
     live stack and assert each lands in the expected tier.
 
-    Runs three CHAT_WORKFLOW turns (Alice → APPROVE, Frank → REVIEW,
+    Runs three CHAT_FLOW turns (Alice → APPROVE, Frank → REVIEW,
     David → DECLINE) via the published flow, asserting the customer-facing
     reply and the hitl_task recommendation row for each. ~5–10 min wall clock
     (a full agent turn is ~1–4 min). The three requests it creates stay in
     the backoffice queue for review.
 
     Prerequisites are the same as `test chat-workflow`: stack up, PAF
-    installed, CHAT_WORKFLOW built + published, PAF_ADMIN_* in .env.
+    installed, CHAT_FLOW built + published, PAF_ADMIN_* in .env.
     """
     _ensure_env()
     if not os.getenv("PAF_ADMIN_USER") or not os.getenv("PAF_ADMIN_PASS"):
