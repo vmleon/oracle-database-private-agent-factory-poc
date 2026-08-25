@@ -21,7 +21,7 @@ A failed tool call (e.g. wrong tool name → runtime feeds error back to model �
 2. Custom Instructions: instruct the agent to call 5 different tools in sequence, then emit a final message.
 3. Run the flow. The 5th tool call fails with the error above. The Condition / downstream nodes see the error string as the agent's `Message` output.
 
-For a real-world repro: `paf/flows/CHAT_WORKFLOW.md`'s EvaluationAgent recipe needs exactly 4 tool calls + 1 final emission. When the 3rd call (`verify_employer`) failed because of the related operationId issue ([[06-openapi-importer-ignores-operationid]]), the retry burned the budget and the 4th call (`evaluate_eligibility`) hit this cliff.
+For a real-world repro: `paf/flows/CHAT_FLOW.md`'s EvaluationAgent recipe needs exactly 4 tool calls + 1 final emission. When the 3rd call (`verify_employer`) failed because of the related operationId issue ([[06-openapi-importer-ignores-operationid]]), the retry burned the budget and the 4th call (`evaluate_eligibility`) hit this cliff.
 
 ## Source confirmation
 
@@ -41,7 +41,7 @@ The `Tool named ... is not in the list` error is emitted by the same file at L60
 
 - The cap is invisible in the UI — no setting on the Agent node exposes it.
 - The "available tools list collapses to `['talk_to_user']` on the last iteration" behavior is not documented anywhere reachable from the UI; the only diagnostic surface is `state_manager.log` inside the PAF container.
-- The cap forces a per-agent tool-budget below what most non-trivial recipes need. Splitting work across multiple agents becomes mandatory rather than stylistic, with the corresponding extra prompt-engineering cost (handing evidence between agents through Prompt + Condition nodes — see CHAT_WORKFLOW's two-agent split).
+- The cap forces a per-agent tool-budget below what most non-trivial recipes need. Splitting work across multiple agents becomes mandatory rather than stylistic, with the corresponding extra prompt-engineering cost (handing evidence between agents through Prompt + Condition nodes — see CHAT_FLOW's two-agent split).
 - A single transient tool-call error (e.g. tool name typo, network blip, MCP timeout) eats an iteration silently and can push downstream tool calls into the "stripped" iteration, producing the exact same misleading error as a real tool-list misconfiguration.
 
 ## Suggested fix

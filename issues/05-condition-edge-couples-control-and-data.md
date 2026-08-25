@@ -44,12 +44,12 @@ In PAF you must instead thread data through the branch you happen to be taking, 
 
 ## Workaround currently in use
 
-In `CHAT_WORKFLOW` the Docs & Employer stage needs no forwarded payload (every agent re-reads everything from the DB via `get_context`), yet must still be gated to run only when intake is `READY`. We make the gate **forward the session token itself**:
+In `CHAT_FLOW` the Docs & Employer stage needs no forwarded payload (every agent re-reads everything from the DB via `get_context`), yet must still be gated to run only when intake is `READY`. We make the gate **forward the session token itself**:
 
 - `Condition G1`: `Text Input` ← Concierge message (tested); `True Message` ← **Token extractor** (forwarded); `False Message` ← Concierge message (the still-collecting question).
 - `G1.true_output → Docs & Employer prompt.session_token` — the single edge both sequences the step and delivers the token.
 
-For the Eligibility and Recommendation stages the coupling is harmless, because those prompts have a genuine payload port (`evidence` / `findings`) for the gate output to land on, and they take `session_token` straight from the Token extractor. See [`paf/flows/CHAT_WORKFLOW.md`](../paf/flows/CHAT_WORKFLOW.md) Steps 6–8.
+For the Eligibility and Recommendation stages the coupling is harmless, because those prompts have a genuine payload port (`evidence` / `findings`) for the gate output to land on, and they take `session_token` straight from the Token extractor. See [`paf/flows/CHAT_FLOW.md`](../paf/flows/CHAT_FLOW.md) Steps 6–8.
 
 ## Suggested fix
 

@@ -12,7 +12,7 @@ saved flow definition is 100% correct, and **clone / from-scratch rebuild /
 
 ## Reproduce
 
-`CHAT_WORKFLOW` has three sequential agents, each with a distinct tool:
+`CHAT_FLOW` has three sequential agents, each with a distinct tool:
 
 | Agent           | Wired tool node                                       | MCP source                         |
 | --------------- | ----------------------------------------------------- | ---------------------------------- |

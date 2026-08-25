@@ -34,7 +34,7 @@ The narrative above tells the story; the diagrams below are abstract visual anch
 flowchart LR
     lina(["Lina"])
     pafui["PAF Builder UI"]
-    chat[["CHAT_WORKFLOW"]]
+    chat[["CHAT_FLOW"]]
     research[["RESEARCH_WORKFLOW"]]
     lina --> pafui
     pafui -->|"author + publish"| chat
@@ -47,7 +47,7 @@ flowchart LR
 sequenceDiagram
     actor Customer
     participant Chat as Chat UI
-    participant Agent as CHAT_WORKFLOW
+    participant Agent as CHAT_FLOW
     participant HITL as HITL queue
     Customer->>Chat: chats, uploads docs
     Chat->>Agent: each turn
@@ -69,22 +69,25 @@ flowchart TD
     entry --> ctx[("Customer + application context<br/>Oracle AI Database · MCP")]
     entry --> elig{{"Eligibility decision<br/>OPA policy engine · MCP"}}
 
-    entry -->|context| conc["Concierge<br/>conversational intake"]
-    conc --> draft[("Loan application draft<br/>Oracle AI Database · MCP")]
+    entry --> reqd{{"Required documents<br/>OPA policy engine · MCP"}}
+    entry --> reg[/"Employer verification<br/>Company Registry · REST API"/]
 
-    conc -->|"intake complete"| docs["Docs &amp; Employer<br/>evidence gathering"]
-    docs --> reqd{{"Required documents<br/>OPA policy engine · MCP"}}
-    docs --> reg[/"Employer verification<br/>Company Registry · REST API"/]
+    entry -->|facts| mgr["Manager<br/>picks the stage, holds no tools"]
 
-    docs -->|evidence| rec["Recommendation<br/>tier + reason codes"]
-    entry -->|"context + eligibility"| rec
+    mgr -->|"still collecting"| intake["Intake<br/>conversational collection"]
+    intake --> draft[("Loan application draft<br/>Oracle AI Database · MCP")]
+
+    mgr -->|"ready to decide"| rec["Recommendation<br/>tier + reason codes"]
     rec --> task[("Review task + queue<br/>Oracle AI Database · MCP")]
 
+    mgr --> chk["Decision recorded?<br/><i>deterministic — no LLM</i>"]
+    task -.->|"read back"| chk
+
     task --> sam(["Sam · reviews and decides"])
-    rec -->|"customer-safe reply"| be
+    chk -->|"customer-safe reply"| be
 ```
 
-Every agent gets the customer's facts as **data** from the deterministic session context — no agent resolves an identity itself. Only two edges write: the `Concierge`'s draft application and the `Recommendation`'s review task.
+The manager gets every fact as **data** from the deterministic nodes — no agent resolves an identity, evaluates a policy, or verifies an employer itself. Only two edges write: `Intake`'s draft application and `Recommendation`'s review task, and the reply reaches the customer only once the database confirms the turn is consistent.
 
 ### Diego — builds the platform
 
@@ -131,7 +134,7 @@ New to the project? Read in this order:
 2. [`docs/GLOSSARY.md`](docs/GLOSSARY.md) — plain-English banking terms (DTI, PTI, KYC, AML, fair lending), if they're new to you.
 3. [`docs/DECISIONING-ENGINE-USE-CASE.md`](docs/DECISIONING-ENGINE-USE-CASE.md) — the credit-decisioning use case: what the system does and why.
 4. [`docs/DESIGN.md`](docs/DESIGN.md) — the architecture, PAF Hybrid runtime mapping, source layout, and locked decisions.
-5. [`paf/flows/CHAT_WORKFLOW.md`](paf/flows/CHAT_WORKFLOW.md) — the customer-facing agent flow, in build detail.
+5. [`paf/flows/CHAT_FLOW.md`](paf/flows/CHAT_FLOW.md) — the customer-facing agent flow, in build detail.
 6. [`LOCAL.md`](LOCAL.md) — stand the stack up and test it.
 
 Reference as needed: [`docs/PAF.md`](docs/PAF.md) (generic PAF product guide) · [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) (deploy strategy + `manage.py`) · [`docs/TROUBLESHOOT.md`](docs/TROUBLESHOOT.md) (workarounds) · [`BACKLOG.md`](BACKLOG.md) (future features: Customer 360, XGBoost scoring, product-rec, TOON) · [`presentation/deck.md`](presentation/deck.md) (conference talk deck).
@@ -166,30 +169,26 @@ What works today on the local stack:
 - `hitl-mcp` at `http://hitl-mcp:8502/mcp/` — thin Python wrapper over `oracledb.callfunc` that exposes the in-DB `AGENT_TOOLS.PKG_AGENT_TOOLS.create_hitl_task` PL/SQL function as an MCP tool (PAF's only path to in-DB side-effects locally; in cloud the same function is exposed as a Select AI Tool — see [`docs/DESIGN.md §11`](docs/DESIGN.md)).
 - `registry-api` at `http://registry-api:8600/` — synthetic Company Registry FastAPI with one `verify_employer(name)` route. OpenAPI 3.1 spec, registered with PAF as an HTTP datasource. Records align with the 010 seed employers (e.g. `Phoenix Holdings Ltd` → dormant, `Atlantis Innovations Ltd` → not registered).
 - Spring Boot Application Service on `localhost:8090` (mints the opaque session token at login, lists customers, brokers each chat turn, serves the HITL queue + task detail, and writes the Blockchain `decision` row when a reviewer closes a task) plus the two React/Vite SPAs — customer chat and reviewer portal — behind the Caddy proxy on `localhost:5173`.
-- `CHAT_WORKFLOW` is a **three-agent origination pipeline** (`Concierge` → `Docs & Employer` → `Recommendation`) plus a **deterministic eligibility node**, on a self-hosted vLLM endpoint (validated on `Qwen/Qwen2.5-72B-Instruct-AWQ`; see [`LOCAL.md`](LOCAL.md) for recommended models). The `Concierge` runs conversational intake — collecting `amount` / `term_months` / `purpose` and creating the `DRAFT` via `application-mcp.upsert_application`; `Docs & Employer` gathers required documents + employer verification (opa-mcp, Company Registry REST); OPA eligibility on the DB-derived DTI/PTI runs server-side in `banking-mcp.evaluate_eligibility_for_session` (a Deterministic MCP node — no agent, no LLM); `Recommendation` decides `APPROVE` / `REVIEW` / `DECLINE`, writes structured reason codes via `hitl-mcp.create_hitl_task` (the only side-effect tool), and returns a compliance-safe customer hint. The customer's state is loaded once from `banking-mcp.get_context` (DB-as-memory) and fanned out to every agent as data, keeping each agent inside PAF's ≤3-tool budget. Importable export: [`paf/flows/chat_flow.paf`](paf/flows/chat_flow.paf); build blueprint with full custom-instructions blocks: [`paf/flows/CHAT_WORKFLOW.md`](paf/flows/CHAT_WORKFLOW.md).
+- `CHAT_FLOW` is **one manager agent with two sub-agent workers**, fed by **five deterministic `banking-mcp` nodes**, on a self-hosted vLLM endpoint (validated on `Qwen/Qwen2.5-72B-Instruct-AWQ`; see [`LOCAL.md`](LOCAL.md) for recommended models). Four deterministic nodes run before the manager off one wired token chain — `get_context`, `evaluate_eligibility_for_session` (OPA on the DB-derived DTI/PTI), `required_documents_for_session` and `verify_employer_for_session` (Company Registry) — so every fact the decision rests on is computed server-side, with no LLM in the loop. The manager holds no tools: it reads those facts and delegates to `Intake` (conversational collection of `amount` / `term_months` / `purpose`, writing the `DRAFT` via `application-mcp.upsert_application`) or to `Recommendation` (`APPROVE` / `REVIEW` / `DECLINE` plus structured reason codes via `hitl-mcp.create_hitl_task`, the only side-effect tool, returning a compliance-safe customer sentence). A fifth deterministic node, `hitl_status_for_session`, then reads the database and the final gate refuses to show a reply when a decision should exist and does not. Build blueprint with full custom-instructions blocks: [`paf/flows/CHAT_FLOW.md`](paf/flows/CHAT_FLOW.md).
 
-  The deterministic `CHAT_WORKFLOW` in PAF Agent Builder — the session token is wired into a single `get_context` (Deterministic MCP) node and never transcribed by an LLM; each agent reads `{{context}}`:
+  The deterministic entry in PAF Agent Builder — the session token is wired into the `banking-mcp` nodes and never transcribed by an LLM on any read path:
 
   ![Deterministic token entry → get_context (JSON-wrap → Type Convert → Deterministic MCP → G0)](images/chat_flow_0_token.png)
-  ![Concierge — conversational intake + intake gate](images/chat_flow_1_concierge.png)
-  ![Docs & Employer — required documents + employer verification](images/chat_flow_2_docs_employer.png)
-  ![Recommendation — tier + reason codes + HITL task](images/chat_flow_4_recommendation.png)
 
 What's next, in order:
 
-1. **End-to-end test `CHAT_WORKFLOW` across the seeded scenarios.** `customer_id` / `application_id` are never taken from the chat message — they're resolved server-side from an opaque session token via `banking-mcp.get_context` (cx_Oracle bind variables, fail-secure), which is why a PAF SQL Query node wasn't viable (see [`issues/02-sql-query-no-bind-variables.md`](issues/02-sql-query-no-bind-variables.md)). A pytest harness covers the six happy-path tiers plus the fail-secure and prompt-injection cases: [`tests/test_chat_workflow.py`](tests/test_chat_workflow.py). Scenario table + seeded tokens in [`paf/flows/CHAT_WORKFLOW.md §Test prompts`](paf/flows/CHAT_WORKFLOW.md#test-prompts).
-2. **Capture the workflow JSON** to `paf/flows/chat_workflow.flow.json` as a reference snapshot to diff against on a clean redeploy.
-3. **`RESEARCH_WORKFLOW` flow** — backoffice-only, broader read-only scope (full transactions, `decision_audit`, `policy_parameter_history`, RAG over `policy_corpus`). No side-effect tools. Reuses the build pattern proven by `CHAT_WORKFLOW`.
-4. **Document uploads + Case Research panel** — a chat upload endpoint that stores the uploaded file against the application, and the Case Research Agent panel in the reviewer portal once `RESEARCH_WORKFLOW` (item 3) exists.
-5. **Customer 360 view** — finish `REPORTING.cust_360` joining demographics, balances, products held, recent transactions, bureau snapshot, employer-verification. Feature source for item 6. See [`BACKLOG.md §2`](BACKLOG.md#2-customer-360-curated-view).
-6. **XGBoost credit-scoring tool** — new `src/ml/credit-score/` Python component trains an XGBoost model in OML4Py on `REPORTING.cust_360`, registers it in OML, and exposes `AGENT_TOOLS.predict_credit_score` to the agent (Select AI Tool on cloud / MCP wrapper on local). Wires into the `Recommendation` agent's evidence + `system_config` tier weights. See [`BACKLOG.md §3`](BACKLOG.md#3-xgboost-credit-scoring-tool).
-7. **Product-recommendation workflow** — second PAF Agent Builder flow over `REPORTING.cust_360`, mirroring the `CHAT_WORKFLOW` pattern; consumes the credit-score tool from item 6 as one of its signals. See [`BACKLOG.md §1`](BACKLOG.md#1-proactive-product-recommendation-as-a-second-workflow).
-8. **TOON feasibility spike** — confirm whether a PAF Function node can run a `toon` library to transform tool output, or whether encoding has to happen in the prompt-builder outside PAF. Independent — can happen in parallel. See [`BACKLOG.md §4`](BACKLOG.md#4-toon-feasibility-spike).
-9. **Cloud deployment** (OCI Terraform + Ansible, ADB + LB).
+1. **End-to-end test `CHAT_FLOW` across the seeded scenarios.** `customer_id` / `application_id` are never taken from the chat message — they're resolved server-side from an opaque session token via `banking-mcp.get_context` (cx_Oracle bind variables, fail-secure), which is why a PAF SQL Query node wasn't viable (see [`issues/02-sql-query-no-bind-variables.md`](issues/02-sql-query-no-bind-variables.md)). A pytest harness covers the six happy-path tiers plus the fail-secure and prompt-injection cases: [`tests/test_chat_workflow.py`](tests/test_chat_workflow.py). Scenario table + seeded tokens in [`paf/flows/CHAT_FLOW.md §Test prompts`](paf/flows/CHAT_FLOW.md#test-prompts).
+2. **`RESEARCH_WORKFLOW` flow** — backoffice-only, broader read-only scope (full transactions, `decision_audit`, `policy_parameter_history`, RAG over `policy_corpus`). No side-effect tools. Reuses the build pattern proven by `CHAT_FLOW`.
+3. **Document uploads + Case Research panel** — a chat upload endpoint that stores the uploaded file against the application, and the Case Research Agent panel in the reviewer portal once `RESEARCH_WORKFLOW` (item 2) exists.
+4. **Customer 360 view** — finish `REPORTING.cust_360` joining demographics, balances, products held, recent transactions, bureau snapshot, employer-verification. Feature source for item 5. See [`BACKLOG.md §2`](BACKLOG.md#2-customer-360-curated-view).
+5. **XGBoost credit-scoring tool** — new `src/ml/credit-score/` Python component trains an XGBoost model in OML4Py on `REPORTING.cust_360`, registers it in OML, and exposes `AGENT_TOOLS.predict_credit_score` to the agent (Select AI Tool on cloud / MCP wrapper on local). Wires into the `Recommendation` agent's evidence + `system_config` tier weights. See [`BACKLOG.md §3`](BACKLOG.md#3-xgboost-credit-scoring-tool).
+6. **Product-recommendation workflow** — second PAF Agent Builder flow over `REPORTING.cust_360`, mirroring the `CHAT_FLOW` pattern; consumes the credit-score tool from item 5 as one of its signals. See [`BACKLOG.md §1`](BACKLOG.md#1-proactive-product-recommendation-as-a-second-workflow).
+7. **TOON feasibility spike** — confirm whether a PAF Function node can run a `toon` library to transform tool output, or whether encoding has to happen in the prompt-builder outside PAF. Independent — can happen in parallel. See [`BACKLOG.md §4`](BACKLOG.md#4-toon-feasibility-spike).
+8. **Cloud deployment** (OCI Terraform + Ansible, ADB + LB).
 
 Schema-side follow-ups deferred until a consumer needs them: vector index on `policy_corpus` / `case_history` (waits for the embedding pipeline that populates the `VECTOR(1024, FLOAT32)` columns via bge-m3) and the `policy_corpus` / sanctions seed data.
 
 Two known constraints not in the "next" list because they're decided:
 
-- **Select AI profiles are ADB-only.** Oracle Free 26ai (23.26.x) rejects custom `provider_endpoint` values in `DBMS_CLOUD_AI` pre-flight. The local `CHAT_WORKFLOW` flow uses MCP tools + LLM; full Select AI Bridge is the cloud path. See [`docs/DEPLOYMENT.md §7`](docs/DEPLOYMENT.md).
+- **Select AI profiles are ADB-only.** Oracle Free 26ai (23.26.x) rejects custom `provider_endpoint` values in `DBMS_CLOUD_AI` pre-flight. The local `CHAT_FLOW` flow uses MCP tools + LLM; full Select AI Bridge is the cloud path. See [`docs/DEPLOYMENT.md §7`](docs/DEPLOYMENT.md).
 - **Auth is out of scope.** Both UIs use a mock login (customer dropdown / role dropdown). The audience system is assumed to provide SSO in production.

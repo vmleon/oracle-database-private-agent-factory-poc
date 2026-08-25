@@ -7,17 +7,15 @@ features, and platform hardening.
 
 ## 0. PAF 26.4 — residual follow-ups
 
-**Shipped (26.4 fully adopted this session):** kit on 26.4 (`PAF_TARBALL`); **TCPS** DB connection + client wallet; the **`mcp-proxy` HTTPS gateway** for the MCP servers + PAF cert-trust (`SSL_CERT_FILE` + certifi injection); **`AAI_RO_AGENT_FACTORY`** pre-creation; **`paf allow-internal-mcp`**; the **deterministic `get_context`** entry (read path — closes the streamed-token corruption; built, validated end-to-end, the former `issues/09` deleted; spec: `docs/superpowers/specs/2026-06-04-deterministic-get-context-design.md`); the rewritten 23-step `CHAT_WORKFLOW` blueprint; and the flow **`.paf` export/import** round-trip (`LOCAL.md §5`, committed `paf/flows/chat_flow.paf`). What remains is optional or an alternative — **none are blocking**.
+**Shipped (26.4 fully adopted this session):** kit on 26.4 (`PAF_TARBALL`); **TCPS** DB connection + client wallet; the **`mcp-proxy` HTTPS gateway** for the MCP servers + PAF cert-trust (`SSL_CERT_FILE` + certifi injection); **`AAI_RO_AGENT_FACTORY`** pre-creation; **`paf allow-internal-mcp`**; the **deterministic `get_context`** entry (read path — closes the streamed-token corruption; built, validated end-to-end, the former `issues/09` deleted; spec: `docs/superpowers/specs/2026-06-04-deterministic-get-context-design.md`); and the `CHAT_FLOW` blueprint. What remains is optional or an alternative — **none are blocking**.
 
-### 0.1 Flow export/import doc cleanup
+### 0.1 Flow export/import
 
-Flow export/import is a **UI operation** (Agent Builder → My Custom Flows) — intentionally **not** scripted in `manage.py`. The round-trip works and is documented (`LOCAL.md §5`). 26.4's native export/import supersedes the old "no export endpoint" gap (that issue is now deleted); the only residuals are operational: deps re-link by hand on import, imports arrive unpublished, and `.paf` is binary so not git-diffable. One doc fix remains:
-
-- Update `paf/flows/CHAT_WORKFLOW.md §Export` — it still describes the old "no Export button / Network-tab scrape" path.
+Flow export/import is a **UI operation** (Agent Builder → My Custom Flows) — intentionally **not** scripted in `manage.py`. The round-trip works and is documented (`LOCAL.md §5`). The residuals are operational: deps re-link by hand on import, imports arrive unpublished, and `.paf` is binary so not git-diffable.
 
 ### 0.2 Deterministic `upsert` via marker — only if needed
 
-The deterministic **read** path is shipped; `upsert_application` is left **agentic on purpose** (its token corruption is fail-closed + idempotent, and it wasn't the repro). Only if write-path corruption ever appears in testing: Concierge emits an `[[UPSERT …]]` marker → RegexExtractor + Type Convert build the JSON → a Deterministic MCP node calls `upsert_application` with the token wired. Cost: reopens the fail-open string-interpolation hazard (`issues/02`), a write-or-skip Condition (`issues/05`), and structured marker emission (`issues/09`). Parked.
+The deterministic **read** path is shipped; `upsert_application` is left **agentic on purpose** (its token corruption is fail-closed + idempotent, and it wasn't the repro). Only if write-path corruption ever appears in testing: the intake worker emits an `[[UPSERT …]]` marker → RegexExtractor + Type Convert build the JSON → a Deterministic MCP node calls `upsert_application` with the token wired. Cost: reopens the fail-open string-interpolation hazard (`issues/02`), a write-or-skip Condition (`issues/05`), and structured marker emission (`issues/09`). Parked.
 
 ### 0.3 PL/SQL Executor node — safe in-DB calls (alternative for `issues/02`)
 
@@ -33,11 +31,11 @@ The new **Oracle PL/SQL Executor node** runs only routines visible in the connec
 
 - **Code.** Optional: add a local trace-collector service (e.g. Phoenix or Langfuse) to `deploy/podman/compose.local.yml` if we want traces without a cloud account; otherwise no code.
 - **Docs.** Add an "enable tracing" recipe to `docs/TROUBLESHOOT.md` and an optional step in `LOCAL.md`. Note in `issues/04` / `issues/08` that 26.4 makes the conditions observable even though the messages/cap are unchanged.
-- **Guide steps.** PAF Settings → tracing provider → point at the collector, enable masking; show where a `CHAT_WORKFLOW` run's per-tool spans land.
+- **Guide steps.** PAF Settings → tracing provider → point at the collector, enable masking; show where a `CHAT_FLOW` run's per-tool spans land.
 
 ## 1. Proactive product recommendation as a second workflow
 
-Clone the `CHAT_WORKFLOW` pattern into a second PAF Agent Builder flow over the same `REPORTING.*` view set, with a different agent prompt + tool surface + signal weights, writing to a recommendation queue rather than `hitl_task`. Reuses the existing backbone (HITL, audit, OPA grounding, RAG citations, configurable signal weights) for a recommendation surface alongside the decisioning surface.
+Clone the `CHAT_FLOW` pattern into a second PAF Agent Builder flow over the same `REPORTING.*` view set, with a different agent prompt + tool surface + signal weights, writing to a recommendation queue rather than `hitl_task`. Reuses the existing backbone (HITL, audit, OPA grounding, RAG citations, configurable signal weights) for a recommendation surface alongside the decisioning surface.
 
 ## 3. XGBoost credit-scoring tool
 
@@ -82,9 +80,9 @@ Outcome: TOON encoding happens either inside the PAF flow (clean, one place to l
 
 ## Execution order
 
-1. **End-to-end test the built `CHAT_WORKFLOW`** across the seeded scenarios (the deterministic flow is built, published, and exported; the `get_context` entry is validated). Run `tests/test_chat_workflow.py` + the tier table in `paf/flows/CHAT_WORKFLOW.md §Test prompts`.
+1. **End-to-end test the built `CHAT_FLOW`** across the seeded scenarios (the `get_context` entry is validated). Run `tests/test_chat_workflow.py` + the tier table in `paf/flows/CHAT_FLOW.md §Test prompts`.
 2. Finish the loan-decisioning end-to-end: the remaining Application Service bits, the two Angular UIs, Blockchain `decision` write at HITL close.
 3. §3 — XGBoost credit-scoring tool (reads the shipped `REPORTING.cust_360`).
 4. §1 — product-recommendation workflow. Consumes the credit-score tool from §3 as one of its signals.
 5. §4 — TOON spike. Independent of the steps above, can happen in parallel.
-6. §0 residuals — all optional/alternative (0.1 export/import doc cleanup, 0.3 PL/SQL-node spike, 0.4 tracing); 0.2 only if write-path corruption appears.
+6. §0 residuals — all optional/alternative (0.1 export/import residuals, 0.3 PL/SQL-node spike, 0.4 tracing); 0.2 only if write-path corruption appears.

@@ -1,6 +1,6 @@
 # Agent Builder Agent node can't request structured / constrained LLM output, though Wayflow + vLLM support it
 
-**Severity: low** — a markdown contract + a deterministic Condition gate is a working alternative (used in `CHAT_WORKFLOW`). This is a robustness/ergonomics gap, not a blocker.
+**Severity: low** — a markdown contract + a deterministic Condition gate is a working alternative (used in `CHAT_FLOW`). This is a robustness/ergonomics gap, not a blocker.
 
 ## What
 

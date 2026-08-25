@@ -26,7 +26,7 @@ Behavior observed against the running PAF container (`POST .../agentBuilder/run`
 
 - Any long-lived API integration (our Spring backend) **starts failing every turn after ~30 min** until restarted, because the standard "refresh auth on 401" pattern never triggers — the response is a 303/HTML 200, not a 401.
 - Returning HTML to a JSON API endpoint forces clients to sniff the body ("is this JSON?") to detect expiry — brittle and undocumented.
-- Related ergonomics: the run endpoint is **synchronous and slow** (a 4-agent `CHAT_WORKFLOW` turn takes 200–255s), with no async/polling option, forcing very long client socket timeouts (we raised ours to 8 min). A clean auth contract matters more when each call is multi-minute.
+- Related ergonomics: the run endpoint is **synchronous and slow** (a 4-agent `CHAT_FLOW` turn takes 200–255s), with no async/polling option, forcing very long client socket timeouts (we raised ours to 8 min). A clean auth contract matters more when each call is multi-minute.
 
 ## Workaround currently in use
 

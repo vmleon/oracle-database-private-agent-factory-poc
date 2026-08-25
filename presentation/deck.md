@@ -85,22 +85,22 @@ _If asked:_ it's region-agnostic — no country, currency, or regulator is hard-
 
 ## Slide 5 — Agents where judgment helps, deterministic nodes where it must be exact
 
-- Three agents do the judgment: greet and collect the request, gather documents and verify the employer, compose the recommendation. Each does one job, each makes one or two tool calls.
-- The rules are deterministic nodes, not a model: loading the facts and running the eligibility check are wired, exact, and repeatable. A model never does arithmetic that has to be right every time.
-- The database is the memory: facts are loaded once per turn and handed to the agents. No agent invents facts; the session token is never retyped by a model.
+- A manager agent does the judgment that matters: it reads the facts and picks the stage. Two workers do the specialised work — collecting the request, composing the recommendation. The manager holds no tools; each worker makes at most one tool call.
+- The rules are deterministic nodes, not a model: loading the facts, the eligibility check, the document set and the employer lookup are wired, exact, and repeatable. A model never does arithmetic that has to be right every time.
+- The database is the memory: facts are loaded once per turn and handed to the manager. No agent invents facts; the session token is never retyped by a model on any read path.
 
 ```mermaid
 flowchart LR
-    CTX["Load facts from DB<br/>(deterministic)"] --> C["Concierge<br/>(agent)"]
-    C --> D["Docs & Employer<br/>(agent)"] --> R["Recommendation<br/>(agent)"]
-    EL["Eligibility · OPA<br/>(deterministic — no model)"] --> R
-    CTX --> D
-    CTX --> R
+    CTX["Load facts from DB<br/>(deterministic)"] --> M["Manager<br/>(agent, no tools)"]
+    EL["Eligibility · documents · employer<br/>(deterministic — no model)"] --> M
+    M --> I["Intake<br/>(worker)"]
+    M --> R["Recommendation<br/>(worker)"]
+    R --> CHK["Decision recorded?<br/>(deterministic)"]
 ```
 
 **Speaker notes**
 
-Here's the discipline. We put the model where judgment actually helps — holding the conversation, gathering documents, composing a defensible recommendation. Three agents, each doing one job, each making only one or two tool calls. But the rules — loading the customer's facts, running the eligibility and policy check — those are deterministic nodes, not a model. A model never does arithmetic that has to be right every time. And the database is the memory: every turn, the facts are loaded once, straight from the database, and handed to the agents. No agent can hallucinate its way to a decision, because it never invents the facts.
+Here's the discipline. We put the model where judgment actually helps — holding the conversation and composing a defensible recommendation. A manager agent reads the facts and picks the stage, and hands the work to one of two specialists, each making at most one tool call. But the rules — loading the customer's facts, running the eligibility and policy checks, verifying the employer — those are deterministic nodes, not a model. A model never does arithmetic that has to be right every time. And the database is the memory: every turn, the facts are loaded once, straight from the database, and handed to the manager. No agent can hallucinate its way to a decision, because it never invents the facts.
 
 _If asked:_ eligibility is an OPA policy check fed database-derived values — DTI, PTI, credit score, age — evaluated server-side. The session token is wired through deterministically, never passed to the model as text. Tools are reached over MCP.
 
@@ -135,7 +135,7 @@ _If asked:_ the Blockchain Table is native Oracle — append-only, hash-chained,
 ```mermaid
 flowchart TD
     UI["Customer chat · Backoffice queue"] --> APP["Application backend<br/>(the PAF client)"]
-    APP --> PAF["PAF flow<br/>CHAT_WORKFLOW (3 agents + deterministic nodes)"]
+    APP --> PAF["PAF flow<br/>CHAT_FLOW (manager + 2 workers + deterministic nodes)"]
     PAF -->|MCP tools| TOOLS["OPA policy · OCR · employer registry · in-DB writers"]
     PAF -->|RAG| POLICY["Lending-policy retrieval"]
     PAF --> LLM["LLM (private, self-hosted)"]
