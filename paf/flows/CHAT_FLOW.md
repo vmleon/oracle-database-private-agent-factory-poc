@@ -511,12 +511,12 @@ flowchart LR
     TC2["Type Convert (assert)"] -->|JSON → Tool input JSON| AS["Deterministic MCP (hitl_status_for_session)"]
 ```
 
-### Step 19 — Condition G3 (decision recorded?)
+### Step 19 — Condition G3 (valid session?)
 
 - **Drag** a `Condition`.
 - **Configure:**
   - `Text Input` ← `hitl_status_for_session`.`Message` — the value tested.
-  - `True Message` ← `Manager`.`Message` — the customer-facing reply, forwarded on a consistent turn.
+  - `True Message` ← `Manager`.`Message` — the customer-facing reply, forwarded on a valid session.
   - `False Message` — typed inline:
 
 ```
