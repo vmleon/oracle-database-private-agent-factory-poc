@@ -1,6 +1,8 @@
 package com.bank.appbackend.audit;
 
 import com.bank.appbackend.api.Dtos.ToolCallAudit;
+import com.bank.appbackend.domain.LoanApplication;
+import com.bank.appbackend.domain.LoanApplicationRepository;
 import com.bank.appbackend.login.SessionService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,6 +18,9 @@ import java.time.Instant;
  * them to APP.decision_audit. The application is resolved server-side from the opaque
  * session token only — never from a caller-supplied field — so a row can only ever be
  * written for the application that token authenticates (no cross-application forgery).
+ * The session's cached application_id is a login-time snapshot and is null for a customer
+ * who had no application when they signed in, so the customer's open application is looked
+ * up fresh on every call — a trace must cover the turn that creates the application.
  * Best-effort: any failure here is swallowed so an audit problem can never break the live
  * decisioning run.
  */
@@ -26,10 +31,13 @@ public class AuditService {
 
     private final JdbcTemplate jdbc;
     private final SessionService sessions;
+    private final LoanApplicationRepository applications;
 
-    public AuditService(JdbcTemplate jdbc, SessionService sessions) {
+    public AuditService(JdbcTemplate jdbc, SessionService sessions,
+                        LoanApplicationRepository applications) {
         this.jdbc = jdbc;
         this.sessions = sessions;
+        this.applications = applications;
     }
 
     public void record(ToolCallAudit req) {
@@ -37,9 +45,17 @@ public class AuditService {
             // Authoritative: the application is whatever the session token resolves to.
             // Never trust a caller-supplied id — that would let a tool forge audit rows
             // for another customer's application.
-            Long applicationId = resolveQuietly(req.sessionToken());
+            Long customerId = resolveQuietly(req.sessionToken());
+            if (customerId == null) {
+                log.warn("tool-call audit skipped: invalid or expired session (tool={})", req.toolName());
+                return;
+            }
+            Long applicationId = applications.findOpenByCustomer(customerId)
+                    .map(LoanApplication::getApplicationId)
+                    .orElse(null);
             if (applicationId == null) {
-                log.warn("tool-call audit skipped: no valid session token (tool={})", req.toolName());
+                log.debug("tool-call audit skipped: customer {} has no open application yet (tool={})",
+                        customerId, req.toolName());
                 return;
             }
 
@@ -65,12 +81,13 @@ public class AuditService {
         }
     }
 
+    /** The customer the token authenticates, or null if the token is unusable. */
     private Long resolveQuietly(String token) {
         if (token == null || token.isBlank()) {
             return null;
         }
         try {
-            return sessions.resolve(token).getApplicationId();
+            return sessions.resolve(token).getCustomerId();
         } catch (RuntimeException e) {
             return null;
         }

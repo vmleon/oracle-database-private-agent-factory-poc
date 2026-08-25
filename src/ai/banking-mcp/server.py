@@ -345,13 +345,19 @@ def evaluate_eligibility_for_session(session_token: str) -> dict:
     print(f"[evaluate_eligibility_for_session] called session_token={session_token!r}", flush=True)
     ctx = _get_context_impl(session_token)
     if ctx.get("error"):
-        return {"allow": False, "deny": ["invalid_or_expired_session"], "warn": []}
+        out = {"allow": False, "deny": ["invalid_or_expired_session"], "warn": []}
+        _audit("evaluate_eligibility_for_session", "FAILED", started, _now_utc(), {}, out,
+               session_token=session_token)
+        return out
     app = ctx.get("application") or {}
     if not app or app.get("missing"):
         # Incomplete application: derived (dti/pti) is null. Unused on collecting
         # turns (the flow exits at G1 before Recommendation); fail closed.
         print("[evaluate_eligibility_for_session] -> incomplete application, fail-closed", flush=True)
-        return {"allow": False, "deny": [], "warn": []}
+        out = {"allow": False, "deny": [], "warn": []}
+        _audit("evaluate_eligibility_for_session", "SKIPPED", started, _now_utc(), {}, out,
+               session_token=session_token)
+        return out
     cust = ctx.get("customer") or {}
     prof = ctx.get("profile") or {}
     cred = ctx.get("credit") or {}
@@ -377,7 +383,10 @@ def evaluate_eligibility_for_session(session_token: str) -> dict:
         res = resp.json().get("result") or {}
     except Exception as exc:  # noqa: BLE001
         print(f"[evaluate_eligibility_for_session] OPA error: {exc}", flush=True)
-        return {"allow": False, "deny": ["eligibility_unavailable"], "warn": []}
+        out = {"allow": False, "deny": ["eligibility_unavailable"], "warn": []}
+        _audit("evaluate_eligibility_for_session", "FAILED", started, _now_utc(), opa_input, out,
+               session_token=session_token)
+        return out
     out = {
         "allow": bool(res.get("allow", False)),
         "deny": res.get("deny", []),
@@ -407,7 +416,11 @@ def required_documents_for_session(session_token: str) -> dict:
     payload = documents_payload(ctx)
     if payload is None:
         print("[required_documents_for_session] -> incomplete or invalid, fail-closed", flush=True)
-        return {"required": [], "amount_band": None, "rationale": None}
+        out = {"required": [], "amount_band": None, "rationale": None}
+        _audit("required_documents_for_session",
+               "FAILED" if ctx.get("error") else "SKIPPED", started, _now_utc(), {}, out,
+               session_token=session_token)
+        return out
     try:
         resp = httpx.post(f"{_OPA_URL}/v1/data/decisioning/required_documents",
                           json={"input": payload}, timeout=5.0)
@@ -415,7 +428,10 @@ def required_documents_for_session(session_token: str) -> dict:
         res = resp.json().get("result") or {}
     except Exception as exc:  # noqa: BLE001
         print(f"[required_documents_for_session] OPA error: {exc}", flush=True)
-        return {"required": [], "amount_band": None, "rationale": None}
+        out = {"required": [], "amount_band": None, "rationale": None}
+        _audit("required_documents_for_session", "FAILED", started, _now_utc(), payload, out,
+               session_token=session_token)
+        return out
     out = {
         "required": res.get("required", []),
         "amount_band": res.get("amount_band"),
@@ -444,10 +460,14 @@ def verify_employer_for_session(session_token: str) -> dict:
     ctx = _get_context_impl(session_token)
     if ctx.get("error"):
         print("[verify_employer_for_session] -> invalid session, fail-closed", flush=True)
+        _audit("verify_employer_for_session", "FAILED", started, _now_utc(), {}, closed,
+               session_token=session_token)
         return closed
     name = ((ctx.get("profile") or {}).get("employer_name") or "").strip()
     if not name:
         print("[verify_employer_for_session] -> no employer name, fail-closed", flush=True)
+        _audit("verify_employer_for_session", "SKIPPED", started, _now_utc(), {}, closed,
+               session_token=session_token)
         return closed
     try:
         resp = httpx.get(f"{_REGISTRY_URL}/v1/companies/verify",
@@ -456,7 +476,10 @@ def verify_employer_for_session(session_token: str) -> dict:
         out = resp.json()
     except Exception as exc:  # noqa: BLE001
         print(f"[verify_employer_for_session] registry error: {exc}", flush=True)
-        return {**closed, "name": name}
+        out = {**closed, "name": name}
+        _audit("verify_employer_for_session", "FAILED", started, _now_utc(), {"name": name}, out,
+               session_token=session_token)
+        return out
     _audit("verify_employer_for_session", "SUCCESS", started, _now_utc(), {"name": name}, out,
            session_token=session_token)
     print(f"[verify_employer_for_session] -> registered={out.get('registered')} "

@@ -4,12 +4,8 @@ import { cn } from "@/lib/utils";
 /** Shape of the agent evidence packet (every field optional — it varies per run). */
 interface Evidence {
   reason_codes?: string[];
-  required_documents?: {
-    required?: string[];
-    amount_band?: string;
-    rationale?: string;
-  };
-  verify_employer?: {
+  documents?: string[];
+  employer?: {
     name?: string;
     registered?: boolean;
     trading_status?: string;
@@ -107,55 +103,39 @@ export function EvidencePanel({ raw }: { raw: string | null }) {
     );
   }
 
-  const { verify_employer, required_documents, reason_codes } = e;
+  const { employer, documents, reason_codes } = e;
 
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
       <Card title="Employer">
-        {verify_employer ? (
+        {employer ? (
           <>
             <div className="mb-2">
               <Badge
-                tone={employerTone(
-                  verify_employer.registered,
-                  verify_employer.trading_status,
-                )}
+                tone={employerTone(employer.registered, employer.trading_status)}
               >
-                {verify_employer.registered === false
+                {employer.registered === false
                   ? "Unregistered"
-                  : (verify_employer.trading_status ?? "—")}
+                  : (employer.trading_status ?? "—")}
               </Badge>
             </div>
-            <Field label="Name" value={verify_employer.name} />
-            <Field label="Sector" value={verify_employer.sector} />
-            <Field label="Address" value={verify_employer.registered_address} />
-            <Field label="Last filed" value={verify_employer.last_filed_year} />
+            <Field label="Name" value={employer.name} />
+            <Field label="Sector" value={employer.sector} />
+            <Field label="Address" value={employer.registered_address} />
+            <Field label="Last filed" value={employer.last_filed_year} />
           </>
         ) : (
           <p className="text-sm text-slate-400">Not checked.</p>
         )}
       </Card>
 
-      <Card
-        title={`Required documents${
-          required_documents?.amount_band
-            ? ` · ${required_documents.amount_band} band`
-            : ""
-        }`}
-      >
-        {required_documents?.required?.length ? (
-          <>
-            <div className="flex flex-wrap gap-2">
-              {required_documents.required.map((d) => (
-                <Chip key={d}>{d}</Chip>
-              ))}
-            </div>
-            {required_documents.rationale && (
-              <p className="mt-2 text-xs text-slate-500">
-                {required_documents.rationale}
-              </p>
-            )}
-          </>
+      <Card title="Required documents">
+        {documents?.length ? (
+          <div className="flex flex-wrap gap-2">
+            {documents.map((d) => (
+              <Chip key={d}>{d}</Chip>
+            ))}
+          </div>
         ) : (
           <p className="text-sm text-slate-400">None.</p>
         )}

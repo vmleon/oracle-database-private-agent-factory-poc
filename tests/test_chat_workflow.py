@@ -62,8 +62,8 @@ TIER_REPLY = {
 @pytest.mark.parametrize(
     "name,full_name,expected_tier,reasoning_re", SCENARIOS
 )
-def test_happy_path(name, full_name, expected_tier,
-                    reasoning_re, resolve, mint_session, chat, new_hitl_rows):
+def test_happy_path(name, full_name, expected_tier, reasoning_re, resolve,
+                    mint_session, chat, new_hitl_rows, evidence_and_trace):
     customer_id, application_id = resolve(full_name)
     token = mint_session(customer_id, application_id)
 
@@ -86,6 +86,11 @@ def test_happy_path(name, full_name, expected_tier,
         f"(reasoning: {reasoning!r})"
     assert re.search(reasoning_re, reasoning), \
         f"{name}: reasoning did not match {reasoning_re!r}: {reasoning!r}"
+
+    evidence, trace = evidence_and_trace(application_id)
+    assert set(evidence) >= {"reason_codes", "eligibility", "employer", "documents"}, \
+        f"{name}: review portal reads evidence by key name; got {sorted(evidence)}"
+    assert trace, f"{name}: no tool trace recorded for application {application_id}"
 
 
 def test_token_app_id_ignored(resolve, mint_session, chat, new_hitl_rows):

@@ -384,8 +384,12 @@ Then call create_hitl_task EXACTLY ONCE with:
   reasoning      = one sentence quoting the specific deny[]/warn[] message or the
                    employer status; if a list is empty, say so.
   explore_hints  = JSON-string array of follow-up checks — REVIEW only; null otherwise.
-  evidence       = JSON string carrying the reason codes plus the eligibility,
-                   employer and document values.
+  evidence       = JSON string with EXACTLY these four keys, spelled this way —
+                   the review portal reads them by name:
+                   {"reason_codes": ["..."],
+                    "eligibility": {"allow": bool, "deny": ["..."], "warn": ["..."]},
+                    "employer":    {"registered": bool, "trading_status": "..."},
+                    "documents":   ["ID", "PAYSLIP", "..."]}
   Do NOT supply agent_run_id (server-generated).
 
 After create_hitl_task returns, your answer is EXACTLY the ONE customer-facing

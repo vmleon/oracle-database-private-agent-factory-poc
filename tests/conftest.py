@@ -22,6 +22,7 @@ The key is bound to one published workflow, so no agent lookup is needed.
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 import secrets
@@ -176,6 +177,34 @@ def chat(paf, agent_id):
             return body.get("data", body)
         return body
     return _run
+
+
+@pytest.fixture
+def evidence_and_trace(db):
+    """Return a callable: application_id -> (evidence dict, tool-name list).
+
+    The review portal reads the evidence by key name and renders the trace from
+    APP.decision_audit, so both are part of the contract a run must satisfy."""
+    def _for(application_id: int) -> tuple[dict, list[str]]:
+        with db.cursor() as cur:
+            cur.execute(
+                "SELECT agent_evidence FROM APP.hitl_task "
+                "WHERE application_id = :a ORDER BY task_id DESC FETCH FIRST 1 ROWS ONLY",
+                a=application_id,
+            )
+            row = cur.fetchone()
+            ev = row[0] if row else None
+            if hasattr(ev, "read"):
+                ev = ev.read()
+            if isinstance(ev, str):
+                ev = json.loads(ev)
+            cur.execute(
+                "SELECT tool_name FROM APP.decision_audit "
+                "WHERE application_id = :a ORDER BY step_no",
+                a=application_id,
+            )
+            return (ev or {}), [t for (t,) in cur.fetchall()]
+    return _for
 
 
 @pytest.fixture
