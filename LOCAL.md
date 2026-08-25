@@ -127,17 +127,17 @@ Smaller / heavily-quantised generative models are not recommended — they route
 
 After install completes, sign in as the admin user.
 
-### 3b. Apply the AgentStep patch (required for multi-agent flows)
+### 3b. Raise the agent iteration budget
 
 ```bash
-bash paf/patches/agentstep-unique-tool-names.sh
+bash paf/patches/agent-max-iterations.sh
 ```
 
-PAF 26.4 names every Agent node's executable `agent_step` and keys its tool registry by that name, first-write-wins — so in a multi-agent flow **every agent silently runs with the first agent's tools** ([`issues/01`](issues/01-multi-agent-tool-binding-collapses-to-first-agent.md)). `CHAT_FLOW` cannot work without this patch: `Docs & Employer` would be handed `upsert_application`, never emit its `[[EVIDENCE …]]` block, and the flow would end in its static error with zero HITL rows.
+PAF builds every Agent node with a **5-iteration** executor budget, and the last iteration is reserved for the reply — four tool calls per turn, with no setting to change it ([`issues/04`](issues/04-agent-max-iterations-5-cap.md)). The script raises it to **8**, so a recipe that needs its full budget survives one failed call.
 
-The script rewrites `agent_factory/app/models/agentBuilder/steps/customSteps/AgentStep.py` inside the `paf-agent-factory` container so each node registers a unique tool name, byte-compiles the result, and runs the kit's `manage_app.sh` to restart the app. It is idempotent (it backs up the file and no-ops when already applied) and takes a few seconds.
+It rewrites `agent_factory/app/models/agentBuilder/steps/customSteps/AgentStep.py` inside the `paf-agent-factory` container, byte-compiles the result, and runs the kit's `manage_app.sh` to restart the app. It is idempotent (it backs up the file and no-ops when already applied) and takes a few seconds.
 
-**The patch lives in the container filesystem, not in the image** — re-run it after every fresh install, `local down --purge`, or PAF image rebuild. Confirm it took effect with a two-agent smoke test: each agent should call only its own tools in the Playground trace.
+**The patch lives in the container filesystem, not in the image** — re-run it after every fresh install, `local down --purge`, or PAF image rebuild.
 
 ## 4. Register tools and datasources
 
@@ -270,14 +270,14 @@ Agent Builder → **My Custom Flows** → **Export** → set a password produces
 
 ## Day-2
 
-| Command                                           | What it does                                                                                                                                                                                                                                                                                           |
-| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `python manage.py local up`                       | Idempotent: starts containers if down, runs Liquibase if any pending changesets.                                                                                                                                                                                                                       |
-| `python manage.py local provision`                | Re-runs Liquibase + grants only (no podman restart). Use after editing the changelog.                                                                                                                                                                                                                  |
-| `python manage.py local logs <service>`           | Tails a service (`oracle-free-26ai`, `paf`, `opa`, `opa-mcp`, `hitl-mcp`, `application-mcp`, `banking-mcp`, `registry-api`, `application-backend`).                                                                                                                                                    |
-| `python manage.py local down`                     | Stops and removes containers. State persists in the `paf-oradata` volume and PAF's bind-mounted `paf-kit/applied-ai/{volume,dev-shared}` directories.                                                                                                                                                  |
-| `python manage.py local down --purge`             | Also removes the Oracle data volume **and** resets PAF's bind-mounted `applied-ai/{volume,dev-shared}` directories to the kit-shipped defaults (snapshotted at `paf prepare` time). Next `local up` starts with a fresh DB and PAF presents the install wizard again. Does **not** re-extract the kit. |
-| `bash paf/patches/agentstep-unique-tool-names.sh` | Re-applies the 26.4 per-node Agent tool-name patch (§3b) — needed after any fresh install or PAF image rebuild.                                                                                                                                                                                        |
+| Command                                    | What it does                                                                                                                                                                                                                                                                                           |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `python manage.py local up`                | Idempotent: starts containers if down, runs Liquibase if any pending changesets.                                                                                                                                                                                                                       |
+| `python manage.py local provision`         | Re-runs Liquibase + grants only (no podman restart). Use after editing the changelog.                                                                                                                                                                                                                  |
+| `python manage.py local logs <service>`    | Tails a service (`oracle-free-26ai`, `paf`, `opa`, `opa-mcp`, `hitl-mcp`, `application-mcp`, `banking-mcp`, `registry-api`, `application-backend`).                                                                                                                                                    |
+| `python manage.py local down`              | Stops and removes containers. State persists in the `paf-oradata` volume and PAF's bind-mounted `paf-kit/applied-ai/{volume,dev-shared}` directories.                                                                                                                                                  |
+| `python manage.py local down --purge`      | Also removes the Oracle data volume **and** resets PAF's bind-mounted `applied-ai/{volume,dev-shared}` directories to the kit-shipped defaults (snapshotted at `paf prepare` time). Next `local up` starts with a fresh DB and PAF presents the install wizard again. Does **not** re-extract the kit. |
+| `bash paf/patches/agent-max-iterations.sh` | Raises the per-agent iteration budget to 8 (§3b) — re-apply after any fresh install or PAF image rebuild.                                                                                                                                                                                              |
 
 Editing OPA policy: change a `.rego` file under `opa/packages/`, then `podman restart paf-opa`. The `opa-mcp` wrapper is stateless and picks up the new policy on the next call — no rebuild needed.
 

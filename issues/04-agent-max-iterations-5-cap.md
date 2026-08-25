@@ -21,7 +21,7 @@ A failed tool call (e.g. wrong tool name â†’ runtime feeds error back to model â
 2. Custom Instructions: instruct the agent to call 5 different tools in sequence, then emit a final message.
 3. Run the flow. The 5th tool call fails with the error above. The Condition / downstream nodes see the error string as the agent's `Message` output.
 
-For a real-world repro: `paf/flows/CHAT_FLOW.md`'s EvaluationAgent recipe needs exactly 4 tool calls + 1 final emission. When the 3rd call (`verify_employer`) failed because of the related operationId issue ([[06-openapi-importer-ignores-operationid]]), the retry burned the budget and the 4th call (`evaluate_eligibility`) hit this cliff.
+For a real-world repro: an evidence-gathering agent whose recipe needs exactly 4 tool calls + 1 final emission. When the 3rd call (`verify_employer`) failed because of the related operationId issue ([[06-openapi-importer-ignores-operationid]]), the retry burned the budget and the 4th call (`evaluate_eligibility`) hit this cliff.
 
 ## Source confirmation
 

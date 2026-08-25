@@ -10,7 +10,7 @@ This is the build blueprint for the customer-facing workflow in PAF Agent Builde
 Three principles shape the whole design:
 
 1. **A flow runs one Agent node per execution path.** A second Agent node on the same path never executes — the first agent's message is returned and the turn ends. Multi-agent therefore means a **manager with workers on its `Sub-agents` port**, and no `Condition` can sit between the workers: delegation happens inside the manager's executor. Gates go **before** the agent or **after** it.
-2. **The database is the memory, loaded once deterministically.** PAF runs the flow statelessly per turn — agents have no memory between turns. A **Deterministic MCP node** calls `get_context(session_token)` at flow start with the token **wired** (Regex extractor → Prompt JSON-wrap → Type Convert → Deterministic MCP), so the authoritative DB facts enter the flow as data and the opaque token is **never transcribed by an LLM** — transcription is what corrupts it (see [`docs/superpowers/specs/2026-06-04-deterministic-get-context-design.md`](../../docs/superpowers/specs/2026-06-04-deterministic-get-context-design.md)). Anything that must survive to the next turn is written to the DB through a tool (`upsert_application`, `create_hitl_task`).
+2. **The database is the memory, loaded once deterministically.** PAF runs the flow statelessly per turn — agents have no memory between turns. A **Deterministic MCP node** calls `get_context(session_token)` at flow start with the token **wired** (Regex extractor → Prompt JSON-wrap → Type Convert → Deterministic MCP), so the authoritative DB facts enter the flow as data and **no model ever transcribes the opaque token on a read path** — transcription is what corrupts it, and the streaming layer is known to drop or duplicate a character in an agentic tool-call argument (see [`docs/superpowers/specs/2026-06-04-deterministic-get-context-design.md`](../../docs/superpowers/specs/2026-06-04-deterministic-get-context-design.md)). Anything that must survive to the next turn is written to the DB through a tool (`upsert_application`, `create_hitl_task`).
 3. **A pure function of values already in the database belongs in a deterministic node, not in a model.** Eligibility, the required-document set and the employer registry lookup are all pure functions of `context`, so they are `banking-mcp` `*_for_session` tools that take only the token. Every fact the decision rests on is computed server-side before any model runs, and no model ever copies an employer name or files a `dti` value where a policy expects it.
 
 This is the **flow-build SSOT**. Architecture rationale: [`docs/DESIGN.md`](../../docs/DESIGN.md); deploy + register the tools: [`LOCAL.md`](../../LOCAL.md).
@@ -74,7 +74,7 @@ flowchart TD
     G3 -->|False| OE["Chat output: apology"]
 ```
 
-Four deterministic calls fan off one Type Convert, so every fact the decision rests on is computed server-side before any model runs. The token is wired throughout and is transcribed by a model only once, when the manager hands it to `Intake` for the `upsert_application` write.
+Four deterministic calls fan off one Type Convert, so every fact the decision rests on is computed server-side before any model runs. The token is wired to every read. It is copied by a model on **two** hops, and only on the write path: the manager copies it into its delegation message and `Intake` copies it into the `upsert_application` argument. Those two hops are the flow's whole transcription risk.
 
 The **manager runs on every turn** — it is the front door. On a collecting turn it delegates to `Intake` and the turn ends with `Intake`'s question; on a confirming turn it delegates to `Recommendation` and the turn ends with the tier sentence. **The Agent node returns the delegated worker's final message**, so the worker's last sentence is what the customer reads; the manager's own sentence is returned only when it does not delegate. All three instruction blocks therefore end in a customer-safe sentence.
 
@@ -191,7 +191,7 @@ flowchart LR
 
 - **Drag** a `Deterministic MCP tool` node.
 - **Configure** — MCP server `banking-mcp`, MCP tool `get_context`.
-- **Wire** — Type Convert's **`JSON`** output → `Tool input JSON`. The node's `Message` output is the customer **context** (the JSON the manager reads). The token is wired, **never transcribed by a model** — transcription is what corrupts it.
+- **Wire** — Type Convert's **`JSON`** output → `Tool input JSON`. The node's `Message` output is the customer **context** (the JSON the manager reads). The token is wired, so **no model transcribes it on this path** — transcription is what corrupts it.
 
 ```mermaid
 flowchart LR
@@ -594,7 +594,7 @@ Every wire is created in the steps above; this table is the post-build cross-che
 | Condition G3.`True output`                                     | Chat output (reply).`Message`                                          |
 | Condition G3.`False output`                                    | Chat output (apology).`Message`                                        |
 
-The bare **token** is wired to three Prompt nodes — JSON-wrap, manager and assert-wrap — and reaches a model only through the manager's prompt, which hands it to `Intake` for the one write that needs it. Every read is deterministic and takes the token by wire.
+The bare **token** is wired to three Prompt nodes — JSON-wrap, manager and assert-wrap — and reaches a model only through the manager's prompt. From there it is copied twice, by the manager into its delegation message and by `Intake` into `upsert_application`. Every read is deterministic and takes the token by wire.
 
 Then confirm the manager's `subAgents` template value lists **both** worker node ids. The `Sub-agents` wire alone does not make a manager: without the ids, the manager runs with no workers and reports that it cannot delegate.
 
@@ -684,7 +684,7 @@ Non-obvious rules and limits that shape the build. Skim before iterating.
 ### Agent / LLM behaviour
 
 - **Use a strong tool-calling generative model** (registered as `gen-model`; validated on `Qwen/Qwen2.5-72B-Instruct-AWQ` — see [LOCAL.md §3 Recommended models](../../LOCAL.md#3-install-paf)). Smaller / heavily-quantised models are not recommended — they route to the wrong worker and are less reliable under prompt injection.
-- **A token copied by a model is the one fragile transcription in the flow.** The manager hands it to `Intake` verbatim and `Intake` passes it straight to `upsert_application`; both instruction blocks pin character-for-character copying. Every read path takes the token by wire instead.
+- **The two hops a model copies the token on are the flow's only fragile transcription.** The manager hands it to `Intake` verbatim and `Intake` passes it straight to `upsert_application`; both instruction blocks pin character-for-character copying, because the streaming layer drops or duplicates a character in an agentic tool-call argument. Every read path takes the token by wire instead.
 - **A wired tool gets called even when the instructions say not to.** The narrow per-agent tool surface is the only enforceable boundary — DB constraints are the final net.
 - **The customer-facing reply contains no internal numbers, ids, tiers, adverse reasons or braces.** The three tier sentences, `Intake`'s questions and the apology are the only text the customer ever sees.
 
