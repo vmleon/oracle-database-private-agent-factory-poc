@@ -250,7 +250,33 @@ The trust-boundary rationale (token-only envelope, customer resolved server-side
 
 `CHAT_FLOW` is the customer-facing Agent Builder flow that combines OPA, Company Registry, and the in-DB HITL tool into the three-tier recommendation contract documented in `docs/DECISIONING-ENGINE-USE-CASE.md`. It is the only Agent Builder flow you need in this runbook.
 
-Build it node by node from the blueprint: the node graph, the three agents' custom instructions, the step-by-step build sequence, the wiring checklist, test prompts, and operating constraints are **[`paf/flows/CHAT_FLOW.md`](paf/flows/CHAT_FLOW.md)**. This runbook only gets you to Agent Builder with the tools (§4) and the LLM (§3) registered. **Publish** the flow when it is built — the backend's `/v1/chat` needs it published.
+There are two ways to get it into your install. Both need the MCP servers and datasources from §4 and the `gen-model` LLM from §3 registered first — the flow references them by name.
+
+**Import the bundle (minutes).** The repo ships the exported flow at [`paf/flows/CHAT_FLOW.paf`](paf/flows/CHAT_FLOW.paf).
+
+1. Agent Builder → **My Custom Flows** → **Import** → choose `paf/flows/CHAT_FLOW.paf`.
+2. Bundle password: `WelcomeAmigo123!`
+3. Rebind the MCP nodes to *your* install's servers:
+
+   ```bash
+   python manage.py paf link-flow
+   ```
+
+   An import carries the MCP source ids from the install it was exported from, and those ids differ per install — a fresh install numbers them in registration order. `link-flow` rebinds every MCP node by **server name**, so it is correct whatever the ids happen to be. It prints `✓ Every MCP node already points at the right server` when nothing needs changing.
+4. **Publish** the flow, then mint the backend's key:
+
+   ```bash
+   python manage.py paf api-key
+   ```
+
+**Build it by hand (an hour, and you learn the canvas).** [`paf/flows/CHAT_FLOW.md`](paf/flows/CHAT_FLOW.md) is the blueprint: the node graph, all three agents' custom instructions verbatim, a 21-step build sequence, the wiring checklist, test prompts and the operating constraints behind each choice. Take this path when you want to understand *why* the flow is shaped this way, or when the bundle won't import into your PAF version. **Publish** when it is built — the backend's `/v1/chat` needs it published.
+
+Either way, verify what you loaded before trusting it:
+
+```bash
+python manage.py paf link-flow     # every MCP node points at the right server
+pytest tests/test_chat_workflow.py -v
+```
 
 ### Verify
 
@@ -266,7 +292,9 @@ If anything hangs or errors, `python manage.py local logs paf` shows the backend
 
 ### Export after edits
 
-Agent Builder → **My Custom Flows** → **Export** → set a password produces a `.paf` bundle. It is a convenience snapshot for moving a tuned flow between installs; [`paf/flows/CHAT_FLOW.md`](paf/flows/CHAT_FLOW.md) is the versioned source the flow is rebuilt from.
+Agent Builder → **My Custom Flows** → **Export** → set a password produces a `.paf` bundle. Replace [`paf/flows/CHAT_FLOW.paf`](paf/flows/CHAT_FLOW.paf) with it whenever you change the canvas, and update [`paf/flows/CHAT_FLOW.md`](paf/flows/CHAT_FLOW.md) in the same commit — the blueprint is the versioned source the flow is rebuilt from, and the bundle is a snapshot of it. A bundle that disagrees with the blueprint is worse than no bundle.
+
+**Portable Agent Spec does not cover this flow.** The Agent Spec export refuses with `Node 'Regex extractor' cannot be exported as portable Agent Spec because it is implemented as an Agent Builder runtime tool` — the in-band `[[SESSION …]]` envelope is split by two `Regex extractor` nodes, and those are Agent Builder runtime components with no portable Agent Spec equivalent ([`issues/13`](issues/13-agent-spec-export-excludes-runtime-tools.md)). The `.paf` bundle and the blueprint are the two portable forms.
 
 ## Day-2
 

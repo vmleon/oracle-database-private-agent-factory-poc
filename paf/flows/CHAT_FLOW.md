@@ -4,7 +4,7 @@ This is the build blueprint for the customer-facing workflow in PAF Agent Builde
 
 - **`Manager`** — the only Agent node in the graph. It holds **no tools**. It reads the server-computed facts in its prompt, decides whether the customer is still supplying loan details or is ready for a decision, and delegates to exactly one worker.
 - **`Intake`** (sub-agent) — collects the loan request (`amount` / `term_months` / `purpose`) through conversation, normalises the values, and writes the `DRAFT`. Tool: `application-mcp.upsert_application`.
-- **`Recommendation`** (sub-agent) — decides the tier (`APPROVE` / `REVIEW` / `DECLINE`) from the facts it is handed, records the HITL task with structured reason codes, and returns a compliance-safe customer sentence. Tool: `hitl-mcp.create_hitl_task`.
+- **`Recommendation`** (sub-agent) — hands the session token to `create_hitl_task`, which computes the tier (`APPROVE` / `REVIEW` / `DECLINE`), its reason codes and the evidence packet server-side and records them; the worker reads the tier back and returns the matching compliance-safe sentence. Tool: `hitl-mcp.create_hitl_task`.
 - **Deterministic nodes (no agent)** — `get_context`, `evaluate_eligibility_for_session`, `required_documents_for_session` and `verify_employer_for_session` run **before** the manager off one wired token chain; `hitl_status_for_session` runs **after** it and reads the database.
 
 Three principles shape the whole design:
@@ -28,7 +28,7 @@ For a customer chatting with the bank:
 
 1. **Intake.** If the customer has no open application (or one with missing fields), the manager delegates to `Intake`, which collects `amount` / `term_months` / `purpose` conversationally and writes a `DRAFT` via `upsert_application`.
 2. **Evidence.** Eligibility, the required-document set and the employer record are computed deterministically before the manager runs, from the DB values the token resolves to. No agent gathers evidence.
-3. **Recommendation.** Once the application is complete and the customer confirms, the manager delegates to `Recommendation`, which composes the tier + reason codes, calls `hitl-mcp.create_hitl_task` exactly once, and returns a compliance-safe customer sentence.
+3. **Recommendation.** Once the application is complete and the customer confirms, the manager delegates to `Recommendation`, which calls `hitl-mcp.create_hitl_task` exactly once with the token alone. The tier, its reason codes and the evidence are computed and recorded server-side; the worker returns the compliance-safe sentence for the tier it gets back.
 4. **Assertion.** After the manager returns, `hitl_status_for_session` reads the database and the final gate decides whether the reply may be shown at all.
 
 No agent ever issues a binding decision to the customer: the human reviewer who picks up the HITL task does. The customer-facing reply is one of three qualitative tones and never exposes the tier, a number, or an adverse reason.
@@ -74,7 +74,7 @@ flowchart TD
     G3 -->|False| OE["Chat output: apology"]
 ```
 
-Four deterministic calls fan off one Type Convert, so every fact the decision rests on is computed server-side before any model runs. The token is wired to every read. It is copied by a model on **two** hops, and only on the write path: the manager copies it into its delegation message and `Intake` copies it into the `upsert_application` argument. Those two hops are the flow's whole transcription risk.
+Four deterministic calls fan off one Type Convert, so every fact the decision rests on is computed server-side before any model runs. The token is wired to every read. A model copies it only on the write path — the manager into its delegation message, then the worker into its tool argument — and that is the flow's whole transcription risk. A corrupted copy resolves to no session, the tool fails closed, and the turn ends in the apology.
 
 The **manager runs on every turn** — it is the front door. On a collecting turn it delegates to `Intake` and the turn ends with `Intake`'s question; on a confirming turn it delegates to `Recommendation` and the turn ends with the tier sentence. **The Agent node returns the delegated worker's final message**, so the worker's last sentence is what the customer reads; the manager's own sentence is returned only when it does not delegate. All three instruction blocks therefore end in a customer-safe sentence.
 
@@ -89,6 +89,9 @@ Each takes only `session_token`, resolves state through the same server-side rea
 | `required_documents_for_session`   | evaluates `decisioning.required_documents` from product/employment/residency/amount | `{required, amount_band, rationale}`                            |
 | `verify_employer_for_session`      | reads `profile.employer_name` and calls the company registry                        | `{name, registered, trading_status}`                            |
 | `hitl_status_for_session`          | reads the context, `APP.hitl_task` and the manager's reply                          | `{gate, stage, task_id}`                                        |
+| `recommend_tier_for_session`       | applies the tier rule to the eligibility and employer records                       | `{tier, reasoning, evidence}`                                   |
+
+`recommend_tier_for_session` is the only one with no node on the canvas: `hitl-mcp.create_hitl_task` calls it server-side so the recorded decision never passes through a model. The rule is `tier_from()` in [`src/ai/banking-mcp/gate.py`](../../src/ai/banking-mcp/gate.py) — DECLINE on any `deny` or an unregistered employer, REVIEW on any `warn` or a dormant one, APPROVE otherwise — and it is covered by host unit tests.
 
 `hitl_status_for_session` decides the gate server-side: `GATE_FAIL` on an invalid session, or on a reply that announces a decision (one of the customer-facing decision sentences) with no HITL task recorded for the application; `GATE_OK` on every other turn on a valid session, whatever stage the application is at.
 
@@ -585,7 +588,7 @@ Every wire is created in the steps above; this table is the post-build cross-che
 | Condition G3.`True output`                                     | Chat output (reply).`Message`                                                                            |
 | Condition G3.`False output`                                    | Chat output (apology).`Message`                                                                          |
 
-The bare **token** is wired to three Prompt nodes — JSON-wrap, manager and assert-wrap — and reaches a model only through the manager's prompt. From there it is copied twice, by the manager into its delegation message and by `Intake` into `upsert_application`. Every read is deterministic and takes the token by wire.
+The bare **token** is wired to three Prompt nodes — JSON-wrap, manager and assert-wrap — and reaches a model only through the manager's prompt. From there the manager copies it into its delegation message and the worker copies it into its tool argument. Every read is deterministic and takes the token by wire.
 
 Then confirm the manager's `subAgents` template value lists **both** worker node ids. The `Sub-agents` wire alone does not make a manager: without the ids, the manager runs with no workers and reports that it cannot delegate.
 
@@ -629,9 +632,17 @@ SELECT task_id, application_id, agent_recommendation, agent_run_id,
 
 Trace expectation per successful turn (Playground trace pane): the five deterministic `banking-mcp` nodes run once each — four before the manager, one after; the manager delegates once; the worker makes at most one tool call. More than that means the model is looping — tighten the instruction block.
 
-## Export
+## Import and export
 
-The canvas exports a password-protected `.paf` bundle (Agent Builder → **My Custom Flows** → **Export**). This blueprint is the versioned source: the flow is rebuilt from it after a fresh install, and an export is a convenience snapshot, not the record.
+Two portable forms of this flow live in the repo, and they must agree.
+
+**This blueprint is the record.** It is what the flow is rebuilt from after a fresh install, and the only form that carries the reasoning behind each node.
+
+**[`CHAT_FLOW.paf`](CHAT_FLOW.paf) is a snapshot of it**, exported from the canvas and password-protected. Import it through Agent Builder → **My Custom Flows** → **Import**, with the bundle password `WelcomeAmigo123!`. Register the MCP servers, the datasources and the `gen-model` LLM first ([LOCAL.md §3–§4](../../LOCAL.md#3-install-paf)) — the flow references them by name — then run `python manage.py paf link-flow` to rebind every MCP node to your install's own server ids, and publish. Full runbook: [LOCAL.md §5](../../LOCAL.md#5-load-chat_flow).
+
+Re-export whenever you change the canvas and commit the bundle together with the blueprint edit that describes the same change. A bundle that disagrees with the blueprint is worse than no bundle: it silently reinstates whatever the blueprint says was fixed.
+
+**Portable Agent Spec does not cover this flow.** Exporting one fails with `Node 'Regex extractor' cannot be exported as portable Agent Spec because it is implemented as an Agent Builder runtime tool`. Both `Regex extractor` nodes are load-bearing — they split the in-band `[[SESSION …]]` envelope that carries the token, which exists because PAF accepts no per-invocation flow input beyond the chat message ([`issues/03`](../../issues/03-no-flow-start-inputs.md)) — so there is no variant of this design that exports as Agent Spec today ([`issues/13`](../../issues/13-agent-spec-export-excludes-runtime-tools.md)).
 
 ## Open follow-ups
 
@@ -675,7 +686,7 @@ Non-obvious rules and limits that shape the build. Skim before iterating.
 ### Agent / LLM behaviour
 
 - **Use a strong tool-calling generative model** (registered as `gen-model`; validated on `Qwen/Qwen2.5-72B-Instruct-AWQ` — see [LOCAL.md §3 Recommended models](../../LOCAL.md#3-install-paf)). Smaller / heavily-quantised models are not recommended — they route to the wrong worker and are less reliable under prompt injection.
-- **The two hops a model copies the token on are the flow's only fragile transcription.** The manager hands it to `Intake` verbatim and `Intake` passes it straight to `upsert_application`; both instruction blocks pin character-for-character copying, because the streaming layer drops or duplicates a character in an agentic tool-call argument. Every read path takes the token by wire instead.
+- **The token hops a model copies are the flow's only fragile transcription.** The manager hands it to the worker verbatim and the worker passes it straight to its tool; both instruction blocks pin character-for-character copying, because the streaming layer drops or duplicates a character in an agentic tool-call argument. Every read path takes the token by wire instead. A corrupted token resolves to no session and the tool fails closed — it costs the turn, never correctness.
 - **A wired tool gets called even when the instructions say not to.** The narrow per-agent tool surface is the only enforceable boundary — DB constraints are the final net.
 - **The customer-facing reply contains no internal numbers, ids, tiers, adverse reasons or braces.** The three tier sentences, `Intake`'s questions and the apology are the only text the customer ever sees.
 
