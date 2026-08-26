@@ -105,6 +105,7 @@ services:
       DB_USER: "AGENT_FACTORY"
       DB_PASSWORD: "${DB_PASSWORD}"
       BACKEND_URL: "http://application-backend:8090"
+      BANKING_MCP_URL: "http://banking-mcp:8503/mcp"
 
   # Application MCP — write surface for conversational loan intake.
   # Exposes upsert_application as an MCP tool so the Intake worker in

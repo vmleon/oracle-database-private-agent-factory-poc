@@ -69,3 +69,43 @@ def gate_decision(
     if not application or application.get("missing"):
         return {"gate": GATE_OK, "stage": "COLLECTING", "task_id": None}
     return {"gate": GATE_OK, "stage": "AWAITING_DECISION", "task_id": None}
+
+def tier_from(eligibility: dict, employer: dict) -> tuple[str, list[str]]:
+    """The recommendation tier and its reason codes — a pure function of the
+    server-computed eligibility and employer records. No model decides this."""
+    deny = eligibility.get("deny") or []
+    warn = eligibility.get("warn") or []
+    registered = employer.get("registered")
+    status = (employer.get("trading_status") or "").lower()
+    codes: list[str] = []
+    for message in deny:
+        codes.append(reason_code(message))
+    for message in warn:
+        codes.append(reason_code(message))
+    if registered is False:
+        codes.append("EMPLOYER_UNVERIFIED")
+    elif status == "dormant":
+        codes.append("EMPLOYER_DORMANT")
+    if deny or registered is False:
+        return "DECLINE", codes
+    if warn or status == "dormant":
+        return "REVIEW", codes
+    return "APPROVE", codes
+
+
+def reason_code(message: str) -> str:
+    """Map an OPA message to a stable reason code for the reviewer's queue."""
+    text = (message or "").lower()
+    if "dti" in text:
+        return "DTI_TOO_HIGH"
+    if "pti" in text:
+        return "PTI_TOO_HIGH"
+    if "caution band" in text:
+        return "SCORE_CAUTION_BAND"
+    if "score" in text:
+        return "SCORE_BELOW_FLOOR"
+    if "age" in text:
+        return "AGE_OUT_OF_RANGE"
+    if "income" in text:
+        return "INCOME_INSUFFICIENT"
+    return "POLICY_OTHER"

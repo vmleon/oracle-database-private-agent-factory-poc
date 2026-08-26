@@ -40,7 +40,7 @@ import httpx
 import oracledb
 from fastmcp import FastMCP
 
-from gate import documents_payload, gate_decision
+from gate import documents_payload, gate_decision, tier_from
 
 
 def _now_utc() -> datetime:
@@ -328,8 +328,7 @@ def _get_context_impl(session_token: str) -> dict:
             return result
 
 
-@mcp.tool()
-def evaluate_eligibility_for_session(session_token: str) -> dict:
+def _eligibility_impl(session_token: str) -> dict:
     """Deterministic eligibility: token in -> {allow, deny, warn} out.
 
     Resolves the opaque session token, builds the OPA `applicant` from the SAME
@@ -398,8 +397,7 @@ def evaluate_eligibility_for_session(session_token: str) -> dict:
     return out
 
 
-@mcp.tool()
-def required_documents_for_session(session_token: str) -> dict:
+def _documents_impl(session_token: str) -> dict:
     """Deterministic document set: token in -> the required doc_type list out.
 
     Resolves the opaque session token and evaluates `decisioning.required_documents`
@@ -443,8 +441,7 @@ def required_documents_for_session(session_token: str) -> dict:
     return out
 
 
-@mcp.tool()
-def verify_employer_for_session(session_token: str) -> dict:
+def _employer_impl(session_token: str) -> dict:
     """Deterministic employer check: token in -> the registry record out.
 
     Reads profile.employer_name from the DB-derived context and queries the
@@ -484,6 +481,98 @@ def verify_employer_for_session(session_token: str) -> dict:
            session_token=session_token)
     print(f"[verify_employer_for_session] -> registered={out.get('registered')} "
           f"trading_status={out.get('trading_status')}", flush=True)
+    return out
+
+
+@mcp.tool()
+def evaluate_eligibility_for_session(session_token: str) -> dict:
+    """Deterministic eligibility: token in -> {allow, deny, warn} out. The OPA
+    `applicant` is built from the same DB-derived values get_context returns, so
+    the policy always sees the fields where it expects them. Fail-closed."""
+    return _eligibility_impl(session_token)
+
+
+@mcp.tool()
+def required_documents_for_session(session_token: str) -> dict:
+    """Deterministic document set: token in -> {required, amount_band, rationale}
+    out, from the product, employment, residency and amount the DB holds.
+    Fail-closed: an invalid token or incomplete application returns an empty list."""
+    return _documents_impl(session_token)
+
+
+@mcp.tool()
+def verify_employer_for_session(session_token: str) -> dict:
+    """Deterministic employer check: token in -> the company registry record out.
+    The employer name is read from the DB and never copied by a model.
+    Fail-closed: registered=false, trading_status "unknown"."""
+    return _employer_impl(session_token)
+
+
+
+
+@mcp.tool()
+def recommend_tier_for_session(session_token: str) -> dict:
+    """Deterministic recommendation: token in -> the decision packet out.
+
+    Computes eligibility, the employer record and the required documents from
+    the values the token resolves to, then applies the tier rule:
+      DECLINE if eligibility.deny is non-empty OR employer.registered is false
+      REVIEW  if eligibility.warn is non-empty OR trading_status is "dormant"
+      APPROVE otherwise
+
+    No model chooses the tier, re-words the evidence or files a value in the
+    wrong slot: the returned `evidence` is the packet the reviewer's portal
+    reads, built from the same records the decision rests on.
+
+    Returns {"tier", "reasoning", "evidence"}, or tier "UNAVAILABLE" with
+    evidence null for an invalid session or an incomplete application.
+    """
+    started = _now_utc()
+    print(f"[recommend_tier_for_session] called session_token={session_token!r}", flush=True)
+    ctx = _get_context_impl(session_token)
+    application = ctx.get("application") or {}
+    if ctx.get("error") or not application or application.get("missing"):
+        out = {"tier": "UNAVAILABLE", "reasoning": None, "evidence": None}
+        _audit("recommend_tier_for_session",
+               "FAILED" if ctx.get("error") else "SKIPPED", started, _now_utc(),
+               {}, out, session_token=session_token)
+        print("[recommend_tier_for_session] -> UNAVAILABLE, fail-closed", flush=True)
+        return out
+
+    eligibility = _eligibility_impl(session_token)
+    employer = _employer_impl(session_token)
+    documents = (_documents_impl(session_token) or {}).get("required") or []
+    tier, codes = tier_from(eligibility, employer)
+
+    deny = eligibility.get("deny") or []
+    warn = eligibility.get("warn") or []
+    parts = []
+    if deny:
+        parts.append("eligibility deny: " + "; ".join(deny))
+    if warn:
+        parts.append("eligibility warn: " + "; ".join(warn))
+    if employer.get("registered") is False:
+        parts.append("employer not on the company registry")
+    elif (employer.get("trading_status") or "").lower() == "dormant":
+        parts.append("employer trading status dormant")
+    if not parts:
+        parts.append("no deny or warn messages; employer registered and active")
+    reasoning = "; ".join(parts) + "."
+
+    out = {
+        "tier": tier,
+        "reasoning": reasoning,
+        "evidence": {
+            "reason_codes": codes,
+            "eligibility": eligibility,
+            "employer": {"registered": employer.get("registered"),
+                         "trading_status": employer.get("trading_status")},
+            "documents": documents,
+        },
+    }
+    _audit("recommend_tier_for_session", "SUCCESS", started, _now_utc(), {}, out,
+           session_token=session_token)
+    print(f"[recommend_tier_for_session] -> {tier} codes={codes}", flush=True)
     return out
 
 

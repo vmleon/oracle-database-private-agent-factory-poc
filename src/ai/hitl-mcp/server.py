@@ -28,11 +28,10 @@ import datetime as dt
 import json
 import os
 import uuid
-from typing import Literal
 
 import httpx
 import oracledb
-from fastmcp import FastMCP
+from fastmcp import Client, FastMCP
 
 mcp = FastMCP("hitl-mcp")
 
@@ -44,6 +43,7 @@ DB_USER = os.environ["DB_USER"]
 DB_PASSWORD = os.environ["DB_PASSWORD"]
 
 _AUDIT_URL = os.getenv("BACKEND_URL", "http://application-backend:8090").rstrip("/") + "/v1/audit/tool-call"
+_BANKING_MCP_URL = os.getenv("BANKING_MCP_URL", "http://banking-mcp:8503/mcp")
 
 
 def _now():
@@ -68,16 +68,25 @@ def _audit(tool_name, status, started, ended, tool_input, tool_output, *, sessio
         print(f"[audit] skipped ({tool_name}): {exc}", flush=True)
 
 
-Recommendation = Literal["APPROVE", "REVIEW", "DECLINE"]
+async def _recommendation_packet(session_token: str) -> dict:
+    """The server-computed decision packet from banking-mcp: tier, reasoning and
+    the evidence the review portal renders. Returns an empty packet if it cannot
+    be reached — the caller then records nothing."""
+    try:
+        async with Client(_BANKING_MCP_URL) as client:
+            result = await client.call_tool(
+                "recommend_tier_for_session", {"session_token": session_token}
+            )
+        return json.loads(result.content[0].text)
+    except Exception as exc:  # noqa: BLE001 — fail closed, never write a guess
+        print(f"[create_hitl_task] recommendation lookup failed: {exc}", flush=True)
+        return {}
 
 
 @mcp.tool()
-def create_hitl_task(
+async def create_hitl_task(
     session_token: str,
-    recommendation: Recommendation,
-    reasoning: str,
     explore_hints: str | None = None,
-    evidence: str | None = None,
 ) -> dict:
     """Write the CHAT_WORKFLOW recommendation packet to APP.hitl_task and
     enqueue HITL_REQUEST in the same transaction. Returns the new task_id
@@ -87,27 +96,20 @@ def create_hitl_task(
     with exactly one call. The human reviewer (not the agent) closes the
     task; that close is what writes the Blockchain `decision` row.
 
-    The application is resolved server-side from the opaque session token, so no
-    agent ever names one: the decision can only be recorded against the
-    application the token authenticates.
+    Everything recorded is computed server-side from the opaque session token:
+    the application, the recommendation tier, its reasoning and the evidence
+    packet. No agent names an application, chooses a tier or re-words a policy
+    message, so what the reviewer reads is what the policy actually returned.
+
+    The tier is returned to you — phrase the customer sentence for THAT tier,
+    not for one you inferred yourself.
 
     Argument extraction guidance for the LLM:
       - session_token  — the opaque `sess_...` token from the manager's
                          message. Copy it exactly; never invent one.
-      - recommendation — one of "APPROVE" / "REVIEW" / "DECLINE" based on
-                         the signals gathered (OPA outputs, document
-                         completeness, employer verification, etc.).
-                         REVIEW for any non-strong-signal case.
-      - reasoning      — short prose explaining the recommendation. Cite
-                         the tool outputs (e.g. "OPA eligibility allow=true,
-                         all required documents supplied, employer
-                         verified active").
       - explore_hints  — REVIEW-only: JSON string array of follow-up
                          questions/checks the reviewer should examine.
-                         Pass null for APPROVE / DECLINE.
-      - evidence       — JSON string of structured evidence captured
-                         during the run (tool outputs, doc references).
-                         Pass null if you have nothing to attach.
+                         Pass null otherwise.
 
     Note: `agent_run_id` is generated server-side as a UUID-4 and returned
     in the response. The agent must NOT supply it — LLMs reliably
@@ -115,10 +117,22 @@ def create_hitl_task(
     produce a UUID.
     """
     started = _now()
-    print(f"[create_hitl_task] called session_token={session_token!r} recommendation={recommendation!r} reasoning={reasoning!r:.120s}", flush=True)
+    print(f"[create_hitl_task] called session_token={session_token!r}", flush=True)
     agent_run_id = str(uuid.uuid4())
-    tool_input = {"recommendation": recommendation, "reasoning": reasoning,
-                  "explore_hints": explore_hints, "evidence": evidence}
+    tool_input = {"explore_hints": explore_hints}
+
+    packet = await _recommendation_packet(session_token)
+    tier = packet.get("tier")
+    if tier in (None, "UNAVAILABLE"):
+        print(f"[create_hitl_task] -> no decision available (tier={tier})", flush=True)
+        out = {"error": "no_decision_available"}
+        _audit("create_hitl_task", "SKIPPED", started, _now(), tool_input, out,
+               session_token=session_token)
+        return out
+    recommendation = tier
+    reasoning = packet.get("reasoning") or ""
+    evidence = json.dumps(packet.get("evidence"))
+
     try:
         with oracledb.connect(user=DB_USER, password=DB_PASSWORD, dsn=DB_DSN) as conn:
             with conn.cursor() as cur:
@@ -145,12 +159,14 @@ def create_hitl_task(
         return out
     out = {
         "task_id": task_id,
+        "tier": recommendation,
         "agent_run_id": agent_run_id,
         "state": "OPEN",
         "queue": "APP.HITL_REQUEST",
         "message": (
-            f"HITL task {task_id} created with recommendation {recommendation}; "
-            f"enqueued on HITL_REQUEST."
+            f"HITL task {task_id} recorded with tier {recommendation}; "
+            f"enqueued on HITL_REQUEST. Answer the customer with the sentence "
+            f"for {recommendation}."
         ),
     }
     _audit("create_hitl_task", "SUCCESS", started, _now(), tool_input, out,

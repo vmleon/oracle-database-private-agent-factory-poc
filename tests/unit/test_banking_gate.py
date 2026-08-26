@@ -18,6 +18,8 @@ from gate import (  # noqa: E402
     announces_a_decision,
     documents_payload,
     gate_decision,
+    reason_code,
+    tier_from,
 )
 
 COMPLETE = {
@@ -93,3 +95,62 @@ def test_gate_passes_a_decision_sentence_when_the_task_exists():
 @pytest.mark.parametrize("phrase", DECISION_PHRASES)
 def test_announces_a_decision_detects_every_phrase(phrase):
     assert announces_a_decision(f"...{phrase}...")
+
+
+ACTIVE = {"registered": True, "trading_status": "active"}
+DORMANT = {"registered": True, "trading_status": "dormant"}
+UNREGISTERED = {"registered": False, "trading_status": "unknown"}
+CLEAN = {"allow": True, "deny": [], "warn": []}
+
+
+@pytest.mark.parametrize("eligibility,employer,expected_tier,expected_code", [
+    # The seeded scenarios, as the harness asserts them.
+    (CLEAN, ACTIVE, "APPROVE", None),
+    ({"allow": False, "deny": ["DTI 0.48 exceeds cap 0.45"], "warn": []},
+     ACTIVE, "DECLINE", "DTI_TOO_HIGH"),
+    ({"allow": False, "deny": ["Credit score 540 below floor 600"], "warn": []},
+     ACTIVE, "DECLINE", "SCORE_BELOW_FLOOR"),
+    ({"allow": False, "deny": [], "warn": ["Credit score 660 in caution band (< 670)"]},
+     ACTIVE, "REVIEW", "SCORE_CAUTION_BAND"),
+    (CLEAN, UNREGISTERED, "DECLINE", "EMPLOYER_UNVERIFIED"),
+    (CLEAN, DORMANT, "REVIEW", "EMPLOYER_DORMANT"),
+])
+def test_tier_from(eligibility, employer, expected_tier, expected_code):
+    tier, codes = tier_from(eligibility, employer)
+    assert tier == expected_tier
+    if expected_code is None:
+        assert codes == []
+    else:
+        assert expected_code in codes
+
+
+def test_deny_outranks_a_warn():
+    """A deny and a warn together still DECLINE — deny is evaluated first."""
+    tier, codes = tier_from(
+        {"allow": False, "deny": ["DTI 0.48 exceeds cap 0.45"],
+         "warn": ["Credit score 660 in caution band (< 670)"]}, ACTIVE)
+    assert tier == "DECLINE"
+    assert {"DTI_TOO_HIGH", "SCORE_CAUTION_BAND"} <= set(codes)
+
+
+def test_unregistered_employer_outranks_a_dormant_warning():
+    tier, codes = tier_from(CLEAN, UNREGISTERED)
+    assert tier == "DECLINE"
+    assert "EMPLOYER_DORMANT" not in codes
+
+
+def test_missing_keys_default_to_approve():
+    """An empty record must not crash the rule; it carries no adverse signal."""
+    assert tier_from({}, {}) == ("APPROVE", [])
+
+
+@pytest.mark.parametrize("message,code", [
+    ("DTI 0.48 exceeds cap 0.45", "DTI_TOO_HIGH"),
+    ("PTI 0.30 exceeds cap 0.25", "PTI_TOO_HIGH"),
+    ("Credit score 660 in caution band (< 670)", "SCORE_CAUTION_BAND"),
+    ("Credit score 540 below floor 600", "SCORE_BELOW_FLOOR"),
+    ("Applicant age 17 below minimum", "AGE_OUT_OF_RANGE"),
+    ("something the policy added later", "POLICY_OTHER"),
+])
+def test_reason_code(message, code):
+    assert reason_code(message) == code
