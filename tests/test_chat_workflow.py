@@ -90,6 +90,10 @@ def test_happy_path(name, full_name, expected_tier, reasoning_re, resolve,
     evidence, trace = evidence_and_trace(application_id)
     assert set(evidence) >= {"reason_codes", "eligibility", "employer", "documents"}, \
         f"{name}: review portal reads evidence by key name; got {sorted(evidence)}"
+    assert set(evidence["employer"]) >= {"name", "registered", "trading_status",
+                                         "sector", "registered_address",
+                                         "last_filed_year"}, \
+        f"{name}: portal renders the whole employer record; got {sorted(evidence['employer'])}"
     assert trace, f"{name}: no tool trace recorded for application {application_id}"
 
 

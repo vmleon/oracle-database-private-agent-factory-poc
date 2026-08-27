@@ -565,8 +565,7 @@ def recommend_tier_for_session(session_token: str) -> dict:
         "evidence": {
             "reason_codes": codes,
             "eligibility": eligibility,
-            "employer": {"registered": employer.get("registered"),
-                         "trading_status": employer.get("trading_status")},
+            "employer": employer,
             "documents": documents,
         },
     }

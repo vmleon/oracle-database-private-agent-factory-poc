@@ -128,7 +128,9 @@ public interface HitlRepository extends JpaRepository<HitlTask, Long> {
     Optional<DecisionDetailRow> findDecision(@Param("decisionId") Long decisionId);
 
     /** Per-tool agent trace for a decision, by application id (the per-call rows are written
-     *  by the tool wrappers at run time and keyed on application_id). Ordered by start time. */
+     *  by the tool wrappers at run time and keyed on application_id). Ordered by step number,
+     *  which the portal shows: a nested call completes before its caller, so start time and
+     *  step number disagree and only step number matches the labels. */
     @Query(value = """
             SELECT a.audit_id      AS auditId,
                    a.step_no       AS stepNo,
@@ -141,7 +143,7 @@ public interface HitlRepository extends JpaRepository<HitlTask, Long> {
                    a.status        AS status
               FROM APP.decision_audit a
              WHERE a.application_id = :applicationId
-             ORDER BY a.started_at, a.audit_id
+             ORDER BY a.step_no
             """, nativeQuery = true)
     List<DecisionAuditRow> findDecisionAudit(@Param("applicationId") Long applicationId);
 }
