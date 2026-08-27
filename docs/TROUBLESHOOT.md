@@ -30,12 +30,20 @@ podman exec paf-oracle-free-26ai curl -sf -o /dev/null -w "opa-mcp HTTP %{http_c
 # Expect: HTTP 307 (FastMCP's trailing-slash redirect) or HTTP 4xx with a JSON-RPC error.
 #         Anything else (timeout, connection refused) = wrapper isn't healthy.
 
-# 3. Registry API — does the FastAPI service answer and serve its OpenAPI spec?
+# 3. TLS gateway — does PAF complete the handshake against its own trust store?
+podman exec paf-agent-factory curl -sf -o /dev/null -w "mcp-proxy HTTP %{http_code}\n" \
+  --cacert /mount/config/app/latest/certs/.agent-factory-ca/agent-factory-ca-bundle.pem \
+  https://mcp-proxy:8443/opa/mcp -X POST -d '{}' -H 'content-type: application/json'
+# Expect: HTTP 406 — FastMCP rejects the body for want of an `Accept: text/event-stream`
+#         header, which means TLS verified and the route reached the wrapper.
+#         "SSL certificate problem: self signed certificate" = run `manage.py paf trust-ca`.
+
+# 4. Registry API — does the FastAPI service answer and serve its OpenAPI spec?
 podman exec paf-oracle-free-26ai curl -sf -o /dev/null -w "registry-api HTTP %{http_code}\n" \
   http://registry-api:8600/openapi.json
 # Expect: HTTP 200. PAF reads the spec to expose verify_employer as a tool.
 
-# 4. Logs
+# 5. Logs
 podman logs paf-opa-mcp           # FastMCP startup banner + per-request log
 podman logs paf-registry-api      # uvicorn startup + per-request log
 podman logs paf-opa               # OPA bundle load + per-request log
@@ -123,6 +131,25 @@ touch paf-kit/applied-ai/volume/.config_complete.marker
 ```
 
 ## PAF runtime / MCP
+
+### Every MCP server fails its connection test with "Could not connect to the remote MCP server"
+
+The wording points at reachability, but the failure is TLS verification. PAF's outbound HTTP client verifies against its **administrator certificate store**, not the container's OS trust store or `SSL_CERT_FILE`, so the self-signed `mcp-proxy` gateway certificate has to be uploaded there once per install:
+
+```bash
+python manage.py paf trust-ca
+```
+
+Then re-run **Test connection** in the UI — the store is re-read per test, so no restart is needed. It applies to all four MCP servers at once, since they share the one gateway certificate.
+
+The tell that it's trust and not reachability: the same request succeeds from inside the PAF container with `-k` and fails without it.
+
+```bash
+podman exec paf-agent-factory curl -sS -o /dev/null https://mcp-proxy:8443/opa/mcp
+# curl: (60) SSL certificate problem: self signed certificate
+```
+
+The store lives on PAF's mounted volume, so it survives image rebuilds — but `local down --purge` resets those directories, so re-run `trust-ca` after any reinstall.
 
 ### Newly added MCP service shows "Unable to reach the MCP server URL" in PAF after `local up`
 
