@@ -35,6 +35,10 @@ regions, **probes each one for Generative AI** (the service runs in a minority o
 them), lists compartments, and offers only chat and embedding models that are
 `ACTIVE` **and** still served on demand.
 
+The region and compartment prompts filter as you type. Compartments appear as
+`Parent/Child` paths — a large tenancy holds hundreds, and the same leaf name
+often appears on more than one branch.
+
 The embedding choice is checked against the `VECTOR` width in the changelog. A
 model of the wrong width is refused, because the mismatch would otherwise fail
 at insert time deep in the RAG path. Regions differ in what they serve — some

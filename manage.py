@@ -1121,10 +1121,11 @@ def setup_cloud() -> None:
         sys.exit(1)
     console.print(f"[green]✓[/green] Home region: {home_region}")
 
-    region = inquirer.select(
-        message="Workload region (VCN, computes, ADB):",
+    region = inquirer.fuzzy(
+        message=f"Workload region — VCN, computes, ADB ({len(regions)} subscribed):",
         choices=regions,
-        default=existing.get("OCI_REGION", _oci_profile_region(oci_profile) or regions[0]),
+        default=existing.get("OCI_REGION", _oci_profile_region(oci_profile) or ""),
+        max_height="60%",
     ).execute()
 
     # Generative AI runs in a minority of regions, so the list is probed rather
@@ -1145,27 +1146,7 @@ def setup_cloud() -> None:
         default=existing.get("OCI_GENAI_REGION", region if region in genai_regions else genai_regions[0]),
     ).execute()
 
-    console.print("[dim]Listing compartments…[/dim]")
-    compartments = _oci_json(
-        ["iam", "compartment", "list", "--compartment-id", tenancy_ocid,
-         "--compartment-id-in-subtree", "true", "--all"],
-        oci_profile,
-    ) or []
-    active = sorted(
-        ((c["name"], c["id"]) for c in compartments if c.get("lifecycle-state") == "ACTIVE"),
-        key=lambda pair: pair[0],
-    )
-    if active:
-        compartment_ocid = inquirer.select(
-            message="Compartment:",
-            choices=[{"name": name, "value": ocid} for name, ocid in active],
-            default=existing.get("OCI_COMPARTMENT_OCID"),
-        ).execute()
-    else:
-        compartment_ocid = inquirer.text(
-            message="Compartment OCID:",
-            default=existing.get("OCI_COMPARTMENT_OCID", ""),
-        ).execute()
+    compartment_ocid = _select_compartment(oci_profile, tenancy_ocid, existing)
 
     genai_model, genai_embed_model, genai_embed_dim = _select_genai_models(
         oci_profile, genai_region, tenancy_ocid, existing
@@ -1386,6 +1367,65 @@ def _genai_models(profile: str, region: str, tenancy: str, capability: str) -> l
                 continue
         live.add(model["display-name"])
     return sorted(live)
+
+
+
+def _compartment_choices(compartments: list, tenancy: str) -> list:
+    """Active compartments as `Parent/Child` paths, so duplicate leaf names stay distinct."""
+    by_id = {c["id"]: c for c in compartments}
+
+    def path(ocid: str, seen: frozenset = frozenset()) -> str:
+        node = by_id.get(ocid)
+        if node is None or ocid in seen:
+            return ""
+        parent = node.get("compartment-id")
+        if parent == tenancy or parent not in by_id:
+            return node["name"]
+        prefix = path(parent, seen | {ocid})
+        return f"{prefix}/{node['name']}" if prefix else node["name"]
+
+    choices = [
+        {"name": path(c["id"]), "value": c["id"]}
+        for c in compartments
+        if c.get("lifecycle-state") == "ACTIVE"
+    ]
+    choices.sort(key=lambda c: c["name"].lower())
+    # Deploying straight into the root is legitimate, so it is offered too.
+    return [{"name": "(tenancy root)", "value": tenancy}] + choices
+
+
+def _select_compartment(profile: str, tenancy: str, existing: dict) -> str:
+    """Pick a compartment by typing part of its name.
+
+    A tenancy can hold hundreds, so this filters as you type rather than
+    scrolling one screen at a time.
+    """
+    console.print("[dim]Listing compartments…[/dim]")
+    compartments = _oci_json(
+        ["iam", "compartment", "list", "--compartment-id", tenancy,
+         "--compartment-id-in-subtree", "true", "--all"],
+        profile,
+    ) or []
+
+    choices = _compartment_choices(compartments, tenancy)
+    if len(choices) == 1:
+        console.print("[yellow]No compartments listed.[/yellow] Enter the OCID directly.")
+        return inquirer.text(
+            message="Compartment OCID:",
+            default=existing.get("OCI_COMPARTMENT_OCID", ""),
+        ).execute()
+
+    # For a fuzzy prompt `default` is the starting search text, so a previous
+    # choice comes back as a pre-filled filter rather than a pre-selection.
+    previous = existing.get("OCI_COMPARTMENT_OCID")
+    prefill = next((c["name"] for c in choices if c["value"] == previous), "")
+
+    return inquirer.fuzzy(
+        message=f"Compartment ({len(choices) - 1} available — type to filter):",
+        choices=choices,
+        default=prefill,
+        max_height="60%",
+    ).execute()
 
 
 def _select_genai_models(profile: str, region: str, tenancy: str, existing: dict) -> tuple:
