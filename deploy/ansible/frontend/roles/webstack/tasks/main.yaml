@@ -4,33 +4,36 @@
     name: nginx
     state: present
 
-- name: Create the bundle roots
+- name: Create the backoffice bundle root
   ansible.builtin.file:
-    path: "/usr/share/nginx/{{ item }}"
+    path: /usr/share/nginx/html/backoffice
     state: directory
     mode: "0755"
-  loop:
-    - mobile
-    - backoffice
 
 - name: Deploy the customer bundle
   ansible.builtin.copy:
     src: customer/
-    dest: /usr/share/nginx/mobile/
+    dest: /usr/share/nginx/html/
     mode: "0644"
   notify: Restart nginx
 
 - name: Deploy the backoffice bundle
   ansible.builtin.copy:
     src: backoffice/
-    dest: /usr/share/nginx/backoffice/
+    dest: /usr/share/nginx/html/backoffice/
     mode: "0644"
+  notify: Restart nginx
+
+- name: Remove a stale server-block drop-in
+  ansible.builtin.file:
+    path: /etc/nginx/conf.d/app.conf
+    state: absent
   notify: Restart nginx
 
 - name: Render the site configuration
   ansible.builtin.template:
     src: nginx.conf.j2
-    dest: /etc/nginx/conf.d/app.conf
+    dest: /etc/nginx/default.d/app.conf
     mode: "0644"
   notify: Restart nginx
 
@@ -39,3 +42,12 @@
     name: nginx
     enabled: true
     state: started
+
+# Oracle Linux images boot with firewalld active and only ssh allowed, so a
+# service can be listening on 0.0.0.0 and still be unreachable from the load
+# balancer or its sibling tiers.
+- name: Open the tier's ports
+  ansible.builtin.command: firewall-cmd --permanent --add-port={{ item }}/tcp
+  loop: [80]
+  changed_when: true
+  notify: Reload firewalld

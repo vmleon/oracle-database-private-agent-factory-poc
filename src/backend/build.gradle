@@ -21,6 +21,9 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
     // Oracle UCP pool + ojdbc, auto-configures oracle.ucp.jdbc.PoolDataSource.
     implementation 'com.oracle.database.spring:oracle-spring-boot-starter-ucp:24.4.0'
+    // Reading an ADB wallet's cwallet.sso needs Oracle's PKI provider on the
+    // classpath; the driver alone fails with ORA-17957.
+    implementation 'com.oracle.database.security:oraclepki:23.5.0.24.07'
     // Apache HttpClient5 powers a RestClient that can skip TLS verification (PAF self-signed cert).
     implementation 'org.apache.httpcomponents.client5:httpclient5'
     compileOnly 'org.projectlombok:lombok'

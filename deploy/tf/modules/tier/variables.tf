@@ -84,3 +84,9 @@ variable "region" {
   description = "Region identifier, used to reach the regional yum endpoint."
   type        = string
 }
+
+variable "boot_volume_size_in_gbs" {
+  description = "Boot volume size. The image default is too small for a tier that unpacks a multi-gigabyte kit and builds container images from it."
+  type        = number
+  default     = null
+}

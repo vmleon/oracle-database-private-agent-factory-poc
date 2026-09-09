@@ -3,6 +3,10 @@ liquibase_version: "4.31.1"
 liquibase_url: "https://github.com/liquibase/liquibase/releases/download/v{{ liquibase_version }}/liquibase-{{ liquibase_version }}.tar.gz"
 ojdbc_version: "23.9.0.25.07"
 ojdbc_url: "https://repo1.maven.org/maven2/com/oracle/database/jdbc/ojdbc11/{{ ojdbc_version }}/ojdbc11-{{ ojdbc_version }}.jar"
+# Reading a wallet's cwallet.sso needs Oracle's PKI provider alongside the
+# driver. Without it the connection fails with ORA-17957 "Unable to initialize
+# the key store". osdt_core and osdt_cert were folded into oraclepki in 23.x.
+oraclepki_url: "https://repo1.maven.org/maven2/com/oracle/database/security/oraclepki/{{ ojdbc_version }}/oraclepki-{{ ojdbc_version }}.jar"
 
 wallet_dir: /opt/paf-poc/wallet
 liquibase_dir: /opt/liquibase

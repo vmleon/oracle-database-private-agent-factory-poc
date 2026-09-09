@@ -3,3 +3,6 @@
   ansible.builtin.systemd:
     name: nginx
     state: restarted
+
+- name: Reload firewalld
+  ansible.builtin.command: firewall-cmd --reload

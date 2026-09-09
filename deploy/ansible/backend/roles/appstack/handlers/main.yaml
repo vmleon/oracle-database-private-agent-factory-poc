@@ -16,3 +16,6 @@
     name: paf-poc-registry
     state: restarted
     daemon_reload: true
+
+- name: Reload firewalld
+  ansible.builtin.command: firewall-cmd --reload

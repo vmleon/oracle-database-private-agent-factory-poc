@@ -17,7 +17,7 @@ resource "oci_load_balancer_load_balancer" "lb" {
 locals {
   backends = {
     frontend = { ip = module.frontend.private_ip, port = 80 }
-    backend  = { ip = module.backend.private_ip, port = 8080 }
+    backend  = { ip = module.backend.private_ip, port = 8090 }
     paf      = { ip = module.paf.private_ip, port = 8080 }
   }
 }
@@ -54,12 +54,15 @@ resource "oci_load_balancer_listener" "http" {
   path_route_set_name = oci_load_balancer_path_route_set.routes.name
 }
 
+# Mirrors the local Caddy front door so both targets serve the same URLs:
+# /v1 to the API, /agentFactory to PAF, and everything else to the customer SPA
+# at the root, which is where its asset paths expect it.
 resource "oci_load_balancer_path_route_set" "routes" {
   load_balancer_id = oci_load_balancer_load_balancer.lb.id
   name             = "routes"
 
   path_routes {
-    path             = "/api"
+    path             = "/v1"
     backend_set_name = oci_load_balancer_backend_set.this["backend"].name
     path_match_type {
       match_type = "PREFIX_MATCH"
@@ -69,22 +72,6 @@ resource "oci_load_balancer_path_route_set" "routes" {
   path_routes {
     path             = "/agentFactory"
     backend_set_name = oci_load_balancer_backend_set.this["paf"].name
-    path_match_type {
-      match_type = "PREFIX_MATCH"
-    }
-  }
-
-  path_routes {
-    path             = "/mobile"
-    backend_set_name = oci_load_balancer_backend_set.this["frontend"].name
-    path_match_type {
-      match_type = "PREFIX_MATCH"
-    }
-  }
-
-  path_routes {
-    path             = "/backoffice"
-    backend_set_name = oci_load_balancer_backend_set.this["frontend"].name
     path_match_type {
       match_type = "PREFIX_MATCH"
     }

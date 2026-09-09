@@ -129,8 +129,8 @@ flowchart TB
     adb[("ADB 26ai<br/>- APP<br/>- REPORTING<br/>- AGENT_*")]
     ops["ops compute<br/>(bastion, Liquibase)"]
 
-    lb -- "/mobile  /backoffice" --> front
-    lb -- "/api  /agentFactory" --> app
+    lb -- "/  /backoffice" --> front
+    lb -- "/v1  /agentFactory" --> app
     app --> paf
     paf -- "HTTP datasource (OpenAPI)" --> app
     paf -- "service gateway" --> genai
@@ -167,7 +167,7 @@ Each tier directory under `deploy/ansible/` holds one entry playbook, always nam
 | Tier / role             | Installs / configures                                                                                                                                |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `ops` / `opstools`      | JDK 21, Liquibase + the Oracle JDBC driver, the ADB wallet fetched through its PAR, then applies the changelog with `--contexts=adb,seed`             |
-| `frontend` / `webstack` | nginx serving both UI bundles at `/mobile` and `/backoffice`, proxying `/api` to the backend tier                                                     |
+| `frontend` / `webstack` | nginx serving both UI bundles at `/` and `/backoffice`, proxying `/api` to the backend tier                                                     |
 | `backend` / `appstack`  | JDK 21, Spring Boot service unit, OPA service unit + Rego bundle, Company Registry FastAPI service unit (port 8600, exposes `/openapi.json` for PAF) |
 | `paf` / `pafstack`      | Podman, PAF kit tarball fetched through its own PAR, image build, and the PAF service unit pointed at the OCI Generative AI endpoint                  |
 

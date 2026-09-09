@@ -103,7 +103,10 @@ module "paf" {
   instance_shape      = var.compute_shape
   instance_ocpus      = 4
   instance_memory_gbs = 32
-  artifact_par_url    = "${local.object_storage_host}${oci_objectstorage_preauthrequest.artifact["ansible_paf"].access_uri}"
+  # The kit tarball, its unpacked tree and every layer of the image built from
+  # it do not fit the image's default boot volume.
+  boot_volume_size_in_gbs = 200
+  artifact_par_url        = "${local.object_storage_host}${oci_objectstorage_preauthrequest.artifact["ansible_paf"].access_uri}"
 
   ansible_params = merge(local.common_params, local.db_params, {
     backend_host        = local.backend_host

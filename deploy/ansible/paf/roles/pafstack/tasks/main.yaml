@@ -7,6 +7,12 @@
       - tar
     state: present
 
+# A larger boot volume does not reach the filesystem on its own.
+- name: Expand the root filesystem into the boot volume
+  ansible.builtin.command: /usr/libexec/oci-growfs -y
+  changed_when: false
+  failed_when: false
+
 - name: Create the PAF directories
   ansible.builtin.file:
     path: "{{ item }}"
@@ -64,6 +70,13 @@
     remote_src: true
     creates: "{{ kit_dir }}/build-image.sh"
 
+# 2.3 GB of no further use once unpacked, on a disk that also holds the
+# unpacked tree and every layer of the image built from it.
+- name: Remove the kit tarball
+  ansible.builtin.file:
+    path: /tmp/paf-kit.tar.gz
+    state: absent
+
 - name: Read the kit version
   ansible.builtin.slurp:
     src: "{{ kit_dir }}/applied-ai/kit/agent_factory/internal/version.json"
@@ -92,3 +105,12 @@
     enabled: true
     state: started
     daemon_reload: true
+
+# Oracle Linux images boot with firewalld active and only ssh allowed, so a
+# service can be listening on 0.0.0.0 and still be unreachable from the load
+# balancer or its sibling tiers.
+- name: Open the tier's ports
+  ansible.builtin.command: firewall-cmd --permanent --add-port={{ item }}/tcp
+  loop: [8080]
+  changed_when: true
+  notify: Reload firewalld

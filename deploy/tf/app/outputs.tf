@@ -6,9 +6,9 @@ output "lb_ip" {
 output "urls" {
   description = "Entry points served by the load balancer."
   value = {
-    customer   = "http://${oci_load_balancer_load_balancer.lb.ip_address_details[0].ip_address}/mobile"
+    customer   = "http://${oci_load_balancer_load_balancer.lb.ip_address_details[0].ip_address}/"
     backoffice = "http://${oci_load_balancer_load_balancer.lb.ip_address_details[0].ip_address}/backoffice"
-    api        = "http://${oci_load_balancer_load_balancer.lb.ip_address_details[0].ip_address}/api"
+    api        = "http://${oci_load_balancer_load_balancer.lb.ip_address_details[0].ip_address}/v1"
     paf        = "http://${oci_load_balancer_load_balancer.lb.ip_address_details[0].ip_address}/agentFactory"
   }
 }

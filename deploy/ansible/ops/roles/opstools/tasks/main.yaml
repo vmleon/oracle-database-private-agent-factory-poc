@@ -61,12 +61,15 @@
     remote_src: true
     creates: "{{ liquibase_dir }}/liquibase"
 
-- name: Download the Oracle JDBC driver
+- name: Download the Oracle JDBC driver and PKI provider
   ansible.builtin.get_url:
-    url: "{{ ojdbc_url }}"
-    dest: "{{ liquibase_dir }}/lib/ojdbc11.jar"
+    url: "{{ item.url }}"
+    dest: "{{ liquibase_dir }}/lib/{{ item.dest }}"
     mode: "0644"
     timeout: 60
+  loop:
+    - { url: "{{ ojdbc_url }}", dest: ojdbc11.jar }
+    - { url: "{{ oraclepki_url }}", dest: oraclepki.jar }
 
 # TNS_ADMIN points Liquibase's JDBC driver at the unpacked wallet, so the
 # connection string is the service alias rather than a host and port.

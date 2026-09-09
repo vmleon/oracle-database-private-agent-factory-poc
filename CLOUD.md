@@ -144,8 +144,8 @@ then `RESEARCH_WORKFLOW`.
 python manage.py info
 ```
 
-Expect the load balancer address and the four paths: `/mobile`, `/backoffice`,
-`/api`, `/agentFactory`.
+Expect the load balancer address and the paths: `/` (customer),
+`/backoffice`, `/v1` (API) and `/agentFactory`.
 
 ## Teardown
 

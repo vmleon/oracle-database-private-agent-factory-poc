@@ -3,8 +3,10 @@
   ansible.builtin.dnf:
     name:
       - java-21-openjdk-headless
-      - python3
-      - python3-pip
+      # Oracle Linux 9 defaults to Python 3.9, which cannot evaluate the
+      # `str | None` annotations the registry's models use (PEP 604).
+      - python3.11
+      - python3.11-pip
       - unzip
     state: present
 
@@ -71,10 +73,23 @@
     mode: "0640"
   notify: Restart the registry
 
+- name: Discard a virtualenv built with the wrong interpreter
+  ansible.builtin.file:
+    path: "{{ app_dir }}/registry/venv"
+    state: absent
+  when: not (app_dir + "/registry/venv/bin/python3.11") is exists
+
+- name: Create the registry virtualenv
+  ansible.builtin.command: /usr/bin/python3.11 -m venv {{ app_dir }}/registry/venv
+  args:
+    creates: "{{ app_dir }}/registry/venv/bin/python3.11"
+
+# `executable` points pip straight at the virtualenv, so the pip module never
+# looks for a `virtualenv` binary that Oracle Linux does not ship.
 - name: Install the registry dependencies
   ansible.builtin.pip:
     requirements: "{{ app_dir }}/registry/requirements.txt"
-    virtualenv: "{{ app_dir }}/registry/venv"
+    executable: "{{ app_dir }}/registry/venv/bin/pip"
 
 - name: Install the OPA binary
   ansible.builtin.get_url:
@@ -107,3 +122,12 @@
     - paf-poc-opa
     - paf-poc-registry
     - paf-poc-backend
+
+# Oracle Linux images boot with firewalld active and only ssh allowed, so a
+# service can be listening on 0.0.0.0 and still be unreachable from the load
+# balancer or its sibling tiers.
+- name: Open the tier's ports
+  ansible.builtin.command: firewall-cmd --permanent --add-port={{ item }}/tcp
+  loop: [8090, 8600]
+  changed_when: true
+  notify: Reload firewalld
