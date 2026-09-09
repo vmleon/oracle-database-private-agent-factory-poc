@@ -4,17 +4,27 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-# Models are served by the managed OCI Generative AI endpoint, so no inference
-# container runs alongside PAF on this host.
+# Mirrors the local compose service that runs this same image. The image's
+# default entrypoint expects /etc/agent-factory/runtime.env and exits without
+# it; startup.sh is the path the kit actually supports, and /mount is where it
+# keeps its state. The kit's other bind mount, /dev-shared, is a developer
+# overlay its own deploy.sh treats as optional and the tarball does not ship.
+#
+# PAF itself is configured through its install wizard, not through this unit —
+# the database connection, the models and the Select AI profiles are all
+# entered there, which is what `manage.py paf bootstrap` prints.
 ExecStart=/usr/bin/podman run --rm --name paf \
   --network host \
-  -v {{ wallet_dir }}:/opt/paf/wallet:Z \
-  -e TNS_ADMIN=/opt/paf/wallet \
-  -e ADB_SERVICE={{ adb_service }} \
-  -e GENAI_ENDPOINT={{ genai_endpoint }} \
-  -e GENAI_REGION={{ genai_region }} \
-  -e BACKEND_URL=http://{{ backend_host }}:8080 \
-  localhost/applied-ai-label:{{ paf_app_version }}
+  --user 0:0 \
+  -v {{ kit_dir }}/applied-ai/volume:/mount:Z \
+  -e IS_UPGRADE=false \
+  -e HOST_OS=Linux \
+  -e PYTHONPATH=/home/aaiuser/install \
+  -e TAKE_SNAPSHOT=false \
+  -e USE_WALLET=false \
+  -e INCLUDE_KA_DATA=false \
+  localhost/applied-ai-label:{{ paf_app_version }} \
+  /home/aaiuser/install/startup.sh
 ExecStop=/usr/bin/podman stop -t 30 paf
 Restart=on-failure
 RestartSec=15

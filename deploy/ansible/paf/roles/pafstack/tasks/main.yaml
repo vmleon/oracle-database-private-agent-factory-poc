@@ -86,11 +86,20 @@
   ansible.builtin.set_fact:
     paf_app_version: "{{ (paf_version_file.content | b64decode | from_json).app_version }}"
 
+# podman's storage is keyed by image ID, not by tag, so a `creates:` path built
+# from the version never matches and the image is rebuilt on every retry — ten
+# minutes each time. Ask podman instead.
+- name: Check whether the PAF image is already built
+  ansible.builtin.command: podman image exists localhost/applied-ai-label:{{ paf_app_version }}
+  register: paf_image
+  failed_when: false
+  changed_when: false
+
 - name: Build the PAF image
   ansible.builtin.command:
     cmd: ./build-image.sh aai
     chdir: "{{ kit_dir }}"
-    creates: /var/lib/containers/storage/overlay-images/{{ paf_app_version }}
+  when: paf_image.rc != 0
 
 - name: Render the PAF service unit
   ansible.builtin.template:
@@ -105,6 +114,36 @@
     enabled: true
     state: started
     daemon_reload: true
+
+# The post-start handshake the kit's own deploy.sh performs. Without the marker,
+# startup.sh polls for it and the container exits after ~2 minutes; without the
+# seeded version.json, db_migrate.py fails during the UI installer.
+- name: Write the config-complete marker
+  ansible.builtin.file:
+    path: "{{ kit_dir }}/applied-ai/volume/.config_complete.marker"
+    state: touch
+    mode: "0644"
+
+- name: Wait for the container to accept commands
+  ansible.builtin.command: podman exec paf true
+  register: paf_exec
+  retries: 30
+  delay: 5
+  until: paf_exec.rc == 0
+  changed_when: false
+
+- name: Start crond inside the container
+  ansible.builtin.command: podman exec paf crond start
+  changed_when: false
+  failed_when: false
+
+- name: Seed the version file the installer reads
+  ansible.builtin.command: >-
+    podman exec paf sh -c
+    "mkdir -p /mount/data/app/latest/version &&
+     cp -f /home/aaiuser/install/agent_factory/internal/version.json
+     /mount/data/app/latest/version/version.json"
+  changed_when: false
 
 # Oracle Linux images boot with firewalld active and only ssh allowed, so a
 # service can be listening on 0.0.0.0 and still be unreachable from the load
