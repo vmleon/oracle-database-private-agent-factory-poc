@@ -16,9 +16,10 @@ resource "oci_load_balancer_load_balancer" "lb" {
 
 locals {
   backends = {
-    frontend = { ip = module.frontend.private_ip, port = 80 }
-    backend  = { ip = module.backend.private_ip, port = 8090 }
-    paf      = { ip = module.paf.private_ip, port = 8080 }
+    frontend = { ip = module.frontend.private_ip, port = 80, ssl = false }
+    backend  = { ip = module.backend.private_ip, port = 8090, ssl = false }
+    # PAF terminates TLS itself, with a self-signed certificate.
+    paf = { ip = module.paf.private_ip, port = 8080, ssl = true }
   }
 }
 
@@ -32,6 +33,13 @@ resource "oci_load_balancer_backend_set" "this" {
   health_checker {
     protocol = "TCP"
     port     = each.value.port
+  }
+
+  dynamic "ssl_configuration" {
+    for_each = each.value.ssl ? [1] : []
+    content {
+      verify_peer_certificate = false
+    }
   }
 }
 

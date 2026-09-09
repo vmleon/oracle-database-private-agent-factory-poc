@@ -137,12 +137,9 @@
   changed_when: false
   failed_when: false
 
+# One line on purpose: a folded scalar keeps the newlines, which break `sh -c`.
 - name: Seed the version file the installer reads
-  ansible.builtin.command: >-
-    podman exec paf sh -c
-    "mkdir -p /mount/data/app/latest/version &&
-     cp -f /home/aaiuser/install/agent_factory/internal/version.json
-     /mount/data/app/latest/version/version.json"
+  ansible.builtin.command: podman exec paf sh -c "mkdir -p /mount/data/app/latest/version && cp -f /home/aaiuser/install/agent_factory/internal/version.json /mount/data/app/latest/version/version.json"
   changed_when: false
 
 # Oracle Linux images boot with firewalld active and only ssh allowed, so a
