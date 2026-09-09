@@ -22,9 +22,18 @@
 - name: Fetch the ADB wallet
   ansible.builtin.get_url:
     url: "{{ adb_wallet_par_url }}"
-    dest: /tmp/adb-wallet.zip
+    dest: /tmp/adb-wallet.b64
     mode: "0600"
     timeout: 60
+
+# The bucket object holds base64 text rather than the zip: the upload has to be
+# deferred past plan time, because the wallet does not exist until the database
+# it comes from is created. See deploy/tf/app/adb.tf.
+# GNU coreutils base64 writes to stdout and has no -o, so this redirects.
+- name: Decode the wallet
+  ansible.builtin.shell: base64 -d /tmp/adb-wallet.b64 > /tmp/adb-wallet.zip
+  args:
+    creates: /tmp/adb-wallet.zip
 
 - name: Unpack the wallet
   ansible.builtin.unarchive:
@@ -33,10 +42,13 @@
     remote_src: true
     mode: "0600"
 
-- name: Remove the wallet archive
+- name: Remove the wallet archives
   ansible.builtin.file:
-    path: /tmp/adb-wallet.zip
+    path: "{{ item }}"
     state: absent
+  loop:
+    - /tmp/adb-wallet.b64
+    - /tmp/adb-wallet.zip
 
 - name: Deploy the Spring Boot jar
   ansible.builtin.copy:

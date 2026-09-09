@@ -49,22 +49,26 @@ resource "oci_database_autonomous_database_wallet" "adb" {
   base64_encode_content  = true
 }
 
+# A local copy for the operator to upload into the PAF installer by hand.
 resource "local_file" "adb_wallet" {
   filename       = "${path.module}/generated/adb-wallet.zip"
   content_base64 = oci_database_autonomous_database_wallet.adb.content
 }
 
-# The ops and paf tiers boot without credentials, so the wallet reaches them
-# the same way their playbooks do — as a bucket object behind a read-only PAR.
+# The ops, backend and paf tiers boot without credentials, so the wallet reaches
+# them the same way their playbooks do — as a bucket object behind a read-only
+# PAR.
+#
+# It is uploaded as the base64 text rather than as a file: `source` makes the
+# provider stat the path while planning, and the wallet does not exist until the
+# database it comes from has been created by this same apply. `content` takes a
+# value that is unknown until apply, so the upload is deferred with it. Each
+# tier decodes the payload before unzipping.
 resource "oci_objectstorage_object" "wallet" {
   bucket    = oci_objectstorage_bucket.artifacts.name
   namespace = data.oci_objectstorage_namespace.ns.namespace
-  object    = "adb-wallet.zip"
-  source    = local_file.adb_wallet.filename
-
-  metadata = {
-    content_hash = local_file.adb_wallet.content_base64sha256
-  }
+  object    = "adb-wallet.zip.b64"
+  content   = oci_database_autonomous_database_wallet.adb.content
 }
 
 resource "oci_objectstorage_preauthrequest" "wallet" {
