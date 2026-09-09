@@ -182,17 +182,3 @@ databaseChangeLog:
         - sql:
             sql: |-
               GRANT CREATE SESSION TO AGENT_FACTORY WITH ADMIN OPTION
-
-  - changeSet:
-      id: 004-grant-dbms-cloud-adb
-      author: paf-poc
-      context: adb
-      # DBMS_CLOUD and DBMS_CLOUD_AI ship with Autonomous Database and back the
-      # Select AI profiles in 018. The local target installs neither.
-      changes:
-        - sql:
-            sql: |-
-              GRANT EXECUTE ON DBMS_CLOUD TO AGENT_FACTORY
-        - sql:
-            sql: |-
-              GRANT EXECUTE ON DBMS_CLOUD_AI TO AGENT_FACTORY

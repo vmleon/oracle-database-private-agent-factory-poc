@@ -70,9 +70,6 @@
       --password={{ adb_admin_password }}
       update
       -Ddb_password={{ adb_admin_password }}
-      -Dgenai_region={{ genai_region }}
-      -Dgenai_compartment_ocid={{ genai_compartment_ocid }}
-      -Dgenai_model={{ genai_model }}
     chdir: "{{ changelog_dir }}"
   environment:
     TNS_ADMIN: "{{ wallet_dir }}"

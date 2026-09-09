@@ -51,5 +51,5 @@ databaseChangeLog:
       file: 017-hitl-task-session-scoped.yaml
       relativeToChangelogFile: true
   - include:
-      file: 018-select-ai-bootstrap.yaml
+      file: 018-select-ai-grants.yaml
       relativeToChangelogFile: true

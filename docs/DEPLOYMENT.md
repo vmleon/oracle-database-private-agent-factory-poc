@@ -204,7 +204,7 @@ database/liquibase/
 ├── 009-tx-event-queues.yaml              # TxEventQ queues + grants
 ├── 010-seed-synthetic.yaml               # synthetic dataset — context: seed
 ├── 011..017-*.yaml                       # session, intake, room id, audit key, cust_360, demo seed, HITL scope
-└── 018-select-ai-bootstrap.yaml          # Select AI profiles — context: adb
+└── 018-select-ai-grants.yaml             # Select AI enablement — context: adb
 ```
 
 ### How the contexts select a target
@@ -214,7 +214,7 @@ A changeset with **no context runs everywhere**; only tagged changesets are filt
 | Context | Applies to                                                                                      |
 | ------- | ------------------------------------------------------------------------------------------------- |
 | `local` | The four `CREATE USER … DEFAULT TABLESPACE USERS` changesets and the grant set including `CREATE DATABASE LINK` |
-| `adb`   | Their `DEFAULT TABLESPACE DATA` counterparts, the `DBMS_CLOUD` / `DBMS_CLOUD_AI` grants, and the Select AI profiles |
+| `adb`   | Their `DEFAULT TABLESPACE DATA` counterparts and the Select AI package grants                     |
 | `seed`  | The synthetic dataset — selected by both targets                                                 |
 
 - Local: `--contexts=local,seed`
@@ -228,7 +228,9 @@ A context is a runtime filter and is **not** part of a changeset's checksum, so 
 
 - **Tablespace.** Oracle Database Free puts application objects in `USERS`, Autonomous Database in `DATA`.
 - **Database links.** ADB creates them through `DBMS_CLOUD_ADMIN.CREATE_DATABASE_LINK`, so `CREATE DATABASE LINK` is not granted there. The PoC does not use one.
-- **Select AI.** `DBMS_CLOUD` and `DBMS_CLOUD_AI` ship with ADB. Oracle Database Free rejects a custom `provider_endpoint` pre-flight (`ORA-20401`), so the profiles are ADB-only and the local flow reaches the same `AGENT_TOOLS` package through the MCP wrapper containers instead.
+- **Select AI.** `DBMS_CLOUD`, `DBMS_CLOUD_AI`, `DBMS_CLOUD_AI_AGENT` and `DBMS_CLOUD_PIPELINE` ship with ADB, and PAF checks for all four before it will treat the database as eligible. Oracle Database Free rejects a custom `provider_endpoint` pre-flight (`ORA-20401`), so this is ADB-only and the local flow reaches the same `AGENT_TOOLS` package through the MCP wrapper containers instead.
+
+The changelog grants those packages but does **not** create the profiles or agent tools. `DBMS_CLOUD_AI.CREATE_PROFILE` and `DBMS_CLOUD_AI_AGENT.CREATE_TOOL` create objects owned by the invoking user, and Liquibase connects as `ADMIN`; anything it created would be invisible to PAF, which connects as `AGENT_FACTORY`. PAF creates both itself, and `manage.py paf bootstrap` lists them with their attributes.
 
 `liquibase.properties.j2` is rendered by the Ansible role that runs the update — `database-setup` locally, `opstools` on the cloud `ops` compute.
 

@@ -15,7 +15,6 @@ Remaining to make the stack deployable end to end:
 
 - **The X86_64 PAF kit** — the cloud tiers run `VM.Standard.E5.Flex` (AMD x86_64) while the local kit is ARM64. Download the x86_64 tarball from Oracle Software Delivery into `paf/dist/`; see [`paf/dist/README.md`](paf/dist/README.md).
 - **Apply `deploy/tf/iam/`** with a tenancy-admin profile. It creates the two dynamic groups and the `use generative-ai-family` policy that the compute's instance principal and the database's resource principal both depend on; nothing authenticates without it.
-- **Select AI tool registration** — the cloud tool transport, replacing the MCP wrapper containers against the same `AGENT_TOOLS.PKG_AGENT_TOOLS` package, per `docs/DESIGN.md`. The profiles exist; the tools on top of them do not.
 - **A first `terraform apply`** against a real compartment. Region, model and limit discovery are verified against the live API, but no resource has been created, so the ADB-specific SQL in `001` and `018` is reasoned from the documentation rather than observed.
 - **Confirm two ADB particulars** at that first apply: whether `ROUTE_OUTBOUND_CONNECTIONS` must be set for the Select AI callout to reach Generative AI through the VCN, and that ADB's default `max_string_size=EXTENDED` satisfies PAF.
 - **Check the ADB ECPU service limit** — the compute and load balancer limits are comfortable, but the `adb-ecpu-count` query returned no data.

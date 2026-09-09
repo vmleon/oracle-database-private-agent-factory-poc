@@ -38,11 +38,7 @@ module "ops" {
   instance_memory_gbs = 8
   artifact_par_url    = "${local.object_storage_host}${oci_objectstorage_preauthrequest.artifact["ansible_ops"].access_uri}"
 
-  ansible_params = merge(local.common_params, local.db_params, {
-    genai_region           = var.genai_region
-    genai_compartment_ocid = var.compartment_ocid
-    genai_model            = var.genai_model
-  })
+  ansible_params = merge(local.common_params, local.db_params)
 }
 
 # frontend — nginx serving both UI bundles.

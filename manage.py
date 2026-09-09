@@ -1689,6 +1689,26 @@ def info() -> None:
         else:
             console.print(f"PAF:            [yellow]not prepared[/yellow] "
                           f"(run `manage.py paf prepare <tar>`)")
+        return
+
+    lb_ip = _tf_output("lb_ip")
+    if not lb_ip:
+        console.print(
+            "[yellow]No Terraform output yet.[/yellow] Apply deploy/tf/app first."
+        )
+        return
+
+    console.print(f"Load balancer:  {lb_ip}")
+    console.print(f"Chat UI:        http://{lb_ip}/mobile")
+    console.print(f"Backoffice UI:  http://{lb_ip}/backoffice")
+    console.print(f"Application API:http://{lb_ip}/api")
+    console.print(f"PAF:            http://{lb_ip}/agentFactory")
+    console.print(f"Bastion:        ssh opc@{_tf_output('ops_public_ip') or '<unknown>'}")
+    console.print(f"ADB service:    {os.getenv('DB_SERVICE')}   (wallet: {_tf_output('adb_wallet_path') or 'not generated'})")
+    console.print(f"App schemas:    APP, REPORTING, AGENT_TOOLS, AGENT_FACTORY")
+    console.print(f"Models:         {os.getenv('GENAI_MODEL')} / {os.getenv('GENAI_EMBED_MODEL')}")
+    console.print(f"                via {os.getenv('GENAI_ENDPOINT')}")
+    console.print(f"                instance principal — no key material")
 
 
 # ---------------------------------------------------------------- paf
@@ -2143,11 +2163,36 @@ def _paf_bootstrap_cloud() -> None:
         f"in the changelog.[/dim]\n"
     )
 
+    console.print("[bold]Step 5 — Select AI profiles[/bold]   (Select AI → Profiles)")
+    console.print("  PAF creates these as AGENT_FACTORY, which is why the changelog grants the")
+    console.print("  packages rather than creating the profiles itself — a profile belongs to")
+    console.print("  whichever user made it, and Liquibase connects as ADMIN.")
+    console.print("    Provider:         [cyan]OCI[/cyan]")
+    console.print("    Credential:       [cyan]OCI$RESOURCE_PRINCIPAL[/cyan]   (no secret; the database")
+    console.print("                      authenticates as itself through its dynamic group)")
+    console.print(f"    Model:            [cyan]{os.getenv('GENAI_MODEL', '')}[/cyan]")
+    console.print(f"    Compartment:      [cyan]{compartment}[/cyan]")
+    console.print("  [bold]chat_profile[/bold]      object list: the six [cyan]REPORTING.chat_v_*[/cyan] views (customer-safe)")
+    console.print("  [bold]research_profile[/bold]  object list: the six [cyan]REPORTING.research_v_*[/cyan] views (read-only)\n")
+
+    console.print("[bold]Step 6 — Select AI agent tools[/bold]   (Select AI → Tools)")
+    console.print("  Two kinds. SQL tools give the flows NL2SQL over a profile's view set;")
+    console.print("  function tools call the same PL/SQL the local MCP wrappers call, so the")
+    console.print("  business logic is identical on both targets and only the transport differs.")
+    console.print("    [cyan]chat_sql[/cyan]        type [cyan]SQL[/cyan]         profile [cyan]chat_profile[/cyan]")
+    console.print("    [cyan]research_sql[/cyan]    type [cyan]SQL[/cyan]         profile [cyan]research_profile[/cyan]")
+    console.print("    [cyan]create_hitl_task[/cyan]      function [cyan]AGENT_TOOLS.PKG_AGENT_TOOLS.create_hitl_task[/cyan]")
+    console.print("        inputs: p_application_id, p_recommendation, p_reasoning,")
+    console.print("                p_explore_hints, p_evidence, p_agent_run_id")
+    console.print("    [cyan]upsert_draft_application[/cyan]  function [cyan]AGENT_TOOLS.PKG_AGENT_TOOLS.upsert_draft_application[/cyan]")
+    console.print("        inputs: p_session_token, p_amount, p_term_months, p_purpose")
+    console.print("  [dim]Flows reach these through the Select AI Bridge node.[/dim]\n")
+
     console.print("[bold]After install[/bold] — sign in as the admin user and:")
     console.print("  - Verify LLM Management shows both configurations and that a test call succeeds.")
     console.print("    A failure here is almost always the dynamic group or policy: apply")
     console.print("    [cyan]deploy/tf/iam[/cyan] with a tenancy-admin profile.")
-    console.print("  - Register the Select AI tools against AGENT_TOOLS.PKG_AGENT_TOOLS.")
+    console.print("  - Import the Agent Builder flows: [cyan]CHAT_FLOW[/cyan], then [cyan]RESEARCH_WORKFLOW[/cyan].")
     console.print(
         "\n[yellow]Note:[/yellow] API automation for these UI steps is intentionally out of "
         "scope (Playwright-style driving is fragile across PAF versions)."
