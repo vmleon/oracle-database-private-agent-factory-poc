@@ -4,3 +4,5 @@ terraform.tfstate
 terraform.tfstate.backup
 tfplan
 generated/
+# Transient lock file; carries the operator's user and host name.
+.terraform.tfstate.lock.info

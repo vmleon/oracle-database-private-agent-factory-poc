@@ -38,9 +38,8 @@ resource "oci_load_balancer_backend_set" "this" {
   # PAF generates its own self-signed certificate during its install wizard,
   # which runs after this stack exists — so there is no CA to upload and trust
   # at apply time, and peer verification cannot be switched on here yet. The
-  # hop is unverified: anything already inside the VCN could impersonate PAF to
-  # the load balancer. Tracked as hardening in BACKLOG.md, together with the
-  # plaintext public listener that presently matters more.
+  # hop is encrypted but unverified: anything already inside the VCN could
+  # impersonate PAF to the load balancer. Tracked in BACKLOG.md.
   dynamic "ssl_configuration" {
     for_each = each.value.ssl ? [1] : []
     content {
@@ -58,14 +57,55 @@ resource "oci_load_balancer_backend" "this" {
   port             = each.value.port
 }
 
-resource "oci_load_balancer_listener" "http" {
+# TLS terminates here. OCI expresses that as an HTTP listener carrying an
+# ssl_configuration, not as a "HTTPS" protocol.
+resource "oci_load_balancer_listener" "https" {
+  load_balancer_id         = oci_load_balancer_load_balancer.lb.id
+  name                     = "https"
+  default_backend_set_name = oci_load_balancer_backend_set.this["frontend"].name
+  port                     = 443
+  protocol                 = "HTTP"
+
+  path_route_set_name = oci_load_balancer_path_route_set.routes.name
+
+  ssl_configuration {
+    certificate_name = oci_load_balancer_certificate.lb.certificate_name
+  }
+}
+
+# Port 80 exists only to send callers to 443, so nothing is served in the clear.
+resource "oci_load_balancer_rule_set" "redirect_to_https" {
+  load_balancer_id = oci_load_balancer_load_balancer.lb.id
+  name             = "redirecttohttps"
+
+  items {
+    action        = "REDIRECT"
+    response_code = 301
+
+    conditions {
+      attribute_name  = "PATH"
+      attribute_value = "/"
+      operator        = "FORCE_LONGEST_PREFIX_MATCH"
+    }
+
+    redirect_uri {
+      protocol = "HTTPS"
+      host     = "{host}"
+      port     = 443
+      path     = "{path}"
+      query    = "{query}"
+    }
+  }
+}
+
+resource "oci_load_balancer_listener" "http_redirect" {
   load_balancer_id         = oci_load_balancer_load_balancer.lb.id
   name                     = "http"
   default_backend_set_name = oci_load_balancer_backend_set.this["frontend"].name
   port                     = 80
   protocol                 = "HTTP"
 
-  path_route_set_name = oci_load_balancer_path_route_set.routes.name
+  rule_set_names = [oci_load_balancer_rule_set.redirect_to_https.name]
 }
 
 # Mirrors the local Caddy front door so both targets serve the same URLs:

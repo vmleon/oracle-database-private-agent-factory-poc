@@ -19,16 +19,13 @@ Remaining to make the stack deployable end to end:
 - **Confirm two ADB particulars** at that first apply: whether `ROUTE_OUTBOUND_CONNECTIONS` must be set for the Select AI callout to reach Generative AI through the VCN, and that ADB's default `max_string_size=EXTENDED` satisfies PAF.
 - **Check the ADB ECPU service limit** — the compute and load balancer limits are comfortable, but the `adb-ecpu-count` query returned no data.
 
-## 2. TLS hardening for the cloud deployment
+## 2. Verify PAF's certificate at the load balancer
 
-The stack answers on **plain HTTP**: the load balancer listener is port 80 with no certificate, so the customer UI, the API and — most importantly — the PAF install wizard where an administrator password is set all cross the public internet unencrypted. That is the exposure worth closing first.
+The public listener serves HTTPS on 443 with a self-signed certificate, and port 80 redirects to it, so nothing crosses the internet in the clear. Behind that, the load balancer reaches PAF over HTTPS **without verifying its certificate** (`verify_peer_certificate = false` in `deploy/tf/app/lb.tf`): the hop is encrypted, but anything already inside the VCN could impersonate PAF to the load balancer.
 
-Behind it, the load balancer reaches PAF over HTTPS without verifying its certificate (`verify_peer_certificate = false` in `deploy/tf/app/lb.tf`). PAF issues that certificate itself during its install wizard, which runs after `cloud up`, so there is no CA to trust at apply time.
+It cannot be closed in the same apply. PAF issues its certificate during its install wizard, which runs after `cloud up`, so there is nothing to trust when the listener is created. Closing it means a second apply that uploads PAF's certificate as a trusted CA bundle and flips the backend set to `verify_peer_certificate = true`.
 
-Both close the same way, in this order:
-
-- Terminate TLS at the load balancer: an `oci_load_balancer_certificate` and an HTTPS listener on 443, with 80 redirecting to it. A real certificate needs a DNS name, so this pairs with giving the deployment one instead of using the bare load balancer address.
-- Then, once PAF has generated its certificate, upload it as a trusted CA bundle and flip the backend to `verify_peer_certificate = true`. It is a second apply by nature, because the certificate does not exist during the first.
+The front certificate is self-signed for the same reason a real one is not used: the deployment has no DNS name, so browsers warn on first visit. Giving it a hostname and issuing against that replaces the certificate and nothing else.
 
 ## 3. XGBoost credit-scoring tool
 

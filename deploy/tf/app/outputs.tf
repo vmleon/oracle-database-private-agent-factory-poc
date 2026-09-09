@@ -1,15 +1,15 @@
 output "lb_ip" {
-  description = "Public address of the stack."
+  description = "Public address of the stack. Served over HTTPS with a self-signed certificate, so a browser warns on first visit."
   value       = oci_load_balancer_load_balancer.lb.ip_address_details[0].ip_address
 }
 
 output "urls" {
   description = "Entry points served by the load balancer."
   value = {
-    customer   = "http://${oci_load_balancer_load_balancer.lb.ip_address_details[0].ip_address}/"
-    backoffice = "http://${oci_load_balancer_load_balancer.lb.ip_address_details[0].ip_address}/backoffice"
-    api        = "http://${oci_load_balancer_load_balancer.lb.ip_address_details[0].ip_address}/v1"
-    paf        = "http://${oci_load_balancer_load_balancer.lb.ip_address_details[0].ip_address}/agentFactory"
+    customer   = "https://${oci_load_balancer_load_balancer.lb.ip_address_details[0].ip_address}/"
+    backoffice = "https://${oci_load_balancer_load_balancer.lb.ip_address_details[0].ip_address}/backoffice"
+    api        = "https://${oci_load_balancer_load_balancer.lb.ip_address_details[0].ip_address}/v1"
+    paf        = "https://${oci_load_balancer_load_balancer.lb.ip_address_details[0].ip_address}/agentFactory"
   }
 }
 

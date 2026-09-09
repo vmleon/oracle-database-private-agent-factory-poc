@@ -88,8 +88,19 @@ resource "oci_core_security_list" "public" {
     protocol    = "all"
   }
 
-  # Public entry point. This must match the load balancer's listener port —
-  # opening a port nothing listens on leaves the stack unreachable.
+  # Public entry points, which must match the load balancer's listeners —
+  # opening a port nothing listens on leaves the stack unreachable, and not
+  # opening one the listener uses does the same. 443 serves the stack; 80 exists
+  # only to redirect to it.
+  ingress_security_rules {
+    source   = "0.0.0.0/0"
+    protocol = "6"
+    tcp_options {
+      min = 443
+      max = 443
+    }
+  }
+
   ingress_security_rules {
     source   = "0.0.0.0/0"
     protocol = "6"

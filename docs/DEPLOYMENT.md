@@ -153,8 +153,9 @@ The compute shape is chosen at `manage.py setup cloud` time and applies to every
 | `artifacts.tf`      | Per-tier `archive_file` → bucket object → **PAR** (Pre-Authenticated Request) pipeline, plus the PAF kit tarball uploaded as-is       |
 | `locals.tf`         | Deploy id, the artifact map, and the VCN private-DNS names the tiers address each other by                                            |
 | `main.tf`           | The `ops`, `frontend`, `backend` and `paf` tier module calls and the Ansible parameters each receives                                 |
-| `lb.tf`             | Public flexible load balancer, one backend set per tier, and the path route set behind the single HTTP listener                       |
+| `lb.tf`             | Public flexible load balancer, one backend set per tier, the path route set, an HTTPS listener on 443 and a port-80 redirect to it     |
 | `outputs.tf`        | LB address and per-path URLs, bastion IP, ADB OCID, wallet path, artifacts bucket, GenAI endpoint                                     |
+| `certificate.tf`    | Self-signed certificate for the public listener, issued for the load balancer's own address                                          |
 
 Cloud-init on each instance pulls its artefact zip through a PAR and runs Ansible **locally** — no SSH between instances. The bootstrap script copies itself to `/usr/local/sbin` and hands the retry loop to a systemd unit with `Restart=on-failure`, so a dependency that settles late (DNS, the NAT path to the yum mirrors, the dnf lock) costs one 60-second cycle instead of leaving the tier permanently half-built. It writes `/var/lib/<project>/bootstrap.ok` only after the playbook returns success, so that sentinel is a trustworthy signal; the playbook log lands at `/home/opc/ansible-playbook.log`.
 

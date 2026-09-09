@@ -1763,10 +1763,10 @@ def info() -> None:
         return
 
     console.print(f"Load balancer:  {lb_ip}")
-    console.print(f"Chat UI:        http://{lb_ip}/mobile")
-    console.print(f"Backoffice UI:  http://{lb_ip}/backoffice")
-    console.print(f"Application API:http://{lb_ip}/api")
-    console.print(f"PAF:            http://{lb_ip}/agentFactory")
+    console.print(f"Chat UI:        https://{lb_ip}/")
+    console.print(f"Backoffice UI:  https://{lb_ip}/backoffice")
+    console.print(f"Application API:https://{lb_ip}/v1")
+    console.print(f"PAF:            https://{lb_ip}/agentFactory")
     console.print(f"Bastion:        ssh opc@{_tf_output('ops_public_ip') or '<unknown>'}")
     console.print(f"ADB service:    {os.getenv('DB_SERVICE')}   (wallet: {_tf_output('adb_wallet_path') or 'not generated'})")
     console.print(f"App schemas:    APP, REPORTING, AGENT_TOOLS, AGENT_FACTORY")
@@ -2283,11 +2283,12 @@ def _paf_bootstrap_cloud() -> None:
     db_service = str(os.getenv("DB_SERVICE", "")).lower()
 
     if lb_ip:
-        console.print(f"Open the installer:\n  [cyan]http://{lb_ip}/agentFactory/installation[/cyan]\n")
+        console.print(f"Open the installer:\n  [cyan]https://{lb_ip}/agentFactory/installation[/cyan]\n"
+                      "  [dim](self-signed certificate — accept the browser warning)[/dim]\n")
     else:
         console.print(
             "[yellow]No Terraform output yet.[/yellow] Apply deploy/tf/app first, then re-run.\n"
-            "  The installer is at [cyan]http://<lb_ip>/agentFactory/installation[/cyan]\n"
+            "  The installer is at [cyan]https://<lb_ip>/agentFactory/installation[/cyan]\n"
         )
 
     console.print("[bold]Step 1 — admin user[/bold]")
