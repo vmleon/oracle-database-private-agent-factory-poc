@@ -1254,7 +1254,7 @@ def setup_cloud() -> None:
     ENV_FILE.write_text(env_content)
     ENV_FILE.chmod(0o600)
     console.print(f"[green]✓[/green] Wrote {ENV_FILE}")
-    console.print("\nNext: [cyan]python manage.py tf[/cyan]")
+    console.print("\nNext: [cyan]python manage.py build[/cyan]")
 
 
 # ---------------------------------------------------------------- OCI discovery
@@ -1820,11 +1820,33 @@ def cloud_iam() -> None:
     console.print("\n[green]✓[/green] Next: [cyan]python manage.py cloud up[/cyan]")
 
 
+# Terraform zips the Ansible directories at apply time, so a tier whose payload
+# was never staged fetches an artifact with no application in it and fails
+# during its own play — on the instance, long after the apply reported success.
+STAGED_PAYLOADS = (
+    ANSIBLE_ROOT / "backend" / "roles" / "appstack" / "files" / "app.jar",
+    ANSIBLE_ROOT / "frontend" / "roles" / "webstack" / "files" / "customer",
+    ANSIBLE_ROOT / "frontend" / "roles" / "webstack" / "files" / "backoffice",
+    ANSIBLE_ROOT / "ops" / "roles" / "opstools" / "files" / "database" / "liquibase",
+)
+
+
+def _require_build() -> None:
+    missing = [p for p in STAGED_PAYLOADS if not p.exists()]
+    if missing:
+        console.print("[red]Tier payloads are not staged.[/red] Missing:")
+        for path in missing:
+            console.print(f"  • {path.relative_to(PROJECT_ROOT)}")
+        console.print("Run [cyan]python manage.py build[/cyan] first.")
+        sys.exit(1)
+
+
 @cloud.command("up")
 def cloud_up() -> None:
     """Provision the workload stack: network, ADB, the four tiers and the load balancer."""
     _require_cloud_env()
     _require_tfvars(TF_VARS_FILE)
+    _require_build()
     console.print(Panel.fit("[bold]Cloud stack[/bold]"))
     _tf_run(TF_DIR, "init", "-input=false")
     _tf_run(TF_DIR, "apply", "-input=false", "-auto-approve")
