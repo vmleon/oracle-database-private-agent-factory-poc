@@ -1,0 +1,6 @@
+---
+- name: Configure the frontend host
+  hosts: frontend
+  become: true
+  roles:
+    - webstack

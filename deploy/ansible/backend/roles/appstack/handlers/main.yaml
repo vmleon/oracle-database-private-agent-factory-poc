@@ -1,0 +1,18 @@
+---
+- name: Restart the backend
+  ansible.builtin.systemd:
+    name: paf-poc-backend
+    state: restarted
+    daemon_reload: true
+
+- name: Restart OPA
+  ansible.builtin.systemd:
+    name: paf-poc-opa
+    state: restarted
+    daemon_reload: true
+
+- name: Restart the registry
+  ansible.builtin.systemd:
+    name: paf-poc-registry
+    state: restarted
+    daemon_reload: true

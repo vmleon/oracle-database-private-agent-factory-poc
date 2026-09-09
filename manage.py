@@ -11,6 +11,8 @@ import subprocess
 import sys
 import tarfile
 import time
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 from pathlib import Path
 
 import click
@@ -18,6 +20,7 @@ import requests
 import urllib3
 from dotenv import load_dotenv
 from InquirerPy import inquirer
+from jinja2 import StrictUndefined, Template
 from rich.console import Console
 from rich.panel import Panel
 
@@ -39,6 +42,17 @@ RECREATE_BACKEND_CMD = [
 ANSIBLE_DIR = PROJECT_ROOT / "deploy" / "ansible" / "database-setup"
 ANSIBLE_VARS_FILE = ANSIBLE_DIR / ".vars.local.yml"
 
+ANSIBLE_ROOT = PROJECT_ROOT / "deploy" / "ansible"
+
+TF_DIR = PROJECT_ROOT / "deploy" / "tf" / "app"
+TF_VARS_TEMPLATE = TF_DIR / "terraform.tfvars.j2"
+TF_VARS_FILE = TF_DIR / "terraform.tfvars"
+
+TF_IAM_DIR = PROJECT_ROOT / "deploy" / "tf" / "iam"
+TF_IAM_VARS_TEMPLATE = TF_IAM_DIR / "terraform.tfvars.j2"
+TF_IAM_VARS_FILE = TF_IAM_DIR / "terraform.tfvars"
+
+KIT_DIST_DIR = PROJECT_ROOT / "paf" / "dist"
 PAF_KIT_DIR = PROJECT_ROOT / "paf-kit"
 PAF_VERSION_FILE = PAF_KIT_DIR / "applied-ai" / "kit" / "agent_factory" / "internal" / "version.json"
 PAF_BUILD_SCRIPT = PAF_KIT_DIR / "build-image.sh"
@@ -84,6 +98,11 @@ LOCAL_PREREQS = {
     "liquibase": "Install: `brew install liquibase` (macOS) or download from https://www.liquibase.org/download",
 }
 
+CLOUD_PREREQS = {
+    "terraform": "Install: `brew install terraform` (macOS) or https://developer.hashicorp.com/terraform/install",
+    "oci": "Install: `brew install oci-cli` (macOS) or https://docs.oracle.com/en-us/iaas/Content/API/SDKDocs/cliinstall.htm",
+}
+
 
 def _generate_password(length: int = 20) -> str:
     """Oracle-compliant: starts with letter, includes specials and digits."""
@@ -120,6 +139,17 @@ def _ensure_env() -> None:
         console.print("[red].env not found.[/red] Run `python manage.py setup local` first.")
         sys.exit(1)
     load_dotenv(ENV_FILE)
+
+
+def _stage(source: Path, dest: Path) -> None:
+    """Replace dest with a fresh copy of source, so a rebuild leaves nothing stale."""
+    if not source.exists():
+        console.print(f"[red]{source} not found.[/red]")
+        sys.exit(1)
+    if dest.exists():
+        shutil.rmtree(dest)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(source, dest)
 
 
 def _run(cmd: list, **kwargs) -> subprocess.CompletedProcess:
@@ -195,6 +225,34 @@ def _check_max_string_size(container: str = "paf-oracle-free-26ai") -> None:
         )
         sys.exit(1)
     console.print("[green]✓[/green] max_string_size is EXTENDED.")
+
+
+def _host_kit_arch() -> str:
+    """Kit architecture matching the machine running podman locally."""
+    return "ARM64" if platform.machine().lower() in ("arm64", "aarch64") else "X86_64"
+
+
+def _resolve_kit_tarball(arch: str) -> str:
+    """Path to the kit tarball in paf/dist/ built for `arch`.
+
+    The kit ships one tarball per architecture and the two deployment targets
+    do not share one, so each target resolves the file matching what it runs.
+    """
+    candidates = sorted(KIT_DIST_DIR.glob("*.tar.gz"))
+    for candidate in candidates:
+        if arch.lower() in candidate.name.lower():
+            return str(candidate)
+
+    console.print(
+        f"[red]No {arch} PAF kit tarball in {KIT_DIST_DIR}.[/red]\n"
+        f"Download it from Oracle Software Delivery and place it there "
+        f"(e.g. oracle_agent_factory_{arch}_26.7.0.tar.gz) — see paf/dist/README.md."
+    )
+    if candidates:
+        console.print("[dim]Present, but not for this architecture:[/dim]")
+        for candidate in candidates:
+            console.print(f"[dim]  • {candidate.name}[/dim]")
+    sys.exit(1)
 
 
 def _paf_app_version() -> str | None:
@@ -953,16 +1011,8 @@ def setup_local() -> None:
         message="Embedding dimension:",
         default=existing.get("VLLM_EMBED_DIM", "1024"),
     ).execute()
-    paf_tarball_default = existing.get("PAF_TARBALL", "")
-    paf_tarball_hint = (
-        f"Enter keeps the current value: {paf_tarball_default}"
-        if paf_tarball_default
-        else "e.g. ~/Downloads/oracle_agent_factory_arm64_26.7.0.tar.gz"
-    )
-    paf_tarball = inquirer.text(
-        message=f"Path to the PAF kit tarball ({paf_tarball_hint}):",
-        default=paf_tarball_default,
-    ).execute()
+    paf_tarball = _resolve_kit_tarball(_host_kit_arch())
+    console.print(f"[green]✓[/green] PAF kit: {Path(paf_tarball).name}")
 
     # PAF admin creds — used by manage.py's own `paf trust-ca` and `paf
     # api-key` commands to authenticate against PAF as an administrator.
@@ -1016,9 +1066,436 @@ def setup_local() -> None:
 
 @setup.command("cloud")
 def setup_cloud() -> None:
-    """Interactive cloud-deployment configuration (not yet implemented)."""
-    console.print("[yellow]setup cloud[/yellow] is not yet implemented (planned for a later PR).")
-    sys.exit(2)
+    """Interactive cloud-deployment configuration."""
+    console.print(Panel.fit("[bold]Oracle PAF PoC — Cloud Setup (OCI)[/bold]"))
+    _check_prereqs(CLOUD_PREREQS)
+
+    existing = {}
+    if ENV_FILE.exists():
+        load_dotenv(ENV_FILE)
+        existing = dict(os.environ)
+
+    profiles = _oci_profiles()
+    if not profiles:
+        console.print("[red]No profiles found in ~/.oci/config.[/red] Run `oci setup config` first.")
+        sys.exit(1)
+    oci_profile = inquirer.select(
+        message="OCI config profile:",
+        choices=profiles,
+        default=existing.get("OCI_PROFILE", profiles[0]),
+    ).execute()
+
+    tenancy_ocid = _oci_tenancy_ocid(oci_profile)
+    if not tenancy_ocid:
+        console.print(f"[red]No tenancy OCID for profile {oci_profile} in ~/.oci/config.[/red]")
+        sys.exit(1)
+
+    console.print("[dim]Listing subscribed regions…[/dim]")
+    subscriptions = _oci_json(["iam", "region-subscription", "list"], oci_profile)
+    if not subscriptions:
+        console.print("[red]Could not list region subscriptions.[/red] Check the profile's credentials.")
+        sys.exit(1)
+    regions = sorted(r["region-name"] for r in subscriptions)
+
+    region = inquirer.select(
+        message="Workload region (VCN, computes, ADB):",
+        choices=regions,
+        default=existing.get("OCI_REGION", _oci_profile_region(oci_profile) or regions[0]),
+    ).execute()
+
+    # Generative AI runs in a minority of regions, so the list is probed rather
+    # than assumed. The workload region and the model region may differ.
+    console.print(f"[dim]Probing {len(regions)} regions for Generative AI…[/dim]")
+    genai_regions = _genai_regions(oci_profile, regions, tenancy_ocid)
+    if not genai_regions:
+        console.print(
+            "[red]Generative AI does not answer in any subscribed region.[/red]\n"
+            "Subscribe to a region that offers it, then re-run."
+        )
+        sys.exit(1)
+    console.print(f"[green]✓[/green] Generative AI in {len(genai_regions)} of {len(regions)}: {', '.join(genai_regions)}")
+
+    genai_region = inquirer.select(
+        message="Generative AI region (serves the models):",
+        choices=genai_regions,
+        default=existing.get("OCI_GENAI_REGION", region if region in genai_regions else genai_regions[0]),
+    ).execute()
+
+    console.print("[dim]Listing compartments…[/dim]")
+    compartments = _oci_json(
+        ["iam", "compartment", "list", "--compartment-id", tenancy_ocid,
+         "--compartment-id-in-subtree", "true", "--all"],
+        oci_profile,
+    ) or []
+    active = sorted(
+        ((c["name"], c["id"]) for c in compartments if c.get("lifecycle-state") == "ACTIVE"),
+        key=lambda pair: pair[0],
+    )
+    if active:
+        compartment_ocid = inquirer.select(
+            message="Compartment:",
+            choices=[{"name": name, "value": ocid} for name, ocid in active],
+            default=existing.get("OCI_COMPARTMENT_OCID"),
+        ).execute()
+    else:
+        compartment_ocid = inquirer.text(
+            message="Compartment OCID:",
+            default=existing.get("OCI_COMPARTMENT_OCID", ""),
+        ).execute()
+
+    genai_model, genai_embed_model, genai_embed_dim = _select_genai_models(
+        oci_profile, genai_region, tenancy_ocid, existing
+    )
+
+    label = inquirer.text(
+        message="Resource name prefix:",
+        default=existing.get("OCI_LABEL", "paf-poc"),
+    ).execute()
+    compute_shape = inquirer.text(
+        message="Compute shape for the workload instances:",
+        default=existing.get("OCI_COMPUTE_SHAPE", "VM.Standard.E5.Flex"),
+    ).execute()
+
+    ssh_key_path = inquirer.text(
+        message="Public SSH key to install on the computes:",
+        default=existing.get("OCI_SSH_KEY_PATH", str(Path.home() / ".ssh" / "id_rsa.pub")),
+    ).execute()
+    ssh_public_key = Path(ssh_key_path).expanduser()
+    if not ssh_public_key.exists():
+        console.print(f"[red]{ssh_public_key} not found.[/red]")
+        sys.exit(1)
+
+    admin_cidr = inquirer.text(
+        message="CIDR allowed to SSH into the bastion:",
+        default=existing.get("OCI_ADMIN_CIDR", "0.0.0.0/0"),
+    ).execute()
+
+    db_name = inquirer.text(
+        message="ADB database name (letters and digits, max 14):",
+        default=existing.get("DB_NAME", "pafpoc"),
+    ).execute()
+    db_password = inquirer.secret(
+        message="ADB ADMIN password (leave blank to auto-generate):",
+        default="",
+    ).execute()
+    if not db_password:
+        db_password = _generate_password()
+        console.print("[green]✓[/green] Generated ADB ADMIN password (saved to .env)")
+    wallet_password = inquirer.secret(
+        message="ADB wallet password (leave blank to auto-generate):",
+        default="",
+    ).execute()
+    if not wallet_password:
+        wallet_password = _generate_password()
+        console.print("[green]✓[/green] Generated wallet password (saved to .env)")
+
+    paf_tarball = _resolve_kit_tarball("X86_64")
+    console.print(f"[green]✓[/green] PAF kit: {Path(paf_tarball).name}")
+
+    paf_admin_user = inquirer.text(
+        message="PAF admin username (entered in the install wizard):",
+        default=existing.get("PAF_ADMIN_USER", ""),
+    ).execute()
+    paf_admin_pass = inquirer.secret(
+        message="PAF admin password (leave blank to keep existing):",
+        default="",
+    ).execute()
+    if not paf_admin_pass:
+        paf_admin_pass = existing.get("PAF_ADMIN_PASS", "")
+
+    env_content = (
+        "# Generated by manage.py setup cloud — do not edit by hand\n"
+        "DEPLOYMENT_TARGET=cloud\n"
+        "\n"
+        "# OCI targeting\n"
+        f"OCI_PROFILE={oci_profile}\n"
+        f"OCI_TENANCY_OCID={tenancy_ocid}\n"
+        f"OCI_REGION={region}\n"
+        f"OCI_GENAI_REGION={genai_region}\n"
+        f"OCI_COMPARTMENT_OCID={compartment_ocid}\n"
+        f"OCI_LABEL={label}\n"
+        f"OCI_COMPUTE_SHAPE={compute_shape}\n"
+        f"OCI_SSH_KEY_PATH={ssh_key_path}\n"
+        f"OCI_SSH_PUBLIC_KEY={ssh_public_key.read_text().strip()}\n"
+        f"OCI_ADMIN_CIDR={admin_cidr}\n"
+        "\n"
+        "# Database (Autonomous Database)\n"
+        "DB_MODE=adb\n"
+        f"DB_NAME={db_name}\n"
+        f"DB_SERVICE={db_name}_high\n"
+        "DB_ADMIN_USER=ADMIN\n"
+        f"DB_PASSWORD={db_password}\n"
+        f"DB_WALLET_PASSWORD={wallet_password}\n"
+        "\n"
+        "# Models (OCI Generative AI — no self-hosted inference on this target).\n"
+        "# PAF connects with the oci_instance_principal provider, which carries\n"
+        "# model_id, service_endpoint and compartment_id, and no key material.\n"
+        "MODEL_PROVIDER=oci_instance_principal\n"
+        f"GENAI_ENDPOINT=https://inference.generativeai.{genai_region}.oci.oraclecloud.com\n"
+        f"GENAI_MODEL={genai_model}\n"
+        f"GENAI_EMBED_MODEL={genai_embed_model}\n"
+        f"GENAI_EMBED_DIM={genai_embed_dim}\n"
+        "\n"
+        "# PAF kit tarball (read by `manage.py paf prepare` when no path is given)\n"
+        f"PAF_TARBALL={paf_tarball}\n"
+        "\n"
+        "# PAF admin login (used by manage.py's own `paf trust-ca` and\n"
+        "# `paf api-key` commands to authenticate against PAF as an\n"
+        "# administrator; not used by the backend or the test harness)\n"
+        f"PAF_ADMIN_USER={paf_admin_user}\n"
+        f"PAF_ADMIN_PASS={paf_admin_pass}\n"
+    )
+    ENV_FILE.write_text(env_content)
+    ENV_FILE.chmod(0o600)
+    console.print(f"[green]✓[/green] Wrote {ENV_FILE}")
+    console.print("\nNext: [cyan]python manage.py tf[/cyan]")
+
+
+# ---------------------------------------------------------------- OCI discovery
+
+# Generative AI does not report an embedding model's output dimension through
+# the API, so the mapping is curated. The vector columns are fixed-width, so a
+# mismatch is a hard failure at insert time rather than a warning.
+# A value of None means the model's width is configurable and has no fixed
+# native size.
+EMBEDDING_DIMENSIONS = {
+    "cohere.embed-english-v3.0": 1024,
+    "cohere.embed-multilingual-v3.0": 1024,
+    "cohere.embed-english-light-v3.0": 384,
+    "cohere.embed-multilingual-light-v3.0": 384,
+    "cohere.embed-v4.0": None,
+}
+
+
+def _oci_json(args: list, profile: str, region: str | None = None,
+              timeout: int = 120) -> dict | list | None:
+    """Run an OCI CLI query and return its parsed `data`, or None if it failed.
+
+    A region that does not host the service being queried can hang rather than
+    refuse, so a timeout counts as "not available" like any other failure.
+    """
+    cmd = ["oci", *args, "--profile", profile, "--output", "json"]
+    if region:
+        cmd += ["--region", region]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return None
+    if result.returncode != 0 or not result.stdout.strip():
+        return None
+    try:
+        return json.loads(result.stdout).get("data")
+    except json.JSONDecodeError:
+        return None
+
+
+def _oci_tenancy_ocid(profile: str) -> str | None:
+    config = Path.home() / ".oci" / "config"
+    if not config.exists():
+        return None
+    section = re.search(
+        rf"^\[{re.escape(profile)}\](.*?)(?=^\[|\Z)",
+        config.read_text(),
+        flags=re.MULTILINE | re.DOTALL,
+    )
+    if not section:
+        return None
+    match = re.search(r"^tenancy\s*=\s*(\S+)", section.group(1), flags=re.MULTILINE)
+    return match.group(1) if match else None
+
+
+def _schema_embedding_dim() -> int:
+    """Vector width the changelog declares, so setup cannot drift from the schema."""
+    changelog = PROJECT_ROOT / "database" / "liquibase" / "008-vector-rag.yaml"
+    dims = set(re.findall(r"VECTOR\((\d+),", changelog.read_text()))
+    if len(dims) != 1:
+        console.print(f"[red]Expected one vector width in {changelog.name}, found {dims or 'none'}.[/red]")
+        sys.exit(1)
+    return int(dims.pop())
+
+
+def _genai_regions(profile: str, regions: list, tenancy: str) -> list:
+    """Subset of `regions` where Generative AI actually answers.
+
+    The service runs in a minority of regions, and a region being subscribed
+    says nothing about it — so each is probed rather than assumed.
+    """
+    def probe(region: str) -> tuple:
+        data = _oci_json(
+            ["generative-ai", "model-collection", "list-models", "--compartment-id", tenancy],
+            profile, region, timeout=45,
+        )
+        return region, bool(data and data.get("items"))
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(probe, regions))
+    return sorted(r for r, ok in results if ok)
+
+
+def _genai_models(profile: str, region: str, tenancy: str, capability: str) -> list:
+    """Model names in `region` that are ACTIVE and still served on demand.
+
+    ACTIVE alone is not enough: a model whose on-demand serving has retired
+    stays ACTIVE and is only reachable through a paid dedicated cluster.
+    """
+    data = _oci_json(
+        ["generative-ai", "model-collection", "list-models", "--compartment-id", tenancy, "--all"],
+        profile, region,
+    )
+    if not data:
+        return []
+
+    now = datetime.now(timezone.utc)
+    live = set()
+    for model in data.get("items", []):
+        if model.get("lifecycle-state") != "ACTIVE":
+            continue
+        if capability not in (model.get("capabilities") or []):
+            continue
+        retired = model.get("time-on-demand-retired")
+        if retired:
+            try:
+                if datetime.fromisoformat(retired.replace("Z", "+00:00")) <= now:
+                    continue
+            except ValueError:
+                continue
+        live.add(model["display-name"])
+    return sorted(live)
+
+
+def _select_genai_models(profile: str, region: str, tenancy: str, existing: dict) -> tuple:
+    """Pick a chat and an embedding model, and hold the embedding width to the schema."""
+    console.print(f"[dim]Listing on-demand models in {region}…[/dim]")
+    chat_models = _genai_models(profile, region, tenancy, "CHAT")
+    embed_models = _genai_models(profile, region, tenancy, "TEXT_EMBEDDINGS")
+
+    if not chat_models:
+        console.print(f"[red]No on-demand chat model in {region}.[/red]")
+        sys.exit(1)
+    if not embed_models:
+        console.print(
+            f"[red]No on-demand embedding model in {region}.[/red] "
+            "Pick a Generative AI region that serves one — the RAG path needs it."
+        )
+        sys.exit(1)
+
+    genai_model = inquirer.select(
+        message="Generation model:",
+        choices=chat_models,
+        default=existing.get("GENAI_MODEL") if existing.get("GENAI_MODEL") in chat_models else None,
+    ).execute()
+
+    # The vector columns are fixed-width, so an embedding model of the wrong
+    # width fails on insert rather than at deploy. Steer the choice by width.
+    schema_dim = _schema_embedding_dim()
+    choices = []
+    for name in embed_models:
+        dim = EMBEDDING_DIMENSIONS.get(name, "unknown")
+        if dim == schema_dim:
+            label = f"{name}  ({dim} dims — matches the schema)"
+        elif dim is None:
+            label = f"{name}  (configurable width, no fixed native size)"
+        elif dim == "unknown":
+            label = f"{name}  (width unknown)"
+        else:
+            label = f"{name}  ({dim} dims — schema needs {schema_dim})"
+        choices.append({"name": label, "value": name})
+
+    native = [n for n in embed_models if EMBEDDING_DIMENSIONS.get(n) == schema_dim]
+    genai_embed_model = inquirer.select(
+        message=f"Embedding model (schema declares {schema_dim} dimensions):",
+        choices=choices,
+        default=native[0] if native else None,
+    ).execute()
+
+    dim = EMBEDDING_DIMENSIONS.get(genai_embed_model, "unknown")
+    if dim == schema_dim:
+        console.print(f"[green]✓[/green] {genai_embed_model} emits {schema_dim} dimensions")
+    elif isinstance(dim, int):
+        console.print(
+            f"[red]{genai_embed_model} emits {dim} dimensions; the schema declares {schema_dim}.[/red]\n"
+            "Choose a matching model, or change the VECTOR width in "
+            "database/liquibase/008-vector-rag.yaml and reseed."
+        )
+        sys.exit(1)
+    else:
+        # PAF's instance-principal connection carries only model_id,
+        # service_endpoint and compartment_id — there is no output_dimension to
+        # pin, so a configurable model cannot be held to the schema's width.
+        console.print(
+            f"[yellow]{genai_embed_model} has no fixed output width.[/yellow] PAF's "
+            "instance-principal connection has no output_dimension field, so it cannot be "
+            f"pinned to {schema_dim}. Prefer a model with a native {schema_dim}-dimension "
+            "output; regions differ in which ones they serve."
+        )
+        if not inquirer.confirm(message="Use it anyway?", default=False).execute():
+            sys.exit(1)
+
+    return genai_model, genai_embed_model, schema_dim
+
+
+# ---------------------------------------------------------------- terraform
+
+
+def _oci_profiles() -> list:
+    """Profile names declared in ~/.oci/config."""
+    config = Path.home() / ".oci" / "config"
+    if not config.exists():
+        return []
+    return re.findall(r"^\[([^\]]+)\]", config.read_text(), flags=re.MULTILINE)
+
+
+def _oci_profile_region(profile: str) -> str | None:
+    """The region already configured for a profile, used as the prompt default."""
+    config = Path.home() / ".oci" / "config"
+    if not config.exists():
+        return None
+    section = re.search(
+        rf"^\[{re.escape(profile)}\](.*?)(?=^\[|\Z)",
+        config.read_text(),
+        flags=re.MULTILINE | re.DOTALL,
+    )
+    if not section:
+        return None
+    match = re.search(r"^region\s*=\s*(\S+)", section.group(1), flags=re.MULTILINE)
+    return match.group(1) if match else None
+
+
+@cli.command("tf")
+def tf() -> None:
+    """Render the tfvars for both Terraform roots from .env."""
+    _ensure_env()
+    if os.environ.get("DEPLOYMENT_TARGET") != "cloud":
+        console.print("[red].env targets local.[/red] Run `python manage.py setup cloud` first.")
+        sys.exit(1)
+
+    roots = {
+        TF_VARS_TEMPLATE: (TF_VARS_FILE, [
+            "OCI_PROFILE", "OCI_REGION", "OCI_GENAI_REGION", "OCI_COMPARTMENT_OCID",
+            "OCI_LABEL", "OCI_SSH_PUBLIC_KEY", "OCI_ADMIN_CIDR", "OCI_COMPUTE_SHAPE",
+            "DB_NAME", "DB_PASSWORD", "DB_WALLET_PASSWORD", "PAF_TARBALL", "GENAI_MODEL",
+        ]),
+        TF_IAM_VARS_TEMPLATE: (TF_IAM_VARS_FILE, [
+            "OCI_PROFILE", "OCI_REGION", "OCI_TENANCY_OCID", "OCI_COMPARTMENT_OCID", "OCI_LABEL",
+        ]),
+    }
+
+    for template_path, (out_path, keys) in roots.items():
+        missing = [k for k in keys if not os.environ.get(k)]
+        if missing:
+            console.print(f"[red]Missing in .env:[/red] {', '.join(missing)}")
+            sys.exit(1)
+        template = Template(template_path.read_text(), undefined=StrictUndefined)
+        out_path.write_text(template.render({k: os.environ[k] for k in keys}) + "\n")
+        out_path.chmod(0o600)
+        console.print(f"[green]✓[/green] Wrote {out_path}")
+
+    console.print(
+        "\nThe IAM root creates the dynamic groups and policy, and needs tenancy-admin rights:\n"
+        "  [cyan]cd deploy/tf/iam && terraform init && terraform apply[/cyan]\n"
+        "Then the workload stack:\n"
+        "  [cyan]cd deploy/tf/app && terraform init && terraform plan -out=tfplan && terraform apply tfplan[/cyan]"
+    )
 
 
 # ---------------------------------------------------------------- local
@@ -1673,23 +2150,77 @@ def smoke() -> None:
 
 @cli.command("build")
 def build() -> None:
-    """Build artefacts (not yet implemented)."""
-    console.print("[yellow]build[/yellow] is not yet implemented (planned for a later PR).")
-    sys.exit(2)
+    """Compile the UIs and backend, then stage every tier's payload."""
+    _ensure_env()
 
+    # Each tier's Ansible directory is what Terraform zips and publishes, so
+    # every build output is staged into the role that installs it.
+    frontend_files = ANSIBLE_ROOT / "frontend" / "roles" / "webstack" / "files"
+    backend_files = ANSIBLE_ROOT / "backend" / "roles" / "appstack" / "files"
+    ops_files = ANSIBLE_ROOT / "ops" / "roles" / "opstools" / "files"
 
-@cli.command("tf")
-def tf() -> None:
-    """Render Terraform tfvars (not yet implemented)."""
-    console.print("[yellow]tf[/yellow] is not yet implemented (planned for a later PR).")
-    sys.exit(2)
+    for ui, dest in (("customer-ui", "customer"), ("backoffice-ui", "backoffice")):
+        src = PROJECT_ROOT / "src" / ui
+        console.print(f"[cyan]Building {ui}[/cyan]")
+        _run(["npm", "ci"], cwd=src)
+        _run(["npm", "run", "build"], cwd=src)
+        _stage(src / "dist", frontend_files / dest)
+
+    console.print("[cyan]Building the application backend[/cyan]")
+    backend_src = PROJECT_ROOT / "src" / "backend"
+    _run(["./gradlew", "build", "-x", "test"], cwd=backend_src)
+    jars = sorted((backend_src / "build" / "libs").glob("*.jar"))
+    jars = [j for j in jars if not j.name.endswith("-plain.jar")]
+    if not jars:
+        console.print("[red]No runnable jar in src/backend/build/libs.[/red]")
+        sys.exit(1)
+    backend_files.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(jars[0], backend_files / "app.jar")
+
+    _stage(PROJECT_ROOT / "opa", backend_files / "opa")
+    _stage(PROJECT_ROOT / "src" / "api" / "registry", backend_files / "registry")
+    _stage(PROJECT_ROOT / "database" / "liquibase", ops_files / "database" / "liquibase")
+
+    console.print(f"[green]✓[/green] Staged every tier payload under {ANSIBLE_ROOT}")
+    console.print("\nNext: [cyan]python manage.py tf[/cyan]")
 
 
 @cli.command("clean")
 def clean() -> None:
-    """Cloud teardown safeguard (not yet implemented)."""
-    console.print("[yellow]clean[/yellow] is not yet implemented (planned for a later PR).")
-    sys.exit(2)
+    """Remove generated cloud artefacts once Terraform state is empty."""
+    state = TF_DIR / "terraform.tfstate"
+    if state.exists():
+        try:
+            resources = json.loads(state.read_text()).get("resources", [])
+        except json.JSONDecodeError:
+            resources = []
+        if resources:
+            console.print(
+                f"[red]Terraform state still holds {len(resources)} resource(s).[/red] "
+                "Run `terraform destroy` in deploy/tf/app first."
+            )
+            sys.exit(1)
+
+    removed = []
+    generated = TF_DIR / "generated"
+    if generated.exists():
+        shutil.rmtree(generated)
+        removed.append(str(generated))
+    for tfvars in (TF_VARS_FILE, TF_IAM_VARS_FILE):
+        if tfvars.exists():
+            tfvars.unlink()
+            removed.append(str(tfvars))
+
+    # Staged tier payloads are build output; `build` recreates them.
+    for staged in ANSIBLE_ROOT.glob("*/roles/*/files/*"):
+        if staged.name == ".gitkeep":
+            continue
+        shutil.rmtree(staged) if staged.is_dir() else staged.unlink()
+        removed.append(str(staged))
+
+    for path in removed:
+        console.print(f"[dim]removed {path}[/dim]")
+    console.print(f"[green]✓[/green] Cleaned {len(removed)} path(s)")
 
 
 if __name__ == "__main__":

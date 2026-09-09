@@ -32,8 +32,8 @@ databaseChangeLog:
   # policy_corpus: not seeded here — same embedding-pipeline reason, plus
   # the actual policy text comes from the kit's policy docs, not inline SQL.
   #
-  # All changesets run under `context: seed`. Cloud (or any environment
-  # that wants a clean schema) sets `--contexts="!seed"` to skip.
+  # All changesets run under `context: seed`, which both targets select.
+  # An environment that wants a clean schema omits `seed` from its contexts.
 
   - changeSet:
       id: 010-seed-customers

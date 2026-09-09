@@ -13,7 +13,7 @@ default allow := false
 sanctions_list := [
     "OSAMA BIN BAD",
     "PABLO ESCOBAR",
-    "VICTOR LOANSHARK",
+    "MARLOWE LOANSHARK",
     "SANCTIONED ENTITY LLC",
 ]
 

@@ -123,8 +123,7 @@ Mapping the use case to PAF's component types:
 
 Liquibase changelogs in two parallel directories:
 
-- `database/liquibase/oracle/` — local Oracle Free 26ai.
-- `database/liquibase/adb/` — cloud Autonomous Database 26ai.
+- `database/liquibase/` — one changelog for both targets. Liquibase contexts (`local`, `adb`) select the changesets that differ; everything else runs unconditionally.
 
 Both load the same banking + decisioning schema; differences confined to ADB-specific bootstrap (DBMS_CLOUD grants, wallet-aware connection, Select AI profile templates) and local-only conveniences (test users, sample data seed toggles).
 

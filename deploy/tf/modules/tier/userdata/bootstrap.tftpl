@@ -1,0 +1,153 @@
+#!/bin/bash
+# `pipefail` is critical: without it `ansible-playbook ... | tee` always
+# returns 0 (tee's exit code), so a failed playbook silently looks like a
+# clean run and the tier reports success while being half-built.
+set -euo pipefail
+
+LOCK=/home/opc/bootstrap.lock
+OK_SENTINEL=/var/lib/${service_name}/bootstrap.ok
+BOOTSTRAP_COPY=/usr/local/sbin/${service_name}-bootstrap
+mkdir -p /var/lib/${service_name}
+
+# Every step below is idempotent, so a re-run is safe; once the sentinel is
+# there it is also pointless.
+[ -f "$OK_SENTINEL" ] && exit 0
+
+# Early-boot dependencies — DNS, the NAT path, the yum mirrors, the OCI repo
+# mapper — each settle at their own pace, and any one of them being late used
+# to leave the tier permanently half-built with no recovery short of a
+# rebuild. systemd owns the retry loop instead: cloud-init only hands the
+# script over, and a late dependency costs one 60s cycle rather than needing
+# a new guard written for it after the fact.
+if [ "$(readlink -f "$0")" != "$BOOTSTRAP_COPY" ]; then
+  cp -f "$0" "$BOOTSTRAP_COPY"
+  chmod 0700 "$BOOTSTRAP_COPY"
+  # /usr/local/sbin carries the bin_t SELinux type that systemd is allowed to
+  # execute; /var/lib would land as var_lib_t and fail with 203/EXEC.
+  restorecon -F "$BOOTSTRAP_COPY" 2>/dev/null || true
+  cat <<'UNIT' > /etc/systemd/system/${service_name}-bootstrap.service
+[Unit]
+Description=${service_name} ${tier_name} bootstrap
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+ExecStart=/usr/local/sbin/${service_name}-bootstrap
+Restart=on-failure
+RestartSec=60
+StandardOutput=append:/var/log/${service_name}-bootstrap.log
+StandardError=append:/var/log/${service_name}-bootstrap.log
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+  systemctl daemon-reload
+  systemctl enable --now ${service_name}-bootstrap.service
+  exit 0
+fi
+
+touch "$LOCK"
+
+# Trap removes the lock on any exit (success or failure) and writes a
+# diagnostic stderr line on failure. The OK sentinel is touched only at
+# the very end, so its presence is a trustworthy success signal.
+on_exit() {
+  local rc=$?
+  rm -f "$LOCK"
+  if [ "$rc" -ne 0 ]; then
+    echo "FATAL: ${tier_name} bootstrap exited $rc — retrying in 60s; see /home/opc/ansible-playbook.log and /var/log/${service_name}-bootstrap.log" >&2
+  fi
+  exit "$rc"
+}
+trap on_exit EXIT
+
+wait_for_dns() {
+  local host="yum.${region_name}.oci.oraclecloud.com"
+  local -i tries=0 max=150
+  until getent ahostsv4 "$host" >/dev/null 2>&1; do
+    tries=$((tries+1))
+    if [ $tries -ge $max ]; then
+      echo "FATAL: DNS for $host not ready after $((max*2))s" >&2
+      exit 1
+    fi
+    sleep 2
+  done
+  echo "DNS ready after $tries attempt(s): $host"
+}
+wait_for_dns
+
+# oci-yum-repo-mapper runs early in boot and exits 0 even when it could not
+# reach the region's yum service, leaving ol9_oci_included disabled. Packages
+# that live only there (tuned-profiles-oci) then hold their base package at an
+# older release, and any dnf transaction touching it becomes unsolvable. Re-run
+# the mapper now that DNS resolves, so the repo set is complete.
+systemctl restart oci-yum-repo-mapper.service || true
+
+wait_for_rpm_lock() {
+  local -i tries=0 max=60
+  while fuser /var/lib/rpm/.rpm.lock /var/lib/dnf/lock >/dev/null 2>&1; do
+    tries=$((tries+1))
+    if [ $tries -ge $max ]; then
+      echo "FATAL: rpm/dnf lock busy after $((max*5))s" >&2
+      exit 1
+    fi
+    sleep 5
+  done
+}
+wait_for_rpm_lock
+
+# A private instance reaches the yum mirrors through the NAT gateway, and in
+# the first seconds of its life that path is not always up: dnf then fails
+# with "Curl error (7): Couldn't connect to server". Retry inline so a mirror
+# or routing blip costs seconds rather than a whole systemd retry cycle.
+dnf_retry() {
+  local -i tries=0 max=10
+  until dnf "$@"; do
+    tries=$((tries+1))
+    if [ $tries -ge $max ]; then
+      echo "FATAL: dnf $* failed after $max attempts" >&2
+      return 1
+    fi
+    echo "dnf $* failed (attempt $tries/$max); retrying in $((tries*10))s..." >&2
+    sleep $((tries*10))
+  done
+}
+
+dnf_retry install oracle-epel-release-el9 -y
+dnf_retry install ansible-core unzip -y
+
+# Tier artifact
+curl -4 --fail -sS "${artifact_par_url}" -o /home/opc/artifact.zip
+mkdir -p /home/opc/artifact
+unzip -o /home/opc/artifact.zip -d /home/opc/artifact && rm -f /home/opc/artifact.zip
+chown -R opc:opc /home/opc/artifact
+
+cat <<'EOT' > /home/opc/ansible_params.json
+${ansible_params_json}
+EOT
+chown opc:opc /home/opc/ansible_params.json
+chmod 600 /home/opc/ansible_params.json
+
+cat <<EOT > /home/opc/${tier_name}.ini
+[${tier_name}]
+localhost ansible_connection=local ansible_user=root
+
+[${tier_name}:vars]
+ansible_python_interpreter="/usr/bin/python3"
+EOT
+chown opc:opc /home/opc/${tier_name}.ini
+
+touch /home/opc/ansible-playbook.log
+chown opc:opc /home/opc/ansible-playbook.log
+
+ANSIBLE_PYTHON_INTERPRETER="/usr/bin/python3" ansible-playbook \
+  -i /home/opc/${tier_name}.ini \
+  -e "@/home/opc/ansible_params.json" \
+  /home/opc/artifact/server.yaml 2>&1 | tee -a /home/opc/ansible-playbook.log
+
+# Reached only when ansible-playbook returned 0 (pipefail enforces this).
+# `manage.py status` and ops humans can check for this sentinel as a
+# trustworthy proof that bootstrap finished cleanly.
+touch "$OK_SENTINEL"
+echo "Bootstrap complete: $OK_SENTINEL" | tee -a /home/opc/ansible-playbook.log

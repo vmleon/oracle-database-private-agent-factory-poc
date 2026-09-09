@@ -1,0 +1,6 @@
+---
+- name: Configure the paf host
+  hosts: paf
+  become: true
+  roles:
+    - pafstack

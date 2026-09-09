@@ -1,0 +1,97 @@
+---
+- name: Install the application runtime
+  ansible.builtin.dnf:
+    name:
+      - java-21-openjdk-headless
+      - python3
+      - python3-pip
+      - unzip
+    state: present
+
+- name: Create the application directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0750"
+  loop:
+    - "{{ app_dir }}"
+    - "{{ wallet_dir }}"
+    - "{{ app_dir }}/registry"
+    - "{{ app_dir }}/opa"
+
+- name: Fetch the ADB wallet
+  ansible.builtin.get_url:
+    url: "{{ adb_wallet_par_url }}"
+    dest: /tmp/adb-wallet.zip
+    mode: "0600"
+    timeout: 60
+
+- name: Unpack the wallet
+  ansible.builtin.unarchive:
+    src: /tmp/adb-wallet.zip
+    dest: "{{ wallet_dir }}"
+    remote_src: true
+    mode: "0600"
+
+- name: Remove the wallet archive
+  ansible.builtin.file:
+    path: /tmp/adb-wallet.zip
+    state: absent
+
+- name: Deploy the Spring Boot jar
+  ansible.builtin.copy:
+    src: app.jar
+    dest: "{{ app_dir }}/app.jar"
+    mode: "0640"
+  notify: Restart the backend
+
+- name: Deploy the OPA policy bundle
+  ansible.builtin.copy:
+    src: opa/
+    dest: "{{ app_dir }}/opa/"
+    mode: "0640"
+  notify: Restart OPA
+
+- name: Deploy the company registry service
+  ansible.builtin.copy:
+    src: registry/
+    dest: "{{ app_dir }}/registry/"
+    mode: "0640"
+  notify: Restart the registry
+
+- name: Install the registry dependencies
+  ansible.builtin.pip:
+    requirements: "{{ app_dir }}/registry/requirements.txt"
+    virtualenv: "{{ app_dir }}/registry/venv"
+
+- name: Install the OPA binary
+  ansible.builtin.get_url:
+    url: "{{ opa_url }}"
+    dest: /usr/local/bin/opa
+    mode: "0755"
+    timeout: 120
+
+- name: Render the service units
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "/etc/systemd/system/{{ item.dest }}"
+    mode: "0644"
+  loop:
+    - { src: backend.service.j2, dest: paf-poc-backend.service }
+    - { src: opa.service.j2, dest: paf-poc-opa.service }
+    - { src: registry.service.j2, dest: paf-poc-registry.service }
+  notify:
+    - Restart the backend
+    - Restart OPA
+    - Restart the registry
+
+- name: Enable the services
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+    daemon_reload: true
+  loop:
+    - paf-poc-opa
+    - paf-poc-registry
+    - paf-poc-backend

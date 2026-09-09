@@ -1,0 +1,41 @@
+---
+- name: Install nginx
+  ansible.builtin.dnf:
+    name: nginx
+    state: present
+
+- name: Create the bundle roots
+  ansible.builtin.file:
+    path: "/usr/share/nginx/{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - mobile
+    - backoffice
+
+- name: Deploy the customer bundle
+  ansible.builtin.copy:
+    src: customer/
+    dest: /usr/share/nginx/mobile/
+    mode: "0644"
+  notify: Restart nginx
+
+- name: Deploy the backoffice bundle
+  ansible.builtin.copy:
+    src: backoffice/
+    dest: /usr/share/nginx/backoffice/
+    mode: "0644"
+  notify: Restart nginx
+
+- name: Render the site configuration
+  ansible.builtin.template:
+    src: nginx.conf.j2
+    dest: /etc/nginx/conf.d/app.conf
+    mode: "0644"
+  notify: Restart nginx
+
+- name: Enable nginx
+  ansible.builtin.systemd:
+    name: nginx
+    enabled: true
+    state: started

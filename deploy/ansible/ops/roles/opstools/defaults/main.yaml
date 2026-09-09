@@ -1,0 +1,13 @@
+---
+liquibase_version: "4.31.1"
+liquibase_url: "https://github.com/liquibase/liquibase/releases/download/v{{ liquibase_version }}/liquibase-{{ liquibase_version }}.tar.gz"
+ojdbc_version: "23.9.0.25.07"
+ojdbc_url: "https://repo1.maven.org/maven2/com/oracle/database/jdbc/ojdbc11/{{ ojdbc_version }}/ojdbc11-{{ ojdbc_version }}.jar"
+
+wallet_dir: /opt/paf-poc/wallet
+liquibase_dir: /opt/liquibase
+changelog_dir: /home/opc/artifact/roles/opstools/files/database/liquibase
+# Selects the ADB half of the shared changelog, plus the seed data — the
+# cloud deployment is a demo, so it comes up with the same synthetic dataset
+# the local one has. Drop `,seed` for an empty schema.
+liquibase_contexts: "adb,seed"

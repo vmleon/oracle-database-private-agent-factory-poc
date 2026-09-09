@@ -1,0 +1,4 @@
+---
+paf_dir: /opt/paf
+wallet_dir: /opt/paf/wallet
+kit_dir: /opt/paf/kit

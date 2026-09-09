@@ -1,0 +1,84 @@
+---
+- name: Install the bastion toolchain
+  ansible.builtin.dnf:
+    name:
+      - java-21-openjdk-headless
+      - unzip
+      - git
+      - python3-oracledb
+    state: present
+
+- name: Create the wallet and Liquibase directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0750"
+    owner: opc
+    group: opc
+  loop:
+    - "{{ wallet_dir }}"
+    - "{{ liquibase_dir }}"
+
+# The instance holds no OCI credentials, so the wallet arrives the same way
+# the playbook did — through a read-only pre-authenticated request.
+- name: Fetch the ADB wallet
+  ansible.builtin.get_url:
+    url: "{{ adb_wallet_par_url }}"
+    dest: /tmp/adb-wallet.zip
+    mode: "0600"
+    timeout: 60
+
+- name: Unpack the wallet
+  ansible.builtin.unarchive:
+    src: /tmp/adb-wallet.zip
+    dest: "{{ wallet_dir }}"
+    remote_src: true
+    owner: opc
+    group: opc
+    mode: "0600"
+
+- name: Remove the wallet archive
+  ansible.builtin.file:
+    path: /tmp/adb-wallet.zip
+    state: absent
+
+- name: Install Liquibase
+  ansible.builtin.unarchive:
+    src: "{{ liquibase_url }}"
+    dest: "{{ liquibase_dir }}"
+    remote_src: true
+    creates: "{{ liquibase_dir }}/liquibase"
+
+- name: Download the Oracle JDBC driver
+  ansible.builtin.get_url:
+    url: "{{ ojdbc_url }}"
+    dest: "{{ liquibase_dir }}/lib/ojdbc11.jar"
+    mode: "0644"
+    timeout: 60
+
+# TNS_ADMIN points Liquibase's JDBC driver at the unpacked wallet, so the
+# connection string is the service alias rather than a host and port.
+- name: Apply the ADB changelog
+  ansible.builtin.command:
+    cmd: >-
+      {{ liquibase_dir }}/liquibase
+      --headless=true
+      --changelog-file=db.changelog-master.yaml
+      --contexts={{ liquibase_contexts }}
+      --url=jdbc:oracle:thin:@{{ adb_service }}?TNS_ADMIN={{ wallet_dir }}
+      --username={{ adb_admin_user }}
+      --password={{ adb_admin_password }}
+      update
+      -Ddb_password={{ adb_admin_password }}
+      -Dgenai_region={{ genai_region }}
+      -Dgenai_compartment_ocid={{ genai_compartment_ocid }}
+      -Dgenai_model={{ genai_model }}
+    chdir: "{{ changelog_dir }}"
+  environment:
+    TNS_ADMIN: "{{ wallet_dir }}"
+  register: liquibase_update
+  changed_when: "'Update has been successful' in liquibase_update.stdout"
+
+- name: Show the Liquibase output
+  ansible.builtin.debug:
+    var: liquibase_update.stdout_lines

@@ -1,0 +1,6 @@
+---
+- name: Configure the backend host
+  hosts: backend
+  become: true
+  roles:
+    - appstack

@@ -120,7 +120,7 @@ The installer must use the service name `oracle-free-26ai` as the host, not `loc
 
 ### PAF installer says `AGENT_FACTORY` is missing privileges, or "Test connection" returns 400 with `Unable to determine database compatibility level`
 
-Make sure Liquibase ran (`python manage.py local provision`). The Liquibase grants live in `database/liquibase/oracle/001-users-and-grants.yaml` (from the PAF kit README); the one extra grant on `SYS.V_$PARAMETER` is applied by `manage.py local provision` as sysdba (SYSTEM cannot grant it, hence Liquibase can't).
+Make sure Liquibase ran (`python manage.py local provision`). The Liquibase grants live in `database/liquibase/001-users-and-grants.yaml` (from the PAF kit README); the one extra grant on `SYS.V_$PARAMETER` is applied by `manage.py local provision` as sysdba (SYSTEM cannot grant it, hence Liquibase can't).
 
 ### PAF logs loop forever on `Waiting for correct permissions to be set to mounted volume...` then exit
 

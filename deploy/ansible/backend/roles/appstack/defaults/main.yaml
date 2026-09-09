@@ -1,0 +1,5 @@
+---
+app_dir: /opt/paf-poc
+wallet_dir: /opt/paf-poc/wallet
+opa_version: "1.0.0"
+opa_url: "https://openpolicyagent.org/downloads/v{{ opa_version }}/opa_linux_amd64_static"

@@ -1,0 +1,198 @@
+databaseChangeLog:
+  # The only file whose SQL differs between the two targets. A changeset with
+  # no context runs everywhere; `context: local` and `context: adb` mark the
+  # pairs that diverge, so `--contexts=local` and `--contexts=adb` each select
+  # one half. Context is a runtime filter and is not part of a changeset's
+  # checksum, so tagging an already-applied changeset does not invalidate it.
+  #
+  # What actually differs: Oracle Database Free keeps application objects in
+  # the USERS tablespace, Autonomous Database in DATA; and ADB creates database
+  # links through DBMS_CLOUD_ADMIN rather than the CREATE DATABASE LINK
+  # privilege.
+
+  - changeSet:
+      id: 001-create-app-user
+      author: paf-poc
+      context: local
+      changes:
+        - sql:
+            sql: |-
+              CREATE USER APP IDENTIFIED BY "${db_password}"
+                DEFAULT TABLESPACE USERS
+                QUOTA UNLIMITED ON USERS
+        - sql:
+            sql: |-
+              GRANT CREATE SESSION, CREATE TABLE, CREATE VIEW, CREATE SEQUENCE,
+                    CREATE PROCEDURE, CREATE TRIGGER, CREATE TYPE TO APP
+
+  - changeSet:
+      id: 001-create-app-user-adb
+      author: paf-poc
+      context: adb
+      changes:
+        - sql:
+            sql: |-
+              CREATE USER APP IDENTIFIED BY "${db_password}"
+                DEFAULT TABLESPACE DATA
+                QUOTA UNLIMITED ON DATA
+        - sql:
+            sql: |-
+              GRANT CREATE SESSION, CREATE TABLE, CREATE VIEW, CREATE SEQUENCE,
+                    CREATE PROCEDURE, CREATE TRIGGER, CREATE TYPE TO APP
+
+  - changeSet:
+      id: 001-create-reporting-user
+      author: paf-poc
+      context: local
+      changes:
+        - sql:
+            sql: |-
+              CREATE USER REPORTING IDENTIFIED BY "${db_password}"
+                DEFAULT TABLESPACE USERS
+                QUOTA UNLIMITED ON USERS
+        - sql:
+            sql: |-
+              GRANT CREATE SESSION, CREATE VIEW TO REPORTING
+
+  - changeSet:
+      id: 001-create-reporting-user-adb
+      author: paf-poc
+      context: adb
+      changes:
+        - sql:
+            sql: |-
+              CREATE USER REPORTING IDENTIFIED BY "${db_password}"
+                DEFAULT TABLESPACE DATA
+                QUOTA UNLIMITED ON DATA
+        - sql:
+            sql: |-
+              GRANT CREATE SESSION, CREATE VIEW TO REPORTING
+
+  - changeSet:
+      id: 001-create-agent-tools-user
+      author: paf-poc
+      context: local
+      changes:
+        - sql:
+            sql: |-
+              CREATE USER AGENT_TOOLS IDENTIFIED BY "${db_password}"
+                DEFAULT TABLESPACE USERS
+                QUOTA UNLIMITED ON USERS
+        - sql:
+            sql: |-
+              GRANT CREATE SESSION, CREATE PROCEDURE, CREATE TABLE,
+                    CREATE TYPE TO AGENT_TOOLS
+
+  - changeSet:
+      id: 001-create-agent-tools-user-adb
+      author: paf-poc
+      context: adb
+      changes:
+        - sql:
+            sql: |-
+              CREATE USER AGENT_TOOLS IDENTIFIED BY "${db_password}"
+                DEFAULT TABLESPACE DATA
+                QUOTA UNLIMITED ON DATA
+        - sql:
+            sql: |-
+              GRANT CREATE SESSION, CREATE PROCEDURE, CREATE TABLE,
+                    CREATE TYPE TO AGENT_TOOLS
+
+  - changeSet:
+      id: 001-create-agent-factory-user
+      author: paf-poc
+      context: local
+      changes:
+        - sql:
+            sql: |-
+              CREATE USER AGENT_FACTORY IDENTIFIED BY "${db_password}"
+                DEFAULT TABLESPACE USERS
+                QUOTA UNLIMITED ON USERS
+        - sql:
+            sql: |-
+              GRANT CREATE SESSION, CREATE TABLE, CREATE VIEW, CREATE SEQUENCE,
+                    CREATE PROCEDURE, CREATE TRIGGER, CREATE TYPE TO AGENT_FACTORY
+
+  - changeSet:
+      id: 001-create-agent-factory-user-adb
+      author: paf-poc
+      context: adb
+      changes:
+        - sql:
+            sql: |-
+              CREATE USER AGENT_FACTORY IDENTIFIED BY "${db_password}"
+                DEFAULT TABLESPACE DATA
+                QUOTA UNLIMITED ON DATA
+        - sql:
+            sql: |-
+              GRANT CREATE SESSION, CREATE TABLE, CREATE VIEW, CREATE SEQUENCE,
+                    CREATE PROCEDURE, CREATE TRIGGER, CREATE TYPE TO AGENT_FACTORY
+
+  - changeSet:
+      id: 002-grant-agent-factory-paf
+      author: paf-poc
+      context: local
+      # Extra grants required by Private Agent Factory (README.txt "Creating
+      # Database User" in the kit tarball). Kept as a separate changeset so the
+      # create-user checksum is preserved on databases where it has already run.
+      changes:
+        - sql:
+            sql: |-
+              GRANT CONNECT, RESOURCE,
+                    CREATE SYNONYM, CREATE DATABASE LINK,
+                    CREATE ANY INDEX, INSERT ANY TABLE
+                TO AGENT_FACTORY
+        - sql:
+            sql: |-
+              GRANT READ, WRITE ON DIRECTORY DATA_PUMP_DIR TO AGENT_FACTORY
+
+  - changeSet:
+      id: 002-grant-agent-factory-paf-adb
+      author: paf-poc
+      context: adb
+      # CREATE DATABASE LINK is absent: Autonomous Database creates links
+      # through DBMS_CLOUD_ADMIN.CREATE_DATABASE_LINK, and the privilege is not
+      # grantable. PAF does not use a database link in this PoC.
+      changes:
+        - sql:
+            sql: |-
+              GRANT CONNECT, RESOURCE,
+                    CREATE SYNONYM,
+                    CREATE ANY INDEX, INSERT ANY TABLE
+                TO AGENT_FACTORY
+        - sql:
+            sql: |-
+              GRANT READ, WRITE ON DIRECTORY DATA_PUMP_DIR TO AGENT_FACTORY
+
+  - changeSet:
+      id: 003-grant-agent-factory-readonly-user-mgmt
+      author: paf-poc
+      # PAF's UI installer (step 3) creates a separate read-only DB user
+      # owned by AGENT_FACTORY. Without these grants the step fails with
+      # `ORA-01031: insufficient privileges`. These three grants are
+      # taken from the kit's quickstart startup.sh, and are grantable on
+      # both targets.
+      changes:
+        - sql:
+            sql: |-
+              GRANT CREATE USER TO AGENT_FACTORY
+        - sql:
+            sql: |-
+              GRANT DROP USER TO AGENT_FACTORY
+        - sql:
+            sql: |-
+              GRANT CREATE SESSION TO AGENT_FACTORY WITH ADMIN OPTION
+
+  - changeSet:
+      id: 004-grant-dbms-cloud-adb
+      author: paf-poc
+      context: adb
+      # DBMS_CLOUD and DBMS_CLOUD_AI ship with Autonomous Database and back the
+      # Select AI profiles in 018. The local target installs neither.
+      changes:
+        - sql:
+            sql: |-
+              GRANT EXECUTE ON DBMS_CLOUD TO AGENT_FACTORY
+        - sql:
+            sql: |-
+              GRANT EXECUTE ON DBMS_CLOUD_AI TO AGENT_FACTORY

@@ -1,0 +1,82 @@
+---
+- name: Install the container runtime
+  ansible.builtin.dnf:
+    name:
+      - podman
+      - unzip
+      - tar
+    state: present
+
+- name: Create the PAF directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0750"
+  loop:
+    - "{{ paf_dir }}"
+    - "{{ wallet_dir }}"
+    - "{{ kit_dir }}"
+
+- name: Fetch the ADB wallet
+  ansible.builtin.get_url:
+    url: "{{ adb_wallet_par_url }}"
+    dest: /tmp/adb-wallet.zip
+    mode: "0600"
+    timeout: 60
+
+- name: Unpack the wallet
+  ansible.builtin.unarchive:
+    src: /tmp/adb-wallet.zip
+    dest: "{{ wallet_dir }}"
+    remote_src: true
+    mode: "0600"
+
+- name: Remove the wallet archive
+  ansible.builtin.file:
+    path: /tmp/adb-wallet.zip
+    state: absent
+
+# The kit tarball is far larger than a role artifact, so it travels as its own
+# bucket object behind its own read-only pre-authenticated request.
+- name: Fetch the PAF kit tarball
+  ansible.builtin.get_url:
+    url: "{{ paf_tarball_par_url }}"
+    dest: /tmp/paf-kit.tar.gz
+    mode: "0600"
+    timeout: 1800
+
+- name: Unpack the PAF kit
+  ansible.builtin.unarchive:
+    src: /tmp/paf-kit.tar.gz
+    dest: "{{ kit_dir }}"
+    remote_src: true
+    creates: "{{ kit_dir }}/build-image.sh"
+
+- name: Read the kit version
+  ansible.builtin.slurp:
+    src: "{{ kit_dir }}/applied-ai/kit/agent_factory/internal/version.json"
+  register: paf_version_file
+
+- name: Resolve the image tag
+  ansible.builtin.set_fact:
+    paf_app_version: "{{ (paf_version_file.content | b64decode | from_json).app_version }}"
+
+- name: Build the PAF image
+  ansible.builtin.command:
+    cmd: ./build-image.sh aai
+    chdir: "{{ kit_dir }}"
+    creates: /var/lib/containers/storage/overlay-images/{{ paf_app_version }}
+
+- name: Render the PAF service unit
+  ansible.builtin.template:
+    src: paf.service.j2
+    dest: /etc/systemd/system/paf.service
+    mode: "0644"
+  notify: Restart PAF
+
+- name: Enable PAF
+  ansible.builtin.systemd:
+    name: paf
+    enabled: true
+    state: started
+    daemon_reload: true

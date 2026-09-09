@@ -9,7 +9,7 @@ databaseChangeLog:
   # (Acme Tech Ltd), score 742 (>= caution-band upper 670), low debt, a
   # $10k personal loan in SUBMITTED. That lands her in APPROVE.
   #
-  # Runs under context: seed (skipped with --contexts="!seed").
+  # Runs under context: seed, which both targets select.
 
   - changeSet:
       id: 016-seed-demo-approve-customer

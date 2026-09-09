@@ -1,0 +1,6 @@
+---
+- name: Configure the ops host
+  hosts: ops
+  become: true
+  roles:
+    - opstools

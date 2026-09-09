@@ -80,7 +80,7 @@ What this does, in order:
 - Starts the Oracle container, waits for `DATABASE IS READY TO USE!`, sets `max_string_size=EXTENDED`.
 - Installs `DBMS_CLOUD` (if missing) via `catcon.pl`.
 - Applies pre-Liquibase sysdba grants (TABLE RETENTION, required before the Blockchain `decision` table is created).
-- Runs Liquibase against `database/liquibase/oracle/` (via Ansible).
+- Runs Liquibase against `database/liquibase/` with `--contexts=local,seed` (via Ansible).
 - Applies post-Liquibase sysdba grants (`EXECUTE` on `DBMS_CLOUD` / `DBMS_CLOUD_AI` to `AGENT_FACTORY`) and **creates the read-only worker user `AAI_RO_AGENT_FACTORY`** — PAF requires it to pre-exist before the install wizard's DB step.
 - **Configures TCPS** on the Oracle listener (port `2484`, self-signed cert CN=`oracle-free-26ai`) and exports the client wallet to `./tcps-wallet.zip` for the PAF install. TCP/1521 stays up alongside.
 - **Generates the MCP TLS gateway cert + PAF trust bundle**, then starts the `mcp-proxy` Caddy gateway (terminates TLS for the MCP servers on `:8443`) and **injects the gateway cert into PAF's `certifi` bundle** so PAF trusts it.

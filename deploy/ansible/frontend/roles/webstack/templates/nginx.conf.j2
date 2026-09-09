@@ -1,0 +1,24 @@
+# Both single-page bundles are served from one host. Each location falls back
+# to its own index.html so client-side routes survive a reload, and /api is
+# proxied to the backend tier so the browser sees one origin.
+server {
+    listen 80 default_server;
+    server_name _;
+
+    location /mobile/ {
+        alias /usr/share/nginx/mobile/;
+        try_files $uri $uri/ /mobile/index.html;
+    }
+
+    location /backoffice/ {
+        alias /usr/share/nginx/backoffice/;
+        try_files $uri $uri/ /backoffice/index.html;
+    }
+
+    location /api/ {
+        proxy_pass http://{{ backend_host }}:8080/api/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}

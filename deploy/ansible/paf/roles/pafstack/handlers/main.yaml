@@ -1,0 +1,6 @@
+---
+- name: Restart PAF
+  ansible.builtin.systemd:
+    name: paf
+    state: restarted
+    daemon_reload: true

@@ -32,7 +32,6 @@ mcp-tls/
 **/.terraform/
 **/terraform.tfstate*
 **/terraform.tfvars
-**/.terraform.lock.hcl
 **/generated/
 
 # Ansible
@@ -61,3 +60,16 @@ logs/
 # Spring Boot backend
 src/backend/.gradle/
 src/backend/build/
+
+# Cloud build output — `manage.py build` stages these, `manage.py clean` removes them
+deploy/ansible/*/roles/*/files/*
+!deploy/ansible/*/roles/*/files/.gitkeep
+deploy/tf/app/generated/
+
+# PAF kit tarballs — vendor downloads, far too large to commit. The generic
+# `dist/` rule above would exclude the directory itself, and git cannot
+# re-include a file inside an excluded directory, so the directory is
+# re-admitted first.
+!paf/dist/
+paf/dist/*
+!paf/dist/README.md

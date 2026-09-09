@@ -1,0 +1,12 @@
+[Unit]
+Description=Open Policy Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/opa run --server --addr 127.0.0.1:8181 {{ app_dir }}/opa
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
