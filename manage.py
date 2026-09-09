@@ -2004,10 +2004,29 @@ def paf_api_key() -> None:
     )
 
 
+def _tf_output(name: str) -> str | None:
+    """Read one Terraform output from the workload root, or None if unavailable."""
+    try:
+        result = subprocess.run(
+            ["terraform", f"-chdir={TF_DIR}", "output", "-raw", name],
+            capture_output=True, text=True, timeout=60,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return None
+    return result.stdout.strip() if result.returncode == 0 else None
+
+
 @paf.command("bootstrap")
 def paf_bootstrap() -> None:
     """Print the PAF UI installer URL and the connection details to paste into it."""
     _ensure_env()
+    if (os.getenv("DEPLOYMENT_TARGET") or "").strip().lower() == "cloud":
+        _paf_bootstrap_cloud()
+    else:
+        _paf_bootstrap_local()
+
+
+def _paf_bootstrap_local() -> None:
     console.print(Panel.fit("[bold]PAF UI Installer[/bold]"))
     console.print(
         "Open the installer in a browser and accept the self-signed certificate:\n"
@@ -2064,6 +2083,71 @@ def paf_bootstrap() -> None:
     console.print("[bold]After install[/bold] — sign in as the admin user and:")
     console.print("  - Verify LLM Management shows both configurations.")
     console.print("  - Agent Builder → build a trivial Chat→Prompt→LLM→Chat flow to smoke-test.")
+    console.print(
+        "\n[yellow]Note:[/yellow] API automation for these UI steps is intentionally out of "
+        "scope (Playwright-style driving is fragile across PAF versions)."
+    )
+
+
+def _paf_bootstrap_cloud() -> None:
+    console.print(Panel.fit("[bold]PAF UI Installer — cloud (OCI)[/bold]"))
+
+    lb_ip = _tf_output("lb_ip")
+    wallet = _tf_output("adb_wallet_path") or "deploy/tf/app/generated/adb-wallet.zip"
+    compartment = os.getenv("OCI_COMPARTMENT_OCID", "")
+    endpoint = os.getenv("GENAI_ENDPOINT", "")
+    db_service = str(os.getenv("DB_SERVICE", "")).lower()
+
+    if lb_ip:
+        console.print(f"Open the installer:\n  [cyan]http://{lb_ip}/agentFactory/installation[/cyan]\n")
+    else:
+        console.print(
+            "[yellow]No Terraform output yet.[/yellow] Apply deploy/tf/app first, then re-run.\n"
+            "  The installer is at [cyan]http://<lb_ip>/agentFactory/installation[/cyan]\n"
+        )
+
+    console.print("[bold]Step 1 — admin user[/bold]")
+    console.print("  Create an admin user (username + password — record them yourself).\n")
+
+    console.print("[bold]Step 2 — database configuration[/bold] (ADB wallet)")
+    console.print("  Connection type:  [cyan]Wallet[/cyan]")
+    console.print(f"  Wallet file:      drop [cyan]{wallet}[/cyan]")
+    console.print(f"  Network alias:    [cyan]{db_service}[/cyan]   (from the wallet's tnsnames)")
+    console.print("  Username:         [cyan]AGENT_FACTORY[/cyan]")
+    console.print("  Password:         same as DB_PASSWORD in .env")
+    console.print("  [bold]PAF then asks two more questions:[/bold]")
+    console.print("    Air-gapped environment?            [cyan]No[/cyan]")
+    console.print("    OCI certificates added to wallet?  [cyan]Yes[/cyan]   (an ADB wallet carries them,")
+    console.print("        so the Knowledge Assistant installs here — unlike the local target)\n")
+
+    console.print("[bold]Step 3 — installation[/bold]")
+    console.print("  Click Install. PAF creates its metadata tables under AGENT_FACTORY.\n")
+
+    console.print("[bold]Step 4 — LLM configuration[/bold]   (no key material — the compute")
+    console.print("  authenticates as an instance principal through its dynamic group)")
+    console.print("  [bold]Generative model[/bold]   (Model type radio: [cyan]Generative model[/cyan])")
+    console.print("    LLM provider:        [cyan]OCI Generative AI — instance principal[/cyan]")
+    console.print("    Configuration name:  [cyan]gen-model[/cyan]   (generic — CHAT_FLOW references it)")
+    console.print(f"    Model ID:            [cyan]{os.getenv('GENAI_MODEL', '')}[/cyan]")
+    console.print(f"    Service endpoint:    [cyan]{endpoint}[/cyan]")
+    console.print(f"    Compartment OCID:    [cyan]{compartment}[/cyan]")
+    console.print("    Serving mode:        [cyan]On-demand[/cyan]")
+    console.print("  [bold]Embedding model[/bold]   (Model type radio: [cyan]Embedding model[/cyan])")
+    console.print("    LLM provider:        [cyan]OCI Generative AI — instance principal[/cyan]")
+    console.print("    Configuration name:  [cyan]emb-model[/cyan]")
+    console.print(f"    Model ID:            [cyan]{os.getenv('GENAI_EMBED_MODEL', '')}[/cyan]")
+    console.print(f"    Service endpoint:    [cyan]{endpoint}[/cyan]")
+    console.print(f"    Compartment OCID:    [cyan]{compartment}[/cyan]")
+    console.print(
+        f"    [dim]Emits {os.getenv('GENAI_EMBED_DIM', '')} dimensions, matching the VECTOR width "
+        f"in the changelog.[/dim]\n"
+    )
+
+    console.print("[bold]After install[/bold] — sign in as the admin user and:")
+    console.print("  - Verify LLM Management shows both configurations and that a test call succeeds.")
+    console.print("    A failure here is almost always the dynamic group or policy: apply")
+    console.print("    [cyan]deploy/tf/iam[/cyan] with a tenancy-admin profile.")
+    console.print("  - Register the Select AI tools against AGENT_TOOLS.PKG_AGENT_TOOLS.")
     console.print(
         "\n[yellow]Note:[/yellow] API automation for these UI steps is intentionally out of "
         "scope (Playwright-style driving is fragile across PAF versions)."
