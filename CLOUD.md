@@ -22,7 +22,7 @@ You also need:
 
 - **A profile in `~/.oci/config`** for the workload compartment.
 - **A tenancy-admin profile** for step 5. It can be the same one, if it has the rights.
-- **The X86_64 PAF kit.** The cloud computes are `VM.Standard.E5.Flex` (AMD x86_64), so the ARM64 kit used locally will not run there. Download `oracle_agent_factory_X86_64_26.7.0.tar.gz` from Oracle Software Delivery into `paf/dist/` — see [`paf/dist/README.md`](paf/dist/README.md). It is gitignored.
+- **The x86_64 PAF kit.** The cloud computes are `VM.Standard.E5.Flex` (AMD x86_64), so the ARM64 kit used locally will not run there. Download the x86_64 kit from Oracle Software Delivery into `paf/dist/` — see [`paf/dist/README.md`](paf/dist/README.md). It is gitignored.
 
 ## 2. `setup cloud`
 
@@ -62,30 +62,30 @@ are gitignored; `manage.py clean` removes them.
 python manage.py tf
 ```
 
-Expect: `terraform.tfvars` in **both** `deploy/tf/iam/` and `deploy/tf/app/`.
+Renders `terraform.tfvars` for **both** roots from `.env`, so the profile,
+regions and compartment are never typed into Terraform by hand.
+
+The two roots take different regions: the workload stack runs where you chose,
+while the IAM root targets the **tenancy home region**, because identity
+resources exist only there.
 
 ## 5. IAM — once per compartment, as a tenancy admin
 
 ```bash
-cd deploy/tf/iam
-terraform init
-terraform apply
+python manage.py cloud iam
 ```
 
 Creates one dynamic group per principal and the policy granting both
-`use generative-ai-family`. These live in the tenancy root, which is why they
-are a separate root module from the workload stack.
+`use generative-ai-family`.
 
-Expect: two dynamic group names and a policy name in the output. Skip this and
-every model call later fails with an authorization error.
+Expect: `3 to add` — two dynamic groups and one policy. Skip this and every
+model call later fails with an authorization error.
 
 ## 6. The workload stack
 
 ```bash
-cd deploy/tf/app
-terraform init
-terraform plan -out=tfplan
-terraform apply tfplan
+python manage.py cloud plan   # optional, to see it first
+python manage.py cloud up
 ```
 
 Provisions the VCN, the ADB on a private endpoint, the four computes, the load
@@ -93,7 +93,11 @@ balancer, and the Object Storage bucket holding each tier's payload and the PAF
 kit behind read-only pre-authenticated requests.
 
 Expect: `lb_ip`, the per-path `urls`, `ops_public_ip`, and the wallet written to
-`generated/adb-wallet.zip`.
+`deploy/tf/app/generated/adb-wallet.zip`.
+
+Terraform is always driven through `manage.py`, which runs it with `-chdir`
+rather than changing directory. Running it by hand is what leaves a root without
+its rendered tfvars.
 
 ## 7. Wait for the tiers to build themselves
 
@@ -142,7 +146,7 @@ Expect the load balancer address and the four paths: `/mobile`, `/backoffice`,
 ## Teardown
 
 ```bash
-cd deploy/tf/app && terraform destroy
+python manage.py cloud down
 python manage.py clean
 ```
 

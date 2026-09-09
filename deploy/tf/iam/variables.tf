@@ -3,8 +3,8 @@ variable "oci_profile" {
   type        = string
 }
 
-variable "region" {
-  description = "Tenancy home region."
+variable "home_region" {
+  description = "Tenancy home region. Identity resources exist only there, and it is not necessarily the workload region."
   type        = string
 }
 

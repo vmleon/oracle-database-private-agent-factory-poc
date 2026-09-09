@@ -16,7 +16,9 @@ principal. Neither ever holds an API key.
 | ADB          | Resource principal | The Select AI profiles' `OCI$RESOURCE_PRINCIPAL` credential  |
 
 ```bash
-cd deploy/tf/iam
-terraform init
-terraform apply -var-file=terraform.tfvars
+python manage.py tf          # renders this root's terraform.tfvars
+python manage.py cloud iam   # init + apply, in the tenancy home region
 ```
+
+Terraform is driven through `manage.py`, which invokes it with `-chdir`. Running
+it here by hand is what leaves the root without its rendered tfvars.

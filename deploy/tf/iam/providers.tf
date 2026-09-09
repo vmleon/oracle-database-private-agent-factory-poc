@@ -9,8 +9,9 @@ terraform {
   }
 }
 
-# Identity resources are always created in the tenancy's home region.
+# Identity resources live only in the tenancy's home region, so this root
+# targets it explicitly rather than inheriting the workload region.
 provider "oci" {
   config_file_profile = var.oci_profile
-  region              = var.region
+  region              = var.home_region
 }

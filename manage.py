@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """CLI for managing the Oracle PAF Decisioning Engine PoC."""
 
+import configparser
 import json
 import os
 import platform
 import re
 import secrets
 import shutil
+import string
 import subprocess
 import sys
 import tarfile
@@ -20,7 +22,6 @@ import requests
 import urllib3
 from dotenv import load_dotenv
 from InquirerPy import inquirer
-from jinja2 import StrictUndefined, Template
 from rich.console import Console
 from rich.panel import Panel
 
@@ -45,12 +46,14 @@ ANSIBLE_VARS_FILE = ANSIBLE_DIR / ".vars.local.yml"
 ANSIBLE_ROOT = PROJECT_ROOT / "deploy" / "ansible"
 
 TF_DIR = PROJECT_ROOT / "deploy" / "tf" / "app"
-TF_VARS_TEMPLATE = TF_DIR / "terraform.tfvars.j2"
+TF_VARS_TEMPLATE = TF_DIR / "terraform.tfvars.tpl"
 TF_VARS_FILE = TF_DIR / "terraform.tfvars"
 
 TF_IAM_DIR = PROJECT_ROOT / "deploy" / "tf" / "iam"
-TF_IAM_VARS_TEMPLATE = TF_IAM_DIR / "terraform.tfvars.j2"
+TF_IAM_VARS_TEMPLATE = TF_IAM_DIR / "terraform.tfvars.tpl"
 TF_IAM_VARS_FILE = TF_IAM_DIR / "terraform.tfvars"
+
+OCI_CONFIG = Path.home() / ".oci" / "config"
 
 KIT_DIST_DIR = PROJECT_ROOT / "paf" / "dist"
 PAF_KIT_DIR = PROJECT_ROOT / "paf-kit"
@@ -229,24 +232,35 @@ def _check_max_string_size(container: str = "paf-oracle-free-26ai") -> None:
 
 def _host_kit_arch() -> str:
     """Kit architecture matching the machine running podman locally."""
-    return "ARM64" if platform.machine().lower() in ("arm64", "aarch64") else "X86_64"
+    return "arm64" if platform.machine().lower() in ("arm64", "aarch64") else "x86_64"
+
+
+# The kit spells its architecture differently between builds, so each target
+# matches on any of the tokens that mean it.
+KIT_ARCH_ALIASES = {
+    "x86_64": ("x86_64", "x86-64", "x86", "amd64"),
+    "arm64": ("arm64", "aarch64"),
+}
 
 
 def _resolve_kit_tarball(arch: str) -> str:
-    """Path to the kit tarball in paf/dist/ built for `arch`.
-
-    The kit ships one tarball per architecture and the two deployment targets
-    do not share one, so each target resolves the file matching what it runs.
-    """
+    """Path to the kit tarball in paf/dist/ built for `arch`."""
+    aliases = KIT_ARCH_ALIASES[arch]
+    other = {a for key, names in KIT_ARCH_ALIASES.items() if key != arch for a in names}
     candidates = sorted(KIT_DIST_DIR.glob("*.tar.gz"))
     for candidate in candidates:
-        if arch.lower() in candidate.name.lower():
+        name = candidate.name.lower()
+        # An arm64 build must not match on "x86" appearing elsewhere in a name,
+        # so a file naming the other architecture is rejected outright.
+        if any(a in name for a in other):
+            continue
+        if any(a in name for a in aliases):
             return str(candidate)
 
     console.print(
         f"[red]No {arch} PAF kit tarball in {KIT_DIST_DIR}.[/red]\n"
-        f"Download it from Oracle Software Delivery and place it there "
-        f"(e.g. oracle_agent_factory_{arch}_26.7.0.tar.gz) — see paf/dist/README.md."
+        f"Download it from Oracle Software Delivery and place it there — "
+        f"see paf/dist/README.md."
     )
     if candidates:
         console.print("[dim]Present, but not for this architecture:[/dim]")
@@ -1097,6 +1111,16 @@ def setup_cloud() -> None:
         sys.exit(1)
     regions = sorted(r["region-name"] for r in subscriptions)
 
+    # Identity resources exist only in the home region, which is often not the
+    # region the workload runs in, so the two are tracked separately.
+    home_region = next(
+        (r["region-name"] for r in subscriptions if r.get("is-home-region")), None
+    )
+    if not home_region:
+        console.print("[red]Could not determine the tenancy home region.[/red]")
+        sys.exit(1)
+    console.print(f"[green]✓[/green] Home region: {home_region}")
+
     region = inquirer.select(
         message="Workload region (VCN, computes, ADB):",
         choices=regions,
@@ -1189,7 +1213,7 @@ def setup_cloud() -> None:
         wallet_password = _generate_password()
         console.print("[green]✓[/green] Generated wallet password (saved to .env)")
 
-    paf_tarball = _resolve_kit_tarball("X86_64")
+    paf_tarball = _resolve_kit_tarball("x86_64")
     console.print(f"[green]✓[/green] PAF kit: {Path(paf_tarball).name}")
 
     paf_admin_user = inquirer.text(
@@ -1210,6 +1234,7 @@ def setup_cloud() -> None:
         "# OCI targeting\n"
         f"OCI_PROFILE={oci_profile}\n"
         f"OCI_TENANCY_OCID={tenancy_ocid}\n"
+        f"OCI_HOME_REGION={home_region}\n"
         f"OCI_REGION={region}\n"
         f"OCI_GENAI_REGION={genai_region}\n"
         f"OCI_COMPARTMENT_OCID={compartment_ocid}\n"
@@ -1438,11 +1463,12 @@ def _select_genai_models(profile: str, region: str, tenancy: str, existing: dict
 
 
 def _oci_profiles() -> list:
-    """Profile names declared in ~/.oci/config."""
-    config = Path.home() / ".oci" / "config"
-    if not config.exists():
+    """Profile names from the OCI CLI config, DEFAULT first. Empty when absent."""
+    if not OCI_CONFIG.exists():
         return []
-    return re.findall(r"^\[([^\]]+)\]", config.read_text(), flags=re.MULTILINE)
+    parser = configparser.ConfigParser()
+    parser.read(OCI_CONFIG)
+    return (["DEFAULT"] if parser.defaults() else []) + parser.sections()
 
 
 def _oci_profile_region(profile: str) -> str | None:
@@ -1476,7 +1502,7 @@ def tf() -> None:
             "DB_NAME", "DB_PASSWORD", "DB_WALLET_PASSWORD", "PAF_TARBALL", "GENAI_MODEL",
         ]),
         TF_IAM_VARS_TEMPLATE: (TF_IAM_VARS_FILE, [
-            "OCI_PROFILE", "OCI_REGION", "OCI_TENANCY_OCID", "OCI_COMPARTMENT_OCID", "OCI_LABEL",
+            "OCI_PROFILE", "OCI_HOME_REGION", "OCI_TENANCY_OCID", "OCI_COMPARTMENT_OCID", "OCI_LABEL",
         ]),
     }
 
@@ -1484,18 +1510,16 @@ def tf() -> None:
         missing = [k for k in keys if not os.environ.get(k)]
         if missing:
             console.print(f"[red]Missing in .env:[/red] {', '.join(missing)}")
+            console.print("Re-run [cyan]python manage.py setup cloud[/cyan].")
             sys.exit(1)
-        template = Template(template_path.read_text(), undefined=StrictUndefined)
-        out_path.write_text(template.render({k: os.environ[k] for k in keys}) + "\n")
+        rendered = string.Template(template_path.read_text()).substitute(
+            {k: os.environ[k] for k in keys}
+        )
+        out_path.write_text(rendered)
         out_path.chmod(0o600)
         console.print(f"[green]✓[/green] Wrote {out_path}")
 
-    console.print(
-        "\nThe IAM root creates the dynamic groups and policy, and needs tenancy-admin rights:\n"
-        "  [cyan]cd deploy/tf/iam && terraform init && terraform apply[/cyan]\n"
-        "Then the workload stack:\n"
-        "  [cyan]cd deploy/tf/app && terraform init && terraform plan -out=tfplan && terraform apply tfplan[/cyan]"
-    )
+    console.print("\nNext: [cyan]python manage.py cloud iam[/cyan] then [cyan]python manage.py cloud up[/cyan]")
 
 
 # ---------------------------------------------------------------- local
@@ -1709,6 +1733,84 @@ def info() -> None:
     console.print(f"Models:         {os.getenv('GENAI_MODEL')} / {os.getenv('GENAI_EMBED_MODEL')}")
     console.print(f"                via {os.getenv('GENAI_ENDPOINT')}")
     console.print(f"                instance principal — no key material")
+
+
+# ---------------------------------------------------------------- cloud
+
+
+def _tf_args(root: Path, *args: str) -> list:
+    """Terraform invoked against a root with -chdir, never by cd-ing into it."""
+    return ["terraform", f"-chdir={root}", *args]
+
+
+def _tf_run(root: Path, *args: str) -> None:
+    _run(_tf_args(root, *args))
+
+
+def _require_cloud_env() -> None:
+    _ensure_env()
+    if (os.getenv("DEPLOYMENT_TARGET") or "").strip().lower() != "cloud":
+        console.print("[red].env targets local.[/red] Run `python manage.py setup cloud` first.")
+        sys.exit(1)
+
+
+def _require_tfvars(path: Path) -> None:
+    if not path.exists():
+        console.print(f"[red]{path} not found.[/red] Run `python manage.py tf` first.")
+        sys.exit(1)
+
+
+@cli.group()
+def cloud() -> None:
+    """Cloud (OCI) lifecycle."""
+
+
+@cloud.command("iam")
+def cloud_iam() -> None:
+    """Create the dynamic groups and Generative AI policy. Needs tenancy-admin rights."""
+    _require_cloud_env()
+    _require_tfvars(TF_IAM_VARS_FILE)
+    console.print(Panel.fit("[bold]Tenancy IAM[/bold]"))
+    console.print(
+        f"[dim]Identity resources are created in the home region "
+        f"({os.getenv('OCI_HOME_REGION')}), not the workload region.[/dim]"
+    )
+    _tf_run(TF_IAM_DIR, "init", "-input=false")
+    _tf_run(TF_IAM_DIR, "apply", "-input=false", "-auto-approve")
+    console.print("\n[green]✓[/green] Next: [cyan]python manage.py cloud up[/cyan]")
+
+
+@cloud.command("up")
+def cloud_up() -> None:
+    """Provision the workload stack: network, ADB, the four tiers and the load balancer."""
+    _require_cloud_env()
+    _require_tfvars(TF_VARS_FILE)
+    console.print(Panel.fit("[bold]Cloud stack[/bold]"))
+    _tf_run(TF_DIR, "init", "-input=false")
+    _tf_run(TF_DIR, "apply", "-input=false", "-auto-approve")
+    console.print(
+        "\n[green]✓[/green] Applied. Each tier now builds itself from cloud-init; "
+        "watch for the bootstrap sentinel before using it.\n"
+        "Next: [cyan]python manage.py info[/cyan], then [cyan]python manage.py paf bootstrap[/cyan]"
+    )
+
+
+@cloud.command("plan")
+def cloud_plan() -> None:
+    """Show what the workload stack would change, without applying it."""
+    _require_cloud_env()
+    _require_tfvars(TF_VARS_FILE)
+    _tf_run(TF_DIR, "init", "-input=false")
+    _tf_run(TF_DIR, "plan")
+
+
+@cloud.command("down")
+def cloud_down() -> None:
+    """Destroy the workload stack. The IAM root is left alone for the next deployment."""
+    _require_cloud_env()
+    console.print(Panel.fit("[bold]Destroying the cloud stack[/bold]"))
+    _tf_run(TF_DIR, "destroy", "-input=false", "-auto-approve")
+    console.print("\n[green]✓[/green] Destroyed. Run [cyan]python manage.py clean[/cyan] to remove generated files.")
 
 
 # ---------------------------------------------------------------- paf

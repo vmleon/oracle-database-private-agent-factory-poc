@@ -16,17 +16,16 @@ resource "oci_identity_dynamic_group" "adb" {
   matching_rule  = "ALL {resource.type = 'autonomousdatabase', resource.compartment.id = '${var.compartment_ocid}'}"
 }
 
-data "oci_identity_compartment" "workload" {
-  id = var.compartment_ocid
-}
-
+# Policies name the compartment by id rather than by name: resolving the name
+# needs a read the applying profile may not have, and a failed lookup surfaces
+# as an opaque interpolation error rather than a permissions one.
 resource "oci_identity_policy" "genai" {
   compartment_id = var.tenancy_ocid
   name           = "${var.label}-genai-policy"
   description    = "Lets the ${var.label} compute and database call Generative AI"
 
   statements = [
-    "allow dynamic-group ${oci_identity_dynamic_group.compute.name} to use generative-ai-family in compartment ${data.oci_identity_compartment.workload.name}",
-    "allow dynamic-group ${oci_identity_dynamic_group.adb.name} to use generative-ai-family in compartment ${data.oci_identity_compartment.workload.name}",
+    "allow dynamic-group ${oci_identity_dynamic_group.compute.name} to use generative-ai-family in compartment id ${var.compartment_ocid}",
+    "allow dynamic-group ${oci_identity_dynamic_group.adb.name} to use generative-ai-family in compartment id ${var.compartment_ocid}",
   ]
 }
