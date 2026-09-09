@@ -35,6 +35,12 @@ resource "oci_load_balancer_backend_set" "this" {
     port     = each.value.port
   }
 
+  # PAF generates its own self-signed certificate during its install wizard,
+  # which runs after this stack exists — so there is no CA to upload and trust
+  # at apply time, and peer verification cannot be switched on here yet. The
+  # hop is unverified: anything already inside the VCN could impersonate PAF to
+  # the load balancer. Tracked as hardening in BACKLOG.md, together with the
+  # plaintext public listener that presently matters more.
   dynamic "ssl_configuration" {
     for_each = each.value.ssl ? [1] : []
     content {

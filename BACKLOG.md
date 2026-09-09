@@ -9,7 +9,7 @@ then optional residuals.
 
 Branch: `dev/cloud-deployment`.
 
-Stand up the deployment designed in [`docs/DEPLOYMENT.md §4`](docs/DEPLOYMENT.md): Terraform under `deploy/tf/`, one Ansible tier per compute under `deploy/ansible/`, and the `setup cloud` / `build` / `tf` / `clean` commands in `manage.py`. Unblocks §2 — XGBoost is an ADB-only algorithm.
+Stand up the deployment designed in [`docs/DEPLOYMENT.md §4`](docs/DEPLOYMENT.md): Terraform under `deploy/tf/`, one Ansible tier per compute under `deploy/ansible/`, and the `setup cloud` / `build` / `tf` / `clean` commands in `manage.py`. Unblocks §3 — XGBoost is an ADB-only algorithm.
 
 Remaining to make the stack deployable end to end:
 
@@ -19,7 +19,18 @@ Remaining to make the stack deployable end to end:
 - **Confirm two ADB particulars** at that first apply: whether `ROUTE_OUTBOUND_CONNECTIONS` must be set for the Select AI callout to reach Generative AI through the VCN, and that ADB's default `max_string_size=EXTENDED` satisfies PAF.
 - **Check the ADB ECPU service limit** — the compute and load balancer limits are comfortable, but the `adb-ecpu-count` query returned no data.
 
-## 2. XGBoost credit-scoring tool
+## 2. TLS hardening for the cloud deployment
+
+The stack answers on **plain HTTP**: the load balancer listener is port 80 with no certificate, so the customer UI, the API and — most importantly — the PAF install wizard where an administrator password is set all cross the public internet unencrypted. That is the exposure worth closing first.
+
+Behind it, the load balancer reaches PAF over HTTPS without verifying its certificate (`verify_peer_certificate = false` in `deploy/tf/app/lb.tf`). PAF issues that certificate itself during its install wizard, which runs after `cloud up`, so there is no CA to trust at apply time.
+
+Both close the same way, in this order:
+
+- Terminate TLS at the load balancer: an `oci_load_balancer_certificate` and an HTTPS listener on 443, with 80 redirecting to it. A real certificate needs a DNS name, so this pairs with giving the deployment one instead of using the bare load balancer address.
+- Then, once PAF has generated its certificate, upload it as a trusted CA bundle and flip the backend to `verify_peer_certificate = true`. It is a second apply by nature, because the certificate does not exist during the first.
+
+## 3. XGBoost credit-scoring tool
 
 Depends on §1. `ALGO_XGBOOST` is not available on Oracle Database Free — `DBMS_DATA_MINING.CREATE_MODEL2` raises **ORA-40216: feature not supported** — so this runs against ADB. The rest of OML4SQL does work on Free, so the algorithm is the only cloud-gated piece.
 
@@ -40,15 +51,15 @@ The backoffice reviewer then sees in the recommendation panel something like: _"
 
 Fair lending holds by construction: `REPORTING.cust_360` deliberately omits `APP.customer_protected_attrs`, so protected attributes cannot reach the feature vector. The feedback loop exists — the `decision` Blockchain row captures human outcomes, ready for future retraining cycles.
 
-## 3. Proactive product recommendation as a second workflow
+## 4. Proactive product recommendation as a second workflow
 
-Clone the `CHAT_FLOW` pattern into a second PAF Agent Builder flow over the same `REPORTING.*` view set, with a different agent prompt + tool surface + signal weights, writing to a recommendation queue rather than `hitl_task`. Reuses the existing backbone (HITL, audit, OPA grounding, RAG citations, configurable signal weights) for a recommendation surface alongside the decisioning surface. Consumes the §2 credit-score tool as one of its signals.
+Clone the `CHAT_FLOW` pattern into a second PAF Agent Builder flow over the same `REPORTING.*` view set, with a different agent prompt + tool surface + signal weights, writing to a recommendation queue rather than `hitl_task`. Reuses the existing backbone (HITL, audit, OPA grounding, RAG citations, configurable signal weights) for a recommendation surface alongside the decisioning surface. Consumes the §3 credit-score tool as one of its signals.
 
-## 4. TOON feasibility spike
+## 5. TOON feasibility spike
 
-Independent of §1–§3 — can happen in parallel.
+Independent of §1–§4 — can happen in parallel.
 
-TOON ("Token-Oriented Object Notation") is a compact JSON-alternative serialization that uses 30–50% fewer tokens for structured payloads sent to an LLM. Worth applying once the §2 evidence (score + top features) lands in the prompt alongside RAG chunks and OPA outputs.
+TOON ("Token-Oriented Object Notation") is a compact JSON-alternative serialization that uses 30–50% fewer tokens for structured payloads sent to an LLM. Worth applying once the §3 evidence (score + top features) lands in the prompt alongside RAG chunks and OPA outputs.
 
 Open questions the spike must answer:
 
@@ -58,19 +69,19 @@ Open questions the spike must answer:
 
 Outcome: TOON encoding happens either inside the PAF flow (clean, one place to look) or in the prompt-builder code outside PAF (still works, less tidy). Document the recipe (or the constraint).
 
-## 5. Residual follow-ups
+## 6. Residual follow-ups
 
 Optional or alternative — none are blocking.
 
-### 5.1 Flow export/import
+### 6.1 Flow export/import
 
 Flow export/import is a **UI operation** (Agent Builder → My Custom Flows) — intentionally **not** scripted in `manage.py`. The round-trip works and is documented (`LOCAL.md §5`). The residuals are operational: deps re-link by hand on import, imports arrive unpublished, and `.paf` is binary so not git-diffable.
 
-### 5.2 Deterministic `upsert` via marker — only if needed
+### 6.2 Deterministic `upsert` via marker — only if needed
 
 The deterministic **read** path is shipped; `upsert_application` is **agentic on purpose** — its token corruption is fail-closed and idempotent. Only if write-path corruption appears in testing: the intake worker emits an `[[UPSERT …]]` marker → RegexExtractor + Type Convert build the JSON → a Deterministic MCP node calls `upsert_application` with the token wired. Cost: reopens the fail-open string-interpolation hazard (`issues/02`), a write-or-skip Condition (`issues/05`), and structured marker emission (`issues/09`).
 
-### 5.3 PL/SQL Executor node — safe in-DB calls (alternative for `issues/02`)
+### 6.3 PL/SQL Executor node — safe in-DB calls (alternative for `issues/02`)
 
 The **Oracle PL/SQL Executor node** runs only routines visible in the connected schema metadata, with bound named/positional args, overloads, `OUT`/`IN OUT`, and an optional auto-commit toggle — a first-class, fail-secure DB path. It does not fix the unsafe SQL Query node (`issues/02` stays open as a platform caveat), but the flow can stop depending on MCP shims for DB access.
 
@@ -78,7 +89,7 @@ The **Oracle PL/SQL Executor node** runs only routines visible in the connected 
 - **Docs.** If adopted: trim the `banking-mcp` / `application-mcp` registrations from `LOCAL.md §4`, update the tool-channel description in `docs/DESIGN.md`, and note in `issues/02` that the flow does not touch the SQL Query node.
 - **Guide steps.** Register a Database datasource for the node, select the approved routines, map the bound arguments; document the auto-commit setting for the `upsert` write.
 
-### 5.4 Agent observability / OTel tracing — mitigates `issues/04` and `issues/08`
+### 6.4 Agent observability / OTel tracing — mitigates `issues/04` and `issues/08`
 
 PAF's OTel tracing (Arize Phoenix / Comet Opik / Langfuse) captures spans for flow steps, LLM calls, and tool executions, plus a Collect-Diagnostics ZIP. This is the missing diagnostic surface for the `max_iterations=5` cliff and the ID-only validator errors — neither root cause is fixed in code.
 
