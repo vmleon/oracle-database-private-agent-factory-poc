@@ -81,6 +81,31 @@ def _tf_output_json(name: str):
         return None
 
 
+
+def _ops_python(script: str) -> subprocess.CompletedProcess:
+    """Run a Python snippet on the ops bastion.
+
+    Autonomous Database sits on a private endpoint, so the bastion is the only
+    host that can reach it. It already has python3-oracledb, the wallet and the
+    connection parameters the bootstrap wrote.
+    """
+    ip = _tf_output("ops_public_ip")
+    if not ip:
+        console.print("[red]No bastion address.[/red] Apply deploy/tf/app first.")
+        sys.exit(1)
+    key_path = Path(os.getenv("OCI_SSH_KEY_PATH", "")).expanduser()
+    private_key = key_path.with_suffix("") if key_path.suffix == ".pub" else key_path
+    if not private_key.exists():
+        console.print(f"[red]No private key at {private_key}.[/red]")
+        sys.exit(1)
+    return subprocess.run(
+        ["ssh", "-i", str(private_key), "-o", "StrictHostKeyChecking=no",
+         "-o", "UserKnownHostsFile=/dev/null", "-o", "LogLevel=ERROR",
+         "-o", "ConnectTimeout=20", f"opc@{ip}", "sudo python3 -"],
+        input=script, capture_output=True, text=True, timeout=180,
+    )
+
+
 def _paf_base_url() -> str:
     """Where PAF's admin API lives for the active target.
 
@@ -973,8 +998,10 @@ def _paf_session() -> requests.Session:
         sys.exit(1)
     if r.status_code != 200:
         console.print(
-            f"[red]PAF login failed: HTTP {r.status_code}.[/red] "
-            f"Check PAF_ADMIN_USER / PAF_ADMIN_PASS in .env.\n{r.text[:300]}"
+            f"[red]PAF login failed: HTTP {r.status_code}.[/red] The credentials in .env "
+            "are what setup asked for before PAF existed. Run "
+            "[cyan]python manage.py paf admin[/cyan] to record the admin the install "
+            f"wizard created.\n{r.text[:200]}"
         )
         sys.exit(1)
     return session
@@ -2040,6 +2067,10 @@ def paf_allow_internal_mcp() -> None:
     (the setting resets to the secure default on a fresh install).
     """
     _ensure_env()
+    if (os.getenv("DEPLOYMENT_TARGET") or "").strip().lower() == "cloud":
+        _allow_internal_mcp_cloud()
+        return
+
     db_password = os.getenv("DB_PASSWORD", "")
     sql = (
         "SET DEFINE OFF\n"
@@ -2065,6 +2096,72 @@ def paf_allow_internal_mcp() -> None:
         sys.exit(1)
     console.print("[green]✓[/green] BLOCK_PRIVATE_OUTBOUND_URLS=false — internal MCP URLs allowed.")
     console.print("[dim]Register MCP servers as https://mcp-proxy:8443/<svc>/mcp/ (see LOCAL.md §4a).[/dim]")
+
+
+
+def _allow_internal_mcp_cloud() -> None:
+    """Same setting, applied to Autonomous Database through the bastion."""
+    script = """
+import json, oracledb
+p = json.load(open("/home/opc/ansible_params.json"))
+con = oracledb.connect(user="ADMIN", password=p["adb_admin_password"], dsn=p["adb_service"],
+                       config_dir="/opt/paf-poc/wallet", wallet_location="/opt/paf-poc/wallet",
+                       wallet_password=p["wallet_password"])
+cur = con.cursor()
+try:
+    cur.execute("UPDATE AGENT_FACTORY.AAI_APPLICATION_SETTINGS SET value='false' "
+                "WHERE field='BLOCK_PRIVATE_OUTBOUND_URLS'")
+    con.commit()
+except Exception as exc:
+    print("SETTINGS_TABLE_MISSING", exc); raise SystemExit(0)
+cur.execute("SELECT field||'='||value FROM AGENT_FACTORY.AAI_APPLICATION_SETTINGS "
+            "WHERE field IN ('BLOCK_PRIVATE_OUTBOUND_URLS','ALLOW_INSECURE_HTTP_URLS')")
+for (row,) in cur:
+    print(row)
+"""
+    result = _ops_python(script)
+    out = (result.stdout or "") + (result.stderr or "")
+    if "BLOCK_PRIVATE_OUTBOUND_URLS=false" in out:
+        console.print("[green]\u2713[/green] BLOCK_PRIVATE_OUTBOUND_URLS=false")
+        for line in out.splitlines():
+            if "ALLOW_INSECURE_HTTP_URLS" in line:
+                console.print(f"[dim]  {line.strip()}[/dim]")
+        return
+    if "SETTINGS_TABLE_MISSING" in out:
+        console.print(
+            "[red]PAF's settings table does not exist yet.[/red] "
+            "Finish the install wizard first — it creates the table."
+        )
+        sys.exit(1)
+    console.print(f"[red]Could not apply the setting.[/red]\n{out.strip()[:400]}")
+    sys.exit(1)
+
+
+
+@paf.command("admin")
+def paf_admin() -> None:
+    """Record the PAF admin credentials created in the install wizard.
+
+    `setup` has to ask for these before PAF exists, so whatever it stored is a
+    guess. This writes what the wizard actually created, which is what the
+    `trust-ca` and `api-key` commands authenticate with.
+    """
+    _ensure_env()
+    user = inquirer.text(
+        message="PAF admin username (as created in the install wizard):",
+        default=os.getenv("PAF_ADMIN_USER", ""),
+    ).execute()
+    password = inquirer.secret(message="PAF admin password:").execute()
+    if not user or not password:
+        console.print("[red]Both are required.[/red]")
+        sys.exit(1)
+    _write_env_key("PAF_ADMIN_USER", user)
+    _write_env_key("PAF_ADMIN_PASS", password)
+    console.print(f"[green]\u2713[/green] Saved to {ENV_FILE}")
+
+    session = _paf_session()
+    if session:
+        console.print(f"[green]\u2713[/green] Signed in to PAF at {_paf_base_url()}")
 
 
 @paf.command("trust-ca")
@@ -2357,7 +2454,10 @@ def _paf_bootstrap_cloud() -> None:
         )
 
     console.print("[bold]Step 1 — admin user[/bold]")
-    console.print("  Create an admin user (username + password — record them yourself).\n")
+    console.print("  Create an admin user, then record it:")
+    console.print("    [cyan]python manage.py paf admin[/cyan]")
+    console.print("  [dim]setup asked for these before PAF existed, so .env holds a guess until now.[/dim]")
+    console.print("  [dim]trust-ca and api-key authenticate with them.[/dim]\n")
 
     console.print("[bold]Step 2 — database configuration[/bold] (ADB wallet)")
     console.print("  Connection type:  [cyan]Wallet[/cyan]")
