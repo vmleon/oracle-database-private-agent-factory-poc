@@ -1848,6 +1848,8 @@ def cloud_up() -> None:
     _require_tfvars(TF_VARS_FILE)
     _require_build()
     console.print(Panel.fit("[bold]Cloud stack[/bold]"))
+    # Cheap, and keeps an edited changelog or policy bundle from being missed.
+    _stage_sources()
     _tf_run(TF_DIR, "init", "-input=false")
     _tf_run(TF_DIR, "apply", "-input=false", "-auto-approve")
     console.print(
@@ -2494,12 +2496,24 @@ def build() -> None:
     backend_files.mkdir(parents=True, exist_ok=True)
     shutil.copy2(jars[0], backend_files / "app.jar")
 
-    _stage(PROJECT_ROOT / "opa", backend_files / "opa")
-    _stage(PROJECT_ROOT / "src" / "api" / "registry", backend_files / "registry")
-    _stage(PROJECT_ROOT / "database" / "liquibase", ops_files / "database" / "liquibase")
+    _stage_sources()
 
     console.print(f"[green]✓[/green] Staged every tier payload under {ANSIBLE_ROOT}")
     console.print("\nNext: [cyan]python manage.py tf[/cyan]")
+
+
+def _stage_sources() -> None:
+    """Stage the payloads that are copied rather than compiled.
+
+    These come straight from the repository, so `cloud up` repeats it: editing a
+    changelog and applying without rebuilding would otherwise ship the copy
+    staged by the last `build`, and the change would silently not run.
+    """
+    backend_files = ANSIBLE_ROOT / "backend" / "roles" / "appstack" / "files"
+    ops_files = ANSIBLE_ROOT / "ops" / "roles" / "opstools" / "files"
+    _stage(PROJECT_ROOT / "opa", backend_files / "opa")
+    _stage(PROJECT_ROOT / "src" / "api" / "registry", backend_files / "registry")
+    _stage(PROJECT_ROOT / "database" / "liquibase", ops_files / "database" / "liquibase")
 
 
 @cli.command("clean")

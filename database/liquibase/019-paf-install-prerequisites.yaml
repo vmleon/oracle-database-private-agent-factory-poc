@@ -1,0 +1,48 @@
+databaseChangeLog:
+  # Two things PAF's install wizard checks before it will accept the database
+  # connection. Neither is in the kit's "Creating Database User" instructions.
+  #
+  # On the local target both are applied as SYSDBA by `manage.py local
+  # provision`, because SYSTEM cannot grant a SYS object. Autonomous Database
+  # has no SYSDBA, but ADMIN can grant it, so on this target they belong in the
+  # changelog like everything else.
+
+  - changeSet:
+      id: 019-grant-v-parameter-adb
+      author: paf-poc
+      context: adb
+      # PAF's connection test reads V$PARAMETER to detect the compatibility
+      # level. Without it the wizard rejects the connection with "Database user
+      # privileges are incomplete. Missing: SELECT V_$PARAMETER".
+      #
+      # Granted on the specific view rather than through SELECT_CATALOG_ROLE,
+      # which also works and hands over far more than PAF needs.
+      changes:
+        - sql:
+            sql: |-
+              GRANT SELECT ON SYS.V_$PARAMETER TO AGENT_FACTORY
+
+  - changeSet:
+      id: 019-create-readonly-worker-user-adb
+      author: paf-poc
+      # The wizard requires this user to already exist, failing with "Required
+      # read-only user AAI_RO_AGENT_FACTORY does not exist". Its password must
+      # match the runtime user's, which is why both take ${db_password}. PAF
+      # grants it the read-only SELECTs itself during the install; it needs
+      # only a session here.
+      context: adb
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |-
+              DECLARE
+                n NUMBER;
+              BEGIN
+                SELECT COUNT(*) INTO n FROM dba_users WHERE username = 'AAI_RO_AGENT_FACTORY';
+                IF n = 0 THEN
+                  EXECUTE IMMEDIATE 'CREATE USER AAI_RO_AGENT_FACTORY IDENTIFIED BY "${db_password}"';
+                ELSE
+                  EXECUTE IMMEDIATE 'ALTER USER AAI_RO_AGENT_FACTORY IDENTIFIED BY "${db_password}"';
+                END IF;
+                EXECUTE IMMEDIATE 'GRANT CREATE SESSION TO AAI_RO_AGENT_FACTORY';
+              END;

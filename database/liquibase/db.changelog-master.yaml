@@ -53,3 +53,6 @@ databaseChangeLog:
   - include:
       file: 018-select-ai-grants.yaml
       relativeToChangelogFile: true
+  - include:
+      file: 019-paf-install-prerequisites.yaml
+      relativeToChangelogFile: true

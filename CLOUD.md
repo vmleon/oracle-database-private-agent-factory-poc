@@ -57,6 +57,10 @@ Compiles both UI bundles and the Spring Boot jar, then stages each output — pl
 the OPA bundle, the registry service and the changelog — into the Ansible role
 that installs it.
 
+Only the compiled outputs need this step. `cloud up` restages the copied ones
+(changelog, policy bundle, registry) on every apply, so editing a changeset and
+applying picks it up without a rebuild.
+
 Expect: populated `files/` directories under `deploy/ansible/*/roles/*/`. They
 are gitignored; `manage.py clean` removes them.
 
