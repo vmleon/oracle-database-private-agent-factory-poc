@@ -19,3 +19,12 @@
 
 - name: Reload firewalld
   ansible.builtin.command: firewall-cmd --reload
+
+- name: Restart the MCP wrappers
+  ansible.builtin.systemd:
+    name: "paf-poc-{{ item.name }}"
+    state: restarted
+    daemon_reload: true
+  loop: "{{ mcp_services }}"
+  loop_control:
+    label: "{{ item.name }}"

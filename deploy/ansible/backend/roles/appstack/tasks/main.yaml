@@ -91,6 +91,52 @@
     requirements: "{{ app_dir }}/registry/requirements.txt"
     executable: "{{ app_dir }}/registry/venv/bin/pip"
 
+- name: Deploy the MCP wrappers
+  ansible.builtin.copy:
+    src: "mcp/{{ item.name }}/"
+    dest: "{{ app_dir }}/mcp/{{ item.name }}/"
+    mode: "0640"
+  loop: "{{ mcp_services }}"
+  loop_control:
+    label: "{{ item.name }}"
+  notify: Restart the MCP wrappers
+
+- name: Create each wrapper's virtualenv
+  ansible.builtin.command: /usr/bin/python3.11 -m venv {{ app_dir }}/mcp/{{ item.name }}/venv
+  args:
+    creates: "{{ app_dir }}/mcp/{{ item.name }}/venv/bin/python3.11"
+  loop: "{{ mcp_services }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Install each wrapper's dependencies
+  ansible.builtin.pip:
+    requirements: "{{ app_dir }}/mcp/{{ item.name }}/requirements.txt"
+    executable: "{{ app_dir }}/mcp/{{ item.name }}/venv/bin/pip"
+  loop: "{{ mcp_services }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Render the MCP service units
+  ansible.builtin.template:
+    src: mcp.service.j2
+    dest: "/etc/systemd/system/paf-poc-{{ item.name }}.service"
+    mode: "0644"
+  loop: "{{ mcp_services }}"
+  loop_control:
+    label: "{{ item.name }}"
+  notify: Restart the MCP wrappers
+
+- name: Enable the MCP wrappers
+  ansible.builtin.systemd:
+    name: "paf-poc-{{ item.name }}"
+    enabled: true
+    state: started
+    daemon_reload: true
+  loop: "{{ mcp_services }}"
+  loop_control:
+    label: "{{ item.name }}"
+
 - name: Install the OPA binary
   ansible.builtin.get_url:
     url: "{{ opa_url }}"
@@ -128,6 +174,6 @@
 # balancer or its sibling tiers.
 - name: Open the tier's ports
   ansible.builtin.command: firewall-cmd --permanent --add-port={{ item }}/tcp
-  loop: [8090, 8600]
+  loop: [8090, 8600, 8500, 8502, 8503, 8504]
   changed_when: true
   notify: Reload firewalld

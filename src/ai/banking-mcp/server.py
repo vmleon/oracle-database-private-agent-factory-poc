@@ -80,11 +80,28 @@ def _i(v):
 mcp = FastMCP("banking-mcp")
 
 
-DB_DSN = (
+DB_DSN = os.getenv("DB_DSN") or (
     f"{os.environ['DB_HOST']}:{os.environ['DB_PORT']}/{os.environ['DB_SERVICE']}"
 )
 DB_USER = os.environ["DB_USER"]
+TNS_ADMIN = os.getenv("TNS_ADMIN", "")
+DB_WALLET_PASSWORD = os.getenv("DB_WALLET_PASSWORD", "")
 DB_PASSWORD = os.environ["DB_PASSWORD"]
+
+def _connect():
+    """Open a database connection.
+
+    The local target reaches Oracle Free directly on host:port. Autonomous
+    Database is behind mTLS, so the wallet directory supplies both the alias in
+    DB_DSN and the certificates; TNS_ADMIN being set is what distinguishes them.
+    """
+    if TNS_ADMIN:
+        return oracledb.connect(
+            user=DB_USER, password=DB_PASSWORD, dsn=DB_DSN,
+            config_dir=TNS_ADMIN, wallet_location=TNS_ADMIN,
+            wallet_password=DB_WALLET_PASSWORD,
+        )
+    return oracledb.connect(user=DB_USER, password=DB_PASSWORD, dsn=DB_DSN)
 
 
 _SESSION_LOOKUP_SQL = """
@@ -194,7 +211,7 @@ def lookup_application(session_token: str) -> dict:
            "customer_id": int, "application_id": int}
     """
     print(f"[lookup_application] called session_token={session_token!r}", flush=True)
-    with oracledb.connect(user=DB_USER, password=DB_PASSWORD, dsn=DB_DSN) as conn:
+    with _connect() as conn:
         with conn.cursor() as cur:
             cur.execute(_SESSION_LOOKUP_SQL, token=session_token)
             session_row = cur.fetchone()
@@ -256,7 +273,7 @@ def get_context(session_token: str) -> dict:
 
 def _get_context_impl(session_token: str) -> dict:
     print(f"[get_context] called session_token={session_token!r}", flush=True)
-    with oracledb.connect(user=DB_USER, password=DB_PASSWORD, dsn=DB_DSN) as conn:
+    with _connect() as conn:
         with conn.cursor() as cur:
             cur.execute(_CUSTOMER_BY_TOKEN_SQL, token=session_token)
             row = cur.fetchone()
@@ -598,7 +615,7 @@ def hitl_status_for_session(session_token: str, reply: str = "") -> dict:
     application = ctx.get("application") or {}
     application_id = application.get("id") if application else None
     if application_id is not None:
-        with oracledb.connect(user=DB_USER, password=DB_PASSWORD, dsn=DB_DSN) as conn:
+        with _connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     "SELECT MAX(task_id) FROM APP.hitl_task WHERE application_id = :a",

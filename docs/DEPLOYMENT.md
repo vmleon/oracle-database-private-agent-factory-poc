@@ -154,6 +154,7 @@ The compute shape is chosen at `manage.py setup cloud` time and applies to every
 | `locals.tf`         | Deploy id, the artifact map, and the VCN private-DNS names the tiers address each other by                                            |
 | `main.tf`           | The `ops`, `frontend`, `backend` and `paf` tier module calls and the Ansible parameters each receives                                 |
 | `lb.tf`             | Public flexible load balancer, one backend set per tier, the path route set, an HTTPS listener on 443 and a port-80 redirect to it     |
+| `lb_internal.tf`    | Private load balancer fronting the MCP wrappers with TLS, one listener per wrapper — an OCI load balancer cannot rewrite a path, so each gets its own port |
 | `outputs.tf`        | LB address and per-path URLs, bastion IP, ADB OCID, wallet path, artifacts bucket, GenAI endpoint                                     |
 | `certificate.tf`    | Self-signed certificate for the public listener, issued for the load balancer's own address                                          |
 

@@ -60,7 +60,38 @@ PAF_KIT_DIR = PROJECT_ROOT / "paf-kit"
 PAF_VERSION_FILE = PAF_KIT_DIR / "applied-ai" / "kit" / "agent_factory" / "internal" / "version.json"
 PAF_BUILD_SCRIPT = PAF_KIT_DIR / "build-image.sh"
 PAF_IMAGE_REPO = "localhost/applied-ai-label"
-PAF_BASE_URL = "https://localhost:8080"
+PAF_BASE_URL_LOCAL = "https://localhost:8080"
+
+
+def _tf_output_json(name: str):
+    """Read a structured Terraform output, or None when unavailable."""
+    try:
+        result = subprocess.run(
+            ["terraform", f"-chdir={TF_DIR}", "output", "-json", name],
+            capture_output=True, text=True, timeout=60,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return None
+    raw = result.stdout.strip() if result.returncode == 0 else ""
+    if not raw:
+        return None
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+
+
+def _paf_base_url() -> str:
+    """Where PAF's admin API lives for the active target.
+
+    Local publishes it on the host; the cloud stack reaches it through the
+    public load balancer, so the address is only known from Terraform.
+    """
+    if (os.getenv("DEPLOYMENT_TARGET") or "").strip().lower() == "cloud":
+        lb_ip = _tf_output("lb_ip")
+        if lb_ip:
+            return f"https://{lb_ip}"
+    return PAF_BASE_URL_LOCAL
 
 # TCPS (encrypted SQL*Net) for the PAF → Oracle connection. The Free image's
 # /opt/oracle/configTcps.sh generates a self-signed server cert (CN = the host
@@ -932,13 +963,13 @@ def _paf_session() -> requests.Session:
     session.verify = False
     try:
         r = session.get(
-            f"{PAF_BASE_URL}/agentFactory/v1/loginValidation",
+            f"{_paf_base_url()}/agentFactory/v1/loginValidation",
             auth=(user, password),
-            headers={"Origin": PAF_BASE_URL},
+            headers={"Origin": _paf_base_url()},
             timeout=30,
         )
     except requests.RequestException as exc:
-        console.print(f"[red]Cannot reach PAF at {PAF_BASE_URL}:[/red] {exc}")
+        console.print(f"[red]Cannot reach PAF at {_paf_base_url()}:[/red] {exc}")
         sys.exit(1)
     if r.status_code != 200:
         console.print(
@@ -951,7 +982,7 @@ def _paf_session() -> requests.Session:
 
 def _discover_chat_flow_id(session: requests.Session) -> str:
     """Resolve CHAT_FLOW's agent id by name."""
-    r = session.get(f"{PAF_BASE_URL}/agentFactory/v1/agents", timeout=30)
+    r = session.get(f"{_paf_base_url()}/agentFactory/v1/agents", timeout=30)
     if r.status_code != 200:
         console.print(f"[red]Could not list agents: HTTP {r.status_code}.[/red]\n{r.text[:300]}")
         sys.exit(1)
@@ -2045,7 +2076,13 @@ def paf_trust_ca() -> None:
     volume and survives image rebuilds. Run once per install, after the wizard.
     """
     _ensure_env()
-    crt = MCP_TLS_DIR / "mcp-proxy.crt"
+    # Each target fronts its MCP wrappers differently: a Caddy gateway locally,
+    # an internal load balancer in the cloud. Either way PAF verifies against
+    # whichever certificate that gateway presents.
+    if (os.getenv("DEPLOYMENT_TARGET") or "").strip().lower() == "cloud":
+        crt = TF_DIR / "generated" / "mcp-ca.pem"
+    else:
+        crt = MCP_TLS_DIR / "mcp-proxy.crt"
     if not crt.exists():
         console.print(
             f"[red]{crt} not found.[/red] Run `python manage.py local mcp-tls` first."
@@ -2054,8 +2091,8 @@ def paf_trust_ca() -> None:
     session = _paf_session()
     with crt.open("rb") as handle:
         r = session.post(
-            f"{PAF_BASE_URL}/agentFactory/v1/certs",
-            headers={"Origin": PAF_BASE_URL},
+            f"{_paf_base_url()}/agentFactory/v1/certs",
+            headers={"Origin": _paf_base_url()},
             files={"certificate": (crt.name, handle, "application/x-pem-file")},
             timeout=30,
         )
@@ -2075,7 +2112,7 @@ def paf_trust_ca() -> None:
 
 def _live_mcp_source_ids(session: requests.Session) -> dict:
     """Map each registered MCP server name to its numeric source id."""
-    r = session.get(f"{PAF_BASE_URL}/agentFactory/v1/tools/mcp/sources", timeout=30)
+    r = session.get(f"{_paf_base_url()}/agentFactory/v1/tools/mcp/sources", timeout=30)
     if r.status_code != 200:
         console.print(
             f"[red]Could not list MCP servers: HTTP {r.status_code}.[/red]\n{r.text[:300]}"
@@ -2114,7 +2151,7 @@ def paf_link_flow() -> None:
     session = _paf_session()
     agent_id = _discover_chat_flow_id(session)
 
-    r = session.get(f"{PAF_BASE_URL}/agentFactory/v1/agents/{agent_id}", timeout=30)
+    r = session.get(f"{_paf_base_url()}/agentFactory/v1/agents/{agent_id}", timeout=30)
     if r.status_code != 200:
         console.print(f"[red]Could not read the flow: HTTP {r.status_code}.[/red]\n{r.text[:300]}")
         sys.exit(1)
@@ -2158,8 +2195,8 @@ def paf_link_flow() -> None:
         return
 
     r = session.put(
-        f"{PAF_BASE_URL}/agentFactory/v1/agents/{agent_id}/data",
-        headers={"Origin": PAF_BASE_URL},
+        f"{_paf_base_url()}/agentFactory/v1/agents/{agent_id}/data",
+        headers={"Origin": _paf_base_url()},
         json={"data": graph},
         timeout=60,
     )
@@ -2185,8 +2222,8 @@ def paf_api_key() -> None:
     session = _paf_session()
     agent_id = _discover_chat_flow_id(session)
     r = session.post(
-        f"{PAF_BASE_URL}/agentFactory/v1/integrations/agents/{agent_id}/keys",
-        headers={"Origin": PAF_BASE_URL},
+        f"{_paf_base_url()}/agentFactory/v1/integrations/agents/{agent_id}/keys",
+        headers={"Origin": _paf_base_url()},
         json={"name": "application-backend"},
         timeout=30,
     )
@@ -2380,36 +2417,30 @@ def _paf_bootstrap_cloud() -> None:
     console.print("    [dim]Download it and upload the file; PAF calls the URL in its `servers`[/dim]")
     console.print("    [dim]block, which the backend tier sets to its own VCN address.[/dim]\n")
 
-    console.print("[bold]Step 6 — Select AI profiles[/bold]   (Select AI → Profiles)")
-    console.print("  PAF creates these as AGENT_FACTORY, which is why the changelog grants the")
-    console.print("  packages rather than creating the profiles itself — a profile belongs to")
-    console.print("  whichever user made it, and Liquibase connects as ADMIN.")
-    console.print("    Provider:         [cyan]OCI[/cyan]")
-    console.print("    Credential:       [cyan]OCI$RESOURCE_PRINCIPAL[/cyan]   (no secret; the database")
-    console.print("                      authenticates as itself through its dynamic group)")
-    console.print(f"    Model:            [cyan]{os.getenv('GENAI_MODEL', '')}[/cyan]")
-    console.print(f"    Compartment:      [cyan]{compartment}[/cyan]")
-    console.print("  [bold]chat_profile[/bold]      object list: the six [cyan]REPORTING.chat_v_*[/cyan] views (customer-safe)")
-    console.print("  [bold]research_profile[/bold]  object list: the six [cyan]REPORTING.research_v_*[/cyan] views (read-only)\n")
+    console.print("[bold]Step 6 — trust the gateway, allow private addresses[/bold]")
+    console.print("  Two one-off settings PAF needs before any MCP server will connect:")
+    console.print("    [cyan]python manage.py paf trust-ca[/cyan]           the internal load balancer's certificate")
+    console.print("    [cyan]python manage.py paf allow-internal-mcp[/cyan]   its address is private (10.0.x.x)")
+    console.print("  [dim]Skip the first and every server fails its connection test with[/dim]")
+    console.print("  [dim]\"could not connect\" — a TLS failure, not a reachability one. Skip the[/dim]")
+    console.print("  [dim]second and the first registration is rejected outright.[/dim]\n")
 
-    console.print("[bold]Step 7 — Select AI agent tools[/bold]   (Select AI → Tools)")
-    console.print("  Two kinds. SQL tools give the flows NL2SQL over a profile's view set;")
-    console.print("  function tools call the same PL/SQL the local MCP wrappers call, so the")
-    console.print("  business logic is identical on both targets and only the transport differs.")
-    console.print("    [cyan]chat_sql[/cyan]        type [cyan]SQL[/cyan]         profile [cyan]chat_profile[/cyan]")
-    console.print("    [cyan]research_sql[/cyan]    type [cyan]SQL[/cyan]         profile [cyan]research_profile[/cyan]")
-    console.print("    [cyan]create_hitl_task[/cyan]      function [cyan]AGENT_TOOLS.PKG_AGENT_TOOLS.create_hitl_task[/cyan]")
-    console.print("        inputs: p_application_id, p_recommendation, p_reasoning,")
-    console.print("                p_explore_hints, p_evidence, p_agent_run_id")
-    console.print("    [cyan]upsert_draft_application[/cyan]  function [cyan]AGENT_TOOLS.PKG_AGENT_TOOLS.upsert_draft_application[/cyan]")
-    console.print("        inputs: p_session_token, p_amount, p_term_months, p_purpose")
-    console.print("  [dim]Flows reach these through the Select AI Bridge node.[/dim]\n")
+    console.print("[bold]Step 7 — MCP servers[/bold]   (Admin → MCP Servers → Add MCP server)")
+    console.print("  Four registrations, [cyan]Direct[/cyan] authentication (no auth — they are reachable")
+    console.print("  only inside the VCN). The flow references them by these names, so they must match.")
+    mcp_urls = _tf_output_json("mcp_server_urls") or {}
+    for name, label in (("opa", "opa-mcp"), ("hitl", "hitl-mcp"),
+                        ("banking", "banking-mcp"), ("application", "application-mcp")):
+        url = mcp_urls.get(name, "(apply deploy/tf/app to learn the address)")
+        console.print(f"    [cyan]{label:<16}[/cyan] {url}")
+    console.print("  [dim]Each should report connected, and its tools surface inside the Agent node.[/dim]\n")
 
     console.print("[bold]After install[/bold] — sign in as the admin user and:")
     console.print("  - Verify LLM Management shows both configurations and that a test call succeeds.")
-    console.print("    A failure here is almost always the dynamic group or policy: apply")
+    console.print("    A failure there is almost always the dynamic group or policy: apply")
     console.print("    [cyan]deploy/tf/iam[/cyan] with a tenancy-admin profile.")
-    console.print("  - Import the Agent Builder flows: [cyan]CHAT_FLOW[/cyan], then [cyan]RESEARCH_WORKFLOW[/cyan].")
+    console.print("  - Import the Agent Builder flows: [cyan]CHAT_FLOW[/cyan], then [cyan]RESEARCH_WORKFLOW[/cyan],")
+    console.print("    then [cyan]python manage.py paf link-flow[/cyan] to rebind the MCP nodes to this install.")
     console.print(
         "\n[yellow]Note:[/yellow] API automation for these UI steps is intentionally out of "
         "scope (Playwright-style driving is fragile across PAF versions)."
@@ -2540,6 +2571,8 @@ def _stage_sources() -> None:
     ops_files = ANSIBLE_ROOT / "ops" / "roles" / "opstools" / "files"
     _stage(PROJECT_ROOT / "opa", backend_files / "opa")
     _stage(PROJECT_ROOT / "src" / "api" / "registry", backend_files / "registry")
+    for wrapper in ("opa-mcp", "hitl-mcp", "banking-mcp", "application-mcp"):
+        _stage(PROJECT_ROOT / "src" / "ai" / wrapper, backend_files / "mcp" / wrapper)
     _stage(PROJECT_ROOT / "database" / "liquibase", ops_files / "database" / "liquibase")
 
 

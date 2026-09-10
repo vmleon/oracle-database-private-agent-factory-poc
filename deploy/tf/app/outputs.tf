@@ -36,3 +36,18 @@ output "genai_endpoint" {
   description = "OCI Generative AI inference endpoint PAF's LLM Management points at."
   value       = local.genai_endpoint
 }
+
+output "mcp_server_urls" {
+  description = "MCP server URLs to register in PAF, one per wrapper."
+  value = {
+    for name, port in local.mcp_ports :
+    # No trailing slash: with it the wrapper answers 307 to the slashless form,
+    # and there is no reason to make PAF follow a redirect on every call.
+    name => "https://${oci_load_balancer_load_balancer.internal.ip_address_details[0].ip_address}:${port}/mcp"
+  }
+}
+
+output "mcp_ca_path" {
+  description = "Certificate PAF must trust before any MCP server will connect."
+  value       = local_file.mcp_ca.filename
+}

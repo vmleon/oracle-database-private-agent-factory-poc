@@ -1,0 +1,26 @@
+[Unit]
+Description=MCP wrapper — {{ item.name }}
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory={{ app_dir }}/mcp/{{ item.name }}
+# The same wrappers the local target runs, so the flow's tools are identical on
+# both. TNS_ADMIN switches the database connection to the ADB wallet; without it
+# they would build a host:port DSN that Autonomous Database does not accept.
+Environment=PORT={{ item.port }}
+Environment=TNS_ADMIN={{ wallet_dir }}
+Environment=DB_DSN={{ adb_service }}
+Environment=DB_WALLET_PASSWORD={{ wallet_password }}
+Environment=DB_USER={{ item.db_user | default('AGENT_FACTORY') }}
+Environment=DB_PASSWORD={{ adb_admin_password }}
+Environment=BACKEND_URL=http://{{ self_host }}:8090
+Environment=OPA_URL=http://127.0.0.1:8181
+Environment=REGISTRY_URL=http://{{ self_host }}:8600
+Environment=BANKING_MCP_URL=http://127.0.0.1:8503/mcp
+ExecStart={{ app_dir }}/mcp/{{ item.name }}/venv/bin/python server.py
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

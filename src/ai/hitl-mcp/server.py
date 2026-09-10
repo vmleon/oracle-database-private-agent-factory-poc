@@ -36,11 +36,28 @@ from fastmcp import Client, FastMCP
 mcp = FastMCP("hitl-mcp")
 
 
-DB_DSN = (
+DB_DSN = os.getenv("DB_DSN") or (
     f"{os.environ['DB_HOST']}:{os.environ['DB_PORT']}/{os.environ['DB_SERVICE']}"
 )
 DB_USER = os.environ["DB_USER"]
+TNS_ADMIN = os.getenv("TNS_ADMIN", "")
+DB_WALLET_PASSWORD = os.getenv("DB_WALLET_PASSWORD", "")
 DB_PASSWORD = os.environ["DB_PASSWORD"]
+
+def _connect():
+    """Open a database connection.
+
+    The local target reaches Oracle Free directly on host:port. Autonomous
+    Database is behind mTLS, so the wallet directory supplies both the alias in
+    DB_DSN and the certificates; TNS_ADMIN being set is what distinguishes them.
+    """
+    if TNS_ADMIN:
+        return oracledb.connect(
+            user=DB_USER, password=DB_PASSWORD, dsn=DB_DSN,
+            config_dir=TNS_ADMIN, wallet_location=TNS_ADMIN,
+            wallet_password=DB_WALLET_PASSWORD,
+        )
+    return oracledb.connect(user=DB_USER, password=DB_PASSWORD, dsn=DB_DSN)
 
 _AUDIT_URL = os.getenv("BACKEND_URL", "http://application-backend:8090").rstrip("/") + "/v1/audit/tool-call"
 _BANKING_MCP_URL = os.getenv("BANKING_MCP_URL", "http://banking-mcp:8503/mcp")
@@ -134,7 +151,7 @@ async def create_hitl_task(
     evidence = json.dumps(packet.get("evidence"))
 
     try:
-        with oracledb.connect(user=DB_USER, password=DB_PASSWORD, dsn=DB_DSN) as conn:
+        with _connect() as conn:
             with conn.cursor() as cur:
                 task_id = cur.callfunc(
                     "AGENT_TOOLS.PKG_AGENT_TOOLS.create_hitl_task",
