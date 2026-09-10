@@ -1508,11 +1508,30 @@ def _select_genai_models(profile: str, region: str, tenancy: str, existing: dict
         )
         sys.exit(1)
 
+    # PAF's OCI Generative AI client parses streamed chunks as Cohere shapes —
+    # json.loads(chunk) then chunk["message"]. A Meta or Google model streams a
+    # different shape with a non-JSON terminal sentinel, and every agent turn
+    # dies with "JSONDecodeError: Expecting value: line 1 column 2 (char 1)".
+    cohere_chat = [m for m in chat_models if m.startswith("cohere.")]
+    chat_choices = [
+        {"name": m if m.startswith("cohere.") else f"{m}  (streaming unsupported by PAF)", "value": m}
+        for m in chat_models
+    ]
+    previous = existing.get("GENAI_MODEL")
     genai_model = inquirer.select(
         message="Generation model:",
-        choices=chat_models,
-        default=existing.get("GENAI_MODEL") if existing.get("GENAI_MODEL") in chat_models else None,
+        choices=chat_choices,
+        default=previous if previous in chat_models else (cohere_chat[0] if cohere_chat else None),
     ).execute()
+
+    if not genai_model.startswith("cohere."):
+        console.print(
+            f"[yellow]{genai_model} streams in a shape PAF cannot parse.[/yellow] Its OCI\n"
+            "Generative AI client reads Cohere-format chunks, so every agent turn fails with\n"
+            "a JSONDecodeError. Pick a cohere.* model unless you have verified otherwise."
+        )
+        if not inquirer.confirm(message="Use it anyway?", default=False).execute():
+            sys.exit(1)
 
     # The vector columns are fixed-width, so an embedding model of the wrong
     # width fails on insert rather than at deploy. Steer the choice by width.
