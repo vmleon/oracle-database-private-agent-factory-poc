@@ -68,8 +68,15 @@ resource "oci_load_balancer_listener" "https" {
 
   path_route_set_name = oci_load_balancer_path_route_set.routes.name
 
+  # `verify_peer_certificate` means different things in the two places it
+  # appears. On a listener it asks the load balancer to require and validate a
+  # certificate from the *client* — mutual TLS. Public browsers present none, and
+  # leaving it at its `true` default makes the API reject the bundle for having
+  # no CA to validate against. On a backend set, further up, the same field
+  # governs whether the load balancer validates the *backend's* certificate.
   ssl_configuration {
-    certificate_name = oci_load_balancer_certificate.lb.certificate_name
+    certificate_name        = oci_load_balancer_certificate.lb.certificate_name
+    verify_peer_certificate = false
   }
 }
 
