@@ -30,6 +30,8 @@ import json
 from pathlib import Path
 from typing import Literal
 
+import os
+
 from fastapi import FastAPI, Query
 from fastapi.openapi.utils import get_openapi
 from pydantic import BaseModel, Field
@@ -47,7 +49,11 @@ app = FastAPI(
     # servers"). The compose-internal URL is the only one PAF can reach from
     # the project network; cloud deployments will override the spec at import
     # time or run an out-of-band server. Hardcoded to keep the POC simple.
-    servers=[{"url": "http://registry-api:8600", "description": "compose-internal"}],
+    # PAF reads this block to learn where to call the API, so it has to name a
+    # host the caller can resolve. The compose service name only exists locally;
+    # the cloud tier overrides it with its VCN address.
+    servers=[{"url": os.getenv("REGISTRY_PUBLIC_URL", "http://registry-api:8600"),
+              "description": "registry"}],
 )
 
 

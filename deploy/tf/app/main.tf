@@ -83,7 +83,8 @@ module "backend" {
   artifact_par_url    = "${local.object_storage_host}${oci_objectstorage_preauthrequest.artifact["ansible_backend"].access_uri}"
 
   ansible_params = merge(local.common_params, local.db_params, {
-    paf_host = local.paf_host
+    paf_host  = local.paf_host
+    self_host = local.backend_host
   })
 }
 
