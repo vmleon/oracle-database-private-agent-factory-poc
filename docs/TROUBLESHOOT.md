@@ -13,15 +13,6 @@ Grouped by stack layer for findability.
 
 PAF product bugs (as opposed to local-deploy workarounds) live in [`../issues/`](../issues/) instead — that folder is the backlog reported back to Oracle PAF Product Management.
 
-## Every agent turn returns "Expecting value: line 1 column 2 (char 1)"
-
-**Symptom.** A `CHAT_FLOW` turn returns that string as the customer-facing reply. The MCP tools all succeed — `get_context` resolves the customer, eligibility evaluates — and then the run dies. `manage.py cloud test` fails every scenario with it.
-
-**Cause.** The generation model is not a Cohere one. PAF's OCI Generative AI client parses each streamed chunk as a Cohere shape (`json.loads(chunk)`, then `chunk["message"]`, in `wayflowcore/models/ocigenaimodel.py`). Meta and Google models stream a different shape ending in a non-JSON sentinel, and the parse fails on the first chunk. The failure surfaces as the reply because the worker error becomes the run's output.
-
-**Fix.** Choose a `cohere.*` chat model in PAF's LLM Management, and set `GENAI_MODEL` in `.env` to match. `manage.py setup cloud` defaults to one and warns before letting a non-Cohere model through.
-
-
 ## Sanity-check curls (PAF → tools / datasources)
 
 When an MCP server or HTTP datasource won't connect in PAF, check the layers from the outside in.
@@ -140,6 +131,14 @@ touch paf-kit/applied-ai/volume/.config_complete.marker
 ```
 
 ## PAF runtime / MCP
+
+### Every agent turn returns "Expecting value: line 1 column 2 (char 1)"
+
+**Symptom.** A `CHAT_FLOW` turn returns that string as the customer-facing reply. The MCP tools all succeed — `get_context` resolves the customer, eligibility evaluates — and then the run dies. `manage.py cloud test` fails every scenario with it.
+
+**Cause.** The generation model is not a Cohere one. PAF's OCI Generative AI client parses each streamed chunk as a Cohere shape (`json.loads(chunk)`, then `chunk["message"]`, in `wayflowcore/models/ocigenaimodel.py`). Meta and Google models stream a different shape ending in a non-JSON sentinel, and the parse fails on the first chunk. The failure surfaces as the reply because the worker error becomes the run's output.
+
+**Fix.** Choose a `cohere.*` chat model in PAF's LLM Management, and set `GENAI_MODEL` in `.env` to match. `manage.py setup cloud` defaults to one and warns before letting a non-Cohere model through.
 
 ### Every MCP server fails its connection test with "Could not connect to the remote MCP server"
 
