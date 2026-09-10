@@ -38,6 +38,10 @@ databaseChangeLog:
       context: adb
       # PAF checks for exactly this set before it will list the database as
       # eligible for Select AI profiles, agent tools and RAG vector indexes.
+      #
+      # DBMS_CLOUD is a public synonym for a versioned package, so the grant is
+      # recorded against a name like DBMS_CLOUD$PDBCS_260821_1_0. Querying
+      # dba_tab_privs for the literal name 'DBMS_CLOUD' makes it look ungranted.
       changes:
         - sql:
             sql: |-

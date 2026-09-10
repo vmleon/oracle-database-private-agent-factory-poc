@@ -6,6 +6,9 @@
       - unzip
       - git
       - python3-oracledb
+      # The bastion is where the database and the tenancy get inspected, and
+      # instance principal means neither needs a stored credential.
+      - oci-cli
     state: present
 
 - name: Create the wallet and Liquibase directories
