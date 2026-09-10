@@ -1932,6 +1932,69 @@ def cloud_plan() -> None:
     _tf_run(TF_DIR, "plan")
 
 
+
+def _ops_ssh(command: str, *, stream: bool = False) -> subprocess.CompletedProcess:
+    """Run a shell command on the ops bastion."""
+    ip = _tf_output("ops_public_ip")
+    if not ip:
+        console.print("[red]No bastion address.[/red] Apply deploy/tf/app first.")
+        sys.exit(1)
+    key_path = Path(os.getenv("OCI_SSH_KEY_PATH", "")).expanduser()
+    private_key = key_path.with_suffix("") if key_path.suffix == ".pub" else key_path
+    argv = ["ssh", "-i", str(private_key), "-o", "StrictHostKeyChecking=no",
+            "-o", "UserKnownHostsFile=/dev/null", "-o", "LogLevel=ERROR",
+            "-o", "ConnectTimeout=20", f"opc@{ip}", command]
+    if stream:
+        return subprocess.run(argv)
+    return subprocess.run(argv, capture_output=True, text=True, timeout=300)
+
+
+# Unknown options belong to pytest, not to click.
+@cloud.command("test", context_settings={"ignore_unknown_options": True})
+@click.argument("pytest_args", nargs=-1, type=click.UNPROCESSED)
+def cloud_test(pytest_args: tuple) -> None:
+    """Run the end-to-end harness from the ops bastion.
+
+    The tests assert against `hitl_task` rows as well as the agent's reply, and
+    Autonomous Database is on a private endpoint — so they run where both PAF
+    and the database are reachable, not from here.
+    """
+    _require_cloud_env()
+    for key in ("PAF_API_KEY", "PAF_AGENT_ID"):
+        if not os.getenv(key):
+            console.print(
+                f"[red]{key} is not set.[/red] Publish CHAT_FLOW, then run "
+                "[cyan]python manage.py paf api-key[/cyan]."
+            )
+            sys.exit(1)
+
+    # Written on the bastion for the run and removed afterwards; it carries the
+    # integration key and the database password.
+    env_lines = "\n".join([
+        f"PAF_API_KEY={os.environ['PAF_API_KEY']}",
+        f"PAF_AGENT_ID={os.environ['PAF_AGENT_ID']}",
+        f"DB_SERVICE={os.getenv('DB_SERVICE', '')}",
+        f"DB_PASSWORD={os.getenv('DB_PASSWORD', '')}",
+        f"DB_WALLET_PASSWORD={os.getenv('DB_WALLET_PASSWORD', '')}",
+    ])
+    remote_env = "/home/opc/.poc-test-env"
+    args = " ".join(pytest_args) or "tests"
+    script = (
+        f"set -e; umask 077; cat > {remote_env} <<'EOF'\n{env_lines}\nEOF\n"
+        f"cd /home/opc/artifact/roles/opstools/files && "
+        f"POC_ENV_FILE={remote_env} "
+        f"PAF_BASE={_paf_base_url()} "
+        f"TNS_ADMIN=/opt/paf-poc/wallet "
+        f"{'{{ tests_venv }}'} -m pytest {args} -q; rc=$?; rm -f {remote_env}; exit $rc"
+    ).replace("{{ tests_venv }}", "/opt/paf-poc/tests-venv/bin/python")
+
+    console.print(Panel.fit("[bold]End-to-end tests (from the bastion)[/bold]"))
+    console.print(f"[dim]PAF: {_paf_base_url()}   database: {os.getenv('DB_SERVICE')} via wallet[/dim]")
+    result = _ops_ssh(script, stream=True)
+    if result.returncode != 0:
+        sys.exit(result.returncode)
+
+
 @cloud.command("down")
 def cloud_down() -> None:
     """Destroy the workload stack. The IAM root is left alone for the next deployment."""
@@ -2347,10 +2410,18 @@ def paf_api_key() -> None:
         f"(prefix [cyan]{body.get('keyPrefix', '')}[/cyan]), expires "
         f"[cyan]{body.get('expiresAt', 'in 90 days')}[/cyan]."
     )
-    console.print(
-        "[dim]PAF_AGENT_ID and PAF_API_KEY written to .env. Recreate the backend "
-        f"to pick them up: [cyan]{' '.join(RECREATE_BACKEND_CMD)}[/cyan][/dim]"
-    )
+    if (os.getenv("DEPLOYMENT_TARGET") or "").strip().lower() == "cloud":
+        console.print(
+            "[dim]PAF_AGENT_ID and PAF_API_KEY written to .env. The backend tier reads "
+            "them at deploy time, so re-run [cyan]python manage.py cloud up[/cyan] to "
+            "hand them over — or [cyan]python manage.py cloud test[/cyan], which passes "
+            "them to the harness directly.[/dim]"
+        )
+    else:
+        console.print(
+            "[dim]PAF_AGENT_ID and PAF_API_KEY written to .env. Recreate the backend "
+            f"to pick them up: [cyan]{' '.join(RECREATE_BACKEND_CMD)}[/cyan][/dim]"
+        )
 
 
 def _tf_output(name: str) -> str | None:
@@ -2680,6 +2751,9 @@ def _stage_sources() -> None:
     for wrapper in ("opa-mcp", "hitl-mcp", "banking-mcp", "application-mcp"):
         _stage(PROJECT_ROOT / "src" / "ai" / wrapper, backend_files / "mcp" / wrapper)
     _stage(PROJECT_ROOT / "database" / "liquibase", ops_files / "database" / "liquibase")
+    # The bastion is the only host that can reach both PAF and the database, so
+    # the end-to-end harness runs from there.
+    _stage(PROJECT_ROOT / "tests", ops_files / "tests")
 
 
 @cli.command("clean")

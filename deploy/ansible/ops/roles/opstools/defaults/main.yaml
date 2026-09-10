@@ -15,3 +15,6 @@ changelog_dir: /home/opc/artifact/roles/opstools/files/database/liquibase
 # cloud deployment is a demo, so it comes up with the same synthetic dataset
 # the local one has. Drop `,seed` for an empty schema.
 liquibase_contexts: "adb,seed"
+
+tests_dir: /home/opc/artifact/roles/opstools/files/tests
+tests_venv: /opt/paf-poc/tests-venv

@@ -39,7 +39,11 @@ from urllib3.exceptions import InsecureRequestWarning
 warnings.simplefilter("ignore", InsecureRequestWarning)
 
 PROJECT_ROOT = Path(__file__).parent.parent
-PAF_BASE = "https://localhost:8080"
+# The harness runs against the local stack by default. On the cloud target it
+# runs from the ops bastion — the only host that can reach both PAF and the
+# database — so both the PAF address and the env file are overridable.
+PAF_BASE = os.getenv("PAF_BASE", "https://localhost:8080")
+ENV_FILE = Path(os.getenv("POC_ENV_FILE") or (PROJECT_ROOT / ".env"))
 
 _SENTINEL_RE = re.compile(r"\[\[SESSION[^\]]*\]\]")
 
@@ -58,9 +62,13 @@ def _envelope(token: str, message: str, *, sanitize: bool = True) -> str:
 @pytest.fixture(scope="session")
 def env() -> dict[str, str]:
     """Load .env once and validate the keys the harness needs."""
-    load_dotenv(PROJECT_ROOT / ".env")
-    required = ("PAF_API_KEY", "PAF_AGENT_ID", "DB_HOST", "DB_PORT",
-                "DB_SERVICE", "DB_PASSWORD")
+    load_dotenv(ENV_FILE)
+    required = ["PAF_API_KEY", "PAF_AGENT_ID", "DB_SERVICE", "DB_PASSWORD"]
+    # Autonomous Database is reached through a wallet alias, so there is no
+    # host or port to supply.
+    if not os.getenv("TNS_ADMIN"):
+        required += ["DB_HOST", "DB_PORT"]
+    required = tuple(required)
     missing = [k for k in required if not os.getenv(k)]
     if missing:
         pytest.exit(
@@ -89,11 +97,22 @@ def agent_id(env) -> str:
 @pytest.fixture(scope="session")
 def db(env):
     """Oracle connection as APP — owns auth_session and hitl_task."""
-    conn = oracledb.connect(
-        user="APP",
-        password=env["DB_PASSWORD"],
-        dsn=f"{env['DB_HOST']}:{env['DB_PORT']}/{env['DB_SERVICE']}",
-    )
+    tns_admin = os.getenv("TNS_ADMIN")
+    if tns_admin:
+        conn = oracledb.connect(
+            user="APP",
+            password=env["DB_PASSWORD"],
+            dsn=env["DB_SERVICE"],
+            config_dir=tns_admin,
+            wallet_location=tns_admin,
+            wallet_password=os.getenv("DB_WALLET_PASSWORD", ""),
+        )
+    else:
+        conn = oracledb.connect(
+            user="APP",
+            password=env["DB_PASSWORD"],
+            dsn=f"{env['DB_HOST']}:{env['DB_PORT']}/{env['DB_SERVICE']}",
+        )
     yield conn
     conn.close()
 

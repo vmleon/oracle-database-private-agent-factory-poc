@@ -6,6 +6,9 @@
       - unzip
       - git
       - python3-oracledb
+      # The harness needs a Python new enough for the annotations it uses.
+      - python3.11
+      - python3.11-pip
       # The bastion is where the database and the tenancy get inspected, and
       # instance principal means neither needs a stored credential. Oracle Linux
       # packages the CLI as python3-oci-cli; there is no `oci-cli` package.
@@ -98,3 +101,19 @@
 - name: Show the Liquibase output
   ansible.builtin.debug:
     var: liquibase_update.stdout_lines
+
+# The end-to-end harness runs here rather than on the operator's machine:
+# Autonomous Database is on a private endpoint that only this host can reach.
+- name: Create the test virtualenv
+  ansible.builtin.command: /usr/bin/python3.11 -m venv {{ tests_venv }}
+  args:
+    creates: "{{ tests_venv }}/bin/python3.11"
+
+- name: Install the harness dependencies
+  ansible.builtin.pip:
+    name:
+      - pytest>=8.0
+      - requests>=2.31
+      - oracledb>=2.0
+      - python-dotenv>=1.0
+    executable: "{{ tests_venv }}/bin/pip"
