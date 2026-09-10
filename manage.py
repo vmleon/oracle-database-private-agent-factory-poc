@@ -936,7 +936,13 @@ def _paf_post_start(container: str = "paf-agent-factory") -> None:
 
 
 def _write_env_key(key: str, value: str) -> None:
-    """Update or append KEY=value in .env, preserving everything else."""
+    """Update or append KEY=value in .env, preserving everything else.
+
+    The running process is updated too: `load_dotenv` will not overwrite a
+    variable that is already set, so a value written here would otherwise be
+    invisible to the rest of this command.
+    """
+    os.environ[key] = value
     content = ENV_FILE.read_text() if ENV_FILE.exists() else ""
     line = f"{key}={value}"
     pattern = re.compile(rf"^{re.escape(key)}=.*$", re.MULTILINE)
@@ -974,8 +980,8 @@ def _provision_local() -> None:
 
 
 def _paf_session() -> requests.Session:
-    """Administrator-authenticated session against the local PAF instance."""
-    load_dotenv(ENV_FILE)
+    """Administrator-authenticated session against the active PAF instance."""
+    load_dotenv(ENV_FILE, override=True)
     user = os.getenv("PAF_ADMIN_USER", "").strip()
     password = os.getenv("PAF_ADMIN_PASS", "").strip()
     if not user or not password:
