@@ -1,28 +1,29 @@
-# Cloud deployment (OCI) — the runbook
+# CLOUD — the runbook
 
-Stands the PoC up on OCI: four computes, an Autonomous Database, and a public
-load balancer, with the models served by OCI Generative AI. The design behind it
-is [`docs/DEPLOYMENT.md §4`](docs/DEPLOYMENT.md); this page is the steps.
+Stands the PoC up on OCI: four computes, an Autonomous Database, a public load
+balancer serving HTTPS, and a private one fronting the MCP wrappers. Models come
+from the OCI Generative AI service.
 
-Nothing in the deployment stores an API key. The `paf` compute calls Generative
-AI as an **instance principal** and the database as a **resource principal**,
-both through dynamic groups created in step 5.
+Nothing in the deployment stores an API key: the `paf` compute calls Generative
+AI as an **instance principal**, and the database as a **resource principal**.
 
-For the local runbook, see [`LOCAL.md`](LOCAL.md).
+The design behind it is [`docs/DEPLOYMENT.md §4`](docs/DEPLOYMENT.md). For the
+local runbook, see [`LOCAL.md`](LOCAL.md).
 
 ## 1. Prerequisites
 
-| Tool          | Install                                                                      |
-| ------------- | ---------------------------------------------------------------------------- |
-| `terraform`   | `brew install terraform`                                                     |
-| `oci`         | `brew install oci-cli`, then `oci setup config`                              |
-| `python` 3.11+ | with `python -m venv venv && source venv/bin/activate && pip install -r requirements.txt` |
+```bash
+brew install terraform oci-cli
+oci setup config
+python3 -m venv venv && source venv/bin/activate && pip install -r requirements.txt
+```
 
-You also need:
+Also required:
 
-- **A profile in `~/.oci/config`** for the workload compartment.
-- **A tenancy-admin profile** for step 5. It can be the same one, if it has the rights.
-- **The x86_64 PAF kit.** The cloud computes are `VM.Standard.E5.Flex` (AMD x86_64), so the ARM64 kit used locally will not run there. Download the x86_64 kit from Oracle Software Delivery into `paf/dist/` — see [`paf/dist/README.md`](paf/dist/README.md). It is gitignored.
+- A profile in `~/.oci/config` for the workload compartment, and one with
+  tenancy-admin rights for step 5. They may be the same profile.
+- The **x86_64** PAF kit in `paf/dist/` — the cloud computes are AMD, so the
+  ARM64 kit used locally will not run. See [`paf/dist/README.md`](paf/dist/README.md).
 
 ## 2. `setup cloud`
 
@@ -30,22 +31,13 @@ You also need:
 python manage.py setup cloud
 ```
 
-Picks the profile, then discovers rather than assumes: it lists your subscribed
-regions, **probes each one for Generative AI** (the service runs in a minority of
-them), lists compartments, and offers only chat and embedding models that are
-`ACTIVE` **and** still served on demand.
+Discovers rather than assumes: probes every subscribed region for Generative AI,
+lists compartments as filterable paths, and offers only models that are `ACTIVE`
+**and** still served on demand. It defaults to a Cohere chat model — PAF can only
+parse Cohere-format streaming — and refuses an embedding model whose width does
+not match the `VECTOR` width in the changelog.
 
-The region and compartment prompts filter as you type. Compartments appear as
-`Parent/Child` paths — a large tenancy holds hundreds, and the same leaf name
-often appears on more than one branch.
-
-The embedding choice is checked against the `VECTOR` width in the changelog. A
-model of the wrong width is refused, because the mismatch would otherwise fail
-at insert time deep in the RAG path. Regions differ in what they serve — some
-offer no model with a native 1024-dimension output at all.
-
-Expect: `.env` with `DEPLOYMENT_TARGET=cloud`, generated ADB admin and wallet
-passwords, and the two model ids.
+Expect: `.env` with `DEPLOYMENT_TARGET=cloud`, generated ADB passwords, and both model ids.
 
 ## 3. `build`
 
@@ -53,16 +45,7 @@ passwords, and the two model ids.
 python manage.py build
 ```
 
-Compiles both UI bundles and the Spring Boot jar, then stages each output — plus
-the OPA bundle, the registry service and the changelog — into the Ansible role
-that installs it.
-
-Only the compiled outputs need this step. `cloud up` restages the copied ones
-(changelog, policy bundle, registry) on every apply, so editing a changeset and
-applying picks it up without a rebuild.
-
-Expect: populated `files/` directories under `deploy/ansible/*/roles/*/`. They
-are gitignored; `manage.py clean` removes them.
+Expect: populated `files/` directories under `deploy/ansible/*/roles/*/`.
 
 ## 4. `tf`
 
@@ -70,62 +53,40 @@ are gitignored; `manage.py clean` removes them.
 python manage.py tf
 ```
 
-Renders `terraform.tfvars` for **both** roots from `.env`, so the profile,
-regions and compartment are never typed into Terraform by hand.
+Expect: `terraform.tfvars` in both `deploy/tf/iam/` and `deploy/tf/app/`.
 
-The two roots take different regions: the workload stack runs where you chose,
-while the IAM root targets the **tenancy home region**, because identity
-resources exist only there.
+## 5. `cloud iam`
 
-## 5. IAM — once per compartment, as a tenancy admin
+Needs the tenancy-admin profile. Runs once per compartment.
 
 ```bash
 python manage.py cloud iam
 ```
 
-Creates one dynamic group per principal and the policy granting both
-`use generative-ai-family`.
+Expect: `3 to add` — two dynamic groups and one policy.
 
-Expect: `3 to add` — two dynamic groups and one policy. Skip this and every
-model call later fails with an authorization error.
-
-## 6. The workload stack
+## 6. `cloud up`
 
 ```bash
-python manage.py cloud plan   # optional, to see it first
+python manage.py cloud plan
 python manage.py cloud up
 ```
 
-Provisions the VCN, the ADB on a private endpoint, the four computes, the load
-balancer, and the Object Storage bucket holding each tier's payload and the PAF
-kit behind read-only pre-authenticated requests.
-
-Expect: `lb_ip`, the per-path `urls`, `ops_public_ip`, and the wallet written to
-`deploy/tf/app/generated/adb-wallet.zip`.
-
-Terraform is always driven through `manage.py`, which runs it with `-chdir`
-rather than changing directory. Running it by hand is what leaves a root without
-its rendered tfvars.
+Expect: `lb_ip`, the per-path `urls`, `ops_public_ip`, and `mcp_server_urls`.
 
 ## 7. Wait for the tiers to build themselves
 
-Cloud-init hands each instance a bootstrap script that installs Ansible, fetches
-that tier's payload, and runs its play. systemd owns the retry loop, so a
-dependency that settles late costs one 60-second cycle rather than leaving the
-tier half-built.
+Cloud-init installs each tier from its own artifact and retries under systemd
+until it succeeds. The sentinel is written only after the play passes.
 
 ```bash
-ssh opc@$(terraform output -raw ops_public_ip)
-# on each tier:
-sudo test -f /var/lib/$OCI_LABEL/bootstrap.ok && echo built
-sudo tail -f /var/log/$OCI_LABEL-bootstrap.log
+ssh opc@$(terraform -chdir=deploy/tf/app output -raw ops_public_ip)
+sudo test -f /var/lib/paf-poc/bootstrap.ok && echo built
+sudo tail -f /var/log/paf-poc-bootstrap.log
 ```
 
-The sentinel is written only after the playbook returns success, so its presence
-is trustworthy. The playbook's own output is at `/home/opc/ansible-playbook.log`.
-
 The `ops` tier applies the changelog with `--contexts=adb,seed` as part of its
-play, so the schema and the synthetic demo dataset are in place when it finishes.
+play, so the schema and the demo dataset are in place when it finishes.
 
 ## 8. `paf bootstrap`
 
@@ -133,23 +94,53 @@ play, so the schema and the synthetic demo dataset are in place when it finishes
 python manage.py paf bootstrap
 ```
 
-Prints the installer URL and every value to paste into it, read from `.env` and
-the Terraform outputs: the ADB wallet and network alias, the two
-instance-principal model configurations, the two Select AI profiles, and the four
-agent tools. Driving these steps over the API is deliberately out of scope — it
-has proven too fragile across PAF versions.
+Prints the installer URL and every value to paste into it. Work through the
+seven steps in a browser; the sheet tells you where these fit:
 
-Work through it in the browser, then import the Agent Builder flows: `CHAT_FLOW`,
-then `RESEARCH_WORKFLOW`.
+```bash
+python manage.py paf admin
+python manage.py paf trust-ca
+python manage.py paf allow-internal-mcp
+```
 
-## 9. `info`
+Expect: PAF installed, both model configurations answering a test call, the
+data sources registered, and four MCP servers reporting connected.
+
+## 9. Load `CHAT_FLOW`
+
+Import `paf/flows/CHAT_FLOW.paf` (password `WelcomeAmigo123!`) through
+Agent Builder → My Custom Flows → Import, then:
+
+```bash
+python manage.py paf link-flow
+python manage.py paf api-key
+```
+
+`link-flow` rebinds every MCP node by server name — a bundle carries the ids of
+the install it came from. Publish the flow, then mint the key.
+
+Expect: `PAF_AGENT_ID` and `PAF_API_KEY` in `.env`.
+
+## 10. `cloud test`
+
+```bash
+python manage.py cloud test
+```
+
+Runs the end-to-end harness from the bastion, which is the only host that can
+reach both PAF and the database.
+
+Expect: the happy-path tiers pass, each leaving one `hitl_task` row.
+
+## 11. `info`
 
 ```bash
 python manage.py info
 ```
 
-Expect the load balancer address and the paths: `/` (customer),
-`/backoffice`, `/v1` (API) and `/agentFactory`.
+Expect the load balancer address and the paths `/`, `/backoffice`, `/v1` and
+`/agentFactory`, all over HTTPS. The certificate is self-signed, so a browser
+warns once.
 
 ## Teardown
 
@@ -158,21 +149,29 @@ python manage.py cloud down
 python manage.py clean
 ```
 
-`cloud down` makes up to three passes. The first often fails on the database's
+`cloud down` makes up to three passes: the first often fails on the database's
 network security group, which still reports attached VNICs for a few seconds
-after the database itself is gone — the ordering is right, the API is just
-behind.
+after the database is gone. The IAM root is left alone for the next deployment.
 
-`clean` refuses while Terraform state still holds resources, then removes the
-rendered tfvars, the generated zips and every staged tier payload. The IAM root
-is left alone — it is reused by the next deployment into the same compartment.
+## Full rebuild in one paste
+
+```bash
+source venv/bin/activate
+python manage.py setup cloud
+python manage.py build
+python manage.py tf
+python manage.py cloud iam
+python manage.py cloud up
+python manage.py paf bootstrap
+```
 
 ## When something does not come up
 
-| Symptom                                     | Look at                                                                                     |
-| ------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| A tier never writes `bootstrap.ok`          | `/var/log/<label>-bootstrap.log`, then `/home/opc/ansible-playbook.log` on that instance       |
-| Model calls fail in PAF's LLM Management    | Step 5 was skipped, or the compartment in the connection is not the one the policy names      |
-| Select AI profiles are missing in PAF        | They belong to whoever created them — PAF creates them as `AGENT_FACTORY`, not Liquibase as `ADMIN` |
-| The load balancer does not answer            | Backend health in the OCI console; the tiers listen only once their play has finished          |
-| `cloud down` fails on a security group with "vnics attached" | Expected: the database's private endpoint VNIC detaches after the database is gone. `cloud down` retries by itself; a manual re-run is equally safe |
+| Symptom                                            | Look at                                                                                              |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| A tier never writes `bootstrap.ok`                 | `/var/log/<label>-bootstrap.log`, then `/home/opc/ansible-playbook.log` on that instance                |
+| Model calls fail in PAF's LLM Management           | Step 5 was skipped, or the connection names a different compartment from the one the policy grants      |
+| Every agent turn returns a JSON decode error       | The generation model is not a `cohere.*` one — see [`docs/TROUBLESHOOT.md`](docs/TROUBLESHOOT.md)        |
+| An MCP server will not connect                     | `paf trust-ca` and `paf allow-internal-mcp` both have to run before the first registration              |
+| The load balancer does not answer                  | Backend health in the OCI console; a tier listens only once its play has finished                       |
+| `cloud down` fails on a security group             | Expected — it retries by itself; a manual re-run is equally safe                                        |

@@ -7,17 +7,15 @@ then optional residuals.
 
 ## 1. Cloud deployment on OCI — top priority
 
-Branch: `dev/cloud-deployment`.
+Branch: `dev/cloud-deployment`. Runbook: [`CLOUD.md`](CLOUD.md).
 
-Stand up the deployment designed in [`docs/DEPLOYMENT.md §4`](docs/DEPLOYMENT.md): Terraform under `deploy/tf/`, one Ansible tier per compute under `deploy/ansible/`, and the `setup cloud` / `build` / `tf` / `clean` commands in `manage.py`. Unblocks §4 — XGBoost is an ADB-only algorithm.
+The stack stands up: four computes, ADB on a private endpoint, a public load balancer serving HTTPS with a port-80 redirect, and a private one fronting the four MCP wrappers that run as systemd services on the `backend` tier. `manage.py` owns the whole lifecycle — `setup cloud`, `build`, `tf`, `cloud iam|plan|up|down|test`.
 
-Remaining to make the stack deployable end to end:
+Remaining:
 
-- **The X86_64 PAF kit** — the cloud tiers run `VM.Standard.E5.Flex` (AMD x86_64) while the local kit is ARM64. Download the x86_64 tarball from Oracle Software Delivery into `paf/dist/`; see [`paf/dist/README.md`](paf/dist/README.md).
-- **Apply `deploy/tf/iam/`** with a tenancy-admin profile. It creates the two dynamic groups and the `use generative-ai-family` policy that the compute's instance principal and the database's resource principal both depend on; nothing authenticates without it.
-- **A first `terraform apply`** against a real compartment. Region, model and limit discovery are verified against the live API, but no resource has been created, so the ADB-specific SQL in `001` and `018` is reasoned from the documentation rather than observed.
-- **Confirm two ADB particulars** at that first apply: whether `ROUTE_OUTBOUND_CONNECTIONS` must be set for the Select AI callout to reach Generative AI through the VCN, and that ADB's default `max_string_size=EXTENDED` satisfies PAF.
-- **Check the ADB ECPU service limit** — the compute and load balancer limits are comfortable, but the `adb-ecpu-count` query returned no data.
+- **A clean end-to-end pass of `manage.py cloud test`.** The harness runs from the bastion and drives real agent turns; the last run failed on the generation model rather than the flow, and the model has since been switched to a Cohere one. Nothing has yet asserted a full happy-path tier on the cloud target.
+- **`RESEARCH_WORKFLOW` on cloud** — imported and linked the same way as `CHAT_FLOW`, once the chat flow passes.
+- **A rebuild from an empty compartment** with every fix in place, to confirm the runbook is complete rather than coaxed.
 
 ## 2. Verify PAF's certificate at the load balancer
 

@@ -124,7 +124,9 @@ sequenceDiagram
 Two deployment options, same source tree:
 
 - **Local** — rootless podman on a laptop or LAN. See [`LOCAL.md`](LOCAL.md).
-- **Cloud** — Oracle Cloud Infrastructure (OCI) Terraform + Ansible (5 computes + **ADB** (Autonomous Database) + **LB** (load balancer)). See [`CLOUD.md`](CLOUD.md) _(not yet implemented)_.
+- **Cloud** — Oracle Cloud Infrastructure (OCI) Terraform + Ansible: four computes, an **ADB** (Autonomous Database), a public **LB** (load balancer) serving HTTPS and a private one fronting the MCP wrappers, with models from the OCI Generative AI service. See [`CLOUD.md`](CLOUD.md).
+
+Both run the same source tree, the same Liquibase changelog (Liquibase contexts select the handful of changesets that differ) and the same `CHAT_FLOW`.
 
 ## Documentation — start here
 
@@ -135,9 +137,10 @@ New to the project? Read in this order:
 3. [`docs/DECISIONING-ENGINE-USE-CASE.md`](docs/DECISIONING-ENGINE-USE-CASE.md) — the credit-decisioning use case: what the system does and why.
 4. [`docs/DESIGN.md`](docs/DESIGN.md) — the architecture, PAF Hybrid runtime mapping, source layout, and locked decisions.
 5. [`paf/flows/CHAT_FLOW.md`](paf/flows/CHAT_FLOW.md) — the customer-facing agent flow, in build detail.
-6. [`LOCAL.md`](LOCAL.md) — stand the stack up and test it.
+6. [`LOCAL.md`](LOCAL.md) — stand the stack up on a laptop and test it.
+7. [`CLOUD.md`](CLOUD.md) — stand it up on OCI and test it.
 
-Reference as needed: [`docs/PAF.md`](docs/PAF.md) (generic PAF product guide) · [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) (deploy strategy + `manage.py`) · [`docs/TROUBLESHOOT.md`](docs/TROUBLESHOOT.md) (workarounds) · [`BACKLOG.md`](BACKLOG.md) (future features: Customer 360, XGBoost scoring, product-rec, TOON) · [`presentation/deck.md`](presentation/deck.md) (conference talk deck).
+Reference as needed: [`docs/PAF.md`](docs/PAF.md) (generic PAF product guide) · [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) (deploy strategy + `manage.py`) · [`docs/TROUBLESHOOT.md`](docs/TROUBLESHOOT.md) (workarounds) · [`BACKLOG.md`](BACKLOG.md) (cloud follow-ups, XGBoost scoring, product-rec, TOON) · [`presentation/deck.md`](presentation/deck.md) (conference talk deck).
 
 ## Quickstart (local)
 
@@ -145,15 +148,28 @@ Reference as needed: [`docs/PAF.md`](docs/PAF.md) (generic PAF product guide) ·
 python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-
 python manage.py setup local
 python manage.py paf prepare ~/Downloads/oracle_agent_factory_<version>.tar.gz
 python manage.py local up
-python manage.py paf bootstrap   # prints UI installer + LLM cheatsheet
+python manage.py paf bootstrap
 python manage.py info
 ```
 
 Detailed prerequisites, day-2 commands, and troubleshooting in [`LOCAL.md`](LOCAL.md).
+
+## Quickstart (cloud)
+
+```bash
+source venv/bin/activate
+python manage.py setup cloud
+python manage.py build
+python manage.py tf
+python manage.py cloud iam
+python manage.py cloud up
+python manage.py paf bootstrap
+```
+
+Prerequisites, the install-wizard walkthrough, the end-to-end test and teardown are in [`CLOUD.md`](CLOUD.md).
 
 ## Current state
 
@@ -175,20 +191,19 @@ What works today on the local stack:
 
   ![Deterministic token entry → get_context (JSON-wrap → Type Convert → Deterministic MCP → G0)](images/chat_flow_0_token.png)
 
-What's next, in order:
+What's next, in order — the detail lives in [`BACKLOG.md`](BACKLOG.md):
 
-1. **End-to-end test `CHAT_FLOW` across the seeded scenarios.** `customer_id` / `application_id` are never taken from the chat message — they're resolved server-side from an opaque session token via `banking-mcp.get_context` (cx_Oracle bind variables, fail-secure), which is why a PAF SQL Query node wasn't viable (see [`issues/02-sql-query-no-bind-variables.md`](issues/02-sql-query-no-bind-variables.md)). A pytest harness covers the six happy-path tiers plus the fail-secure and prompt-injection cases: [`tests/test_chat_workflow.py`](tests/test_chat_workflow.py). Scenario table + seeded tokens in [`paf/flows/CHAT_FLOW.md §Test prompts`](paf/flows/CHAT_FLOW.md#test-prompts).
-2. **`RESEARCH_WORKFLOW` flow** — backoffice-only, broader read-only scope (full transactions, `decision_audit`, `policy_parameter_history`, RAG over `policy_corpus`). No side-effect tools. Reuses the build pattern proven by `CHAT_FLOW`.
-3. **Document uploads + Case Research panel** — a chat upload endpoint that stores the uploaded file against the application, and the Case Research Agent panel in the reviewer portal once `RESEARCH_WORKFLOW` (item 2) exists.
-4. **Customer 360 view** — finish `REPORTING.cust_360` joining demographics, balances, products held, recent transactions, bureau snapshot, employer-verification. Feature source for item 5. See [`BACKLOG.md §2`](BACKLOG.md#2-customer-360-curated-view).
-5. **XGBoost credit-scoring tool** — new `src/ml/credit-score/` Python component trains an XGBoost model in OML4Py on `REPORTING.cust_360`, registers it in OML, and exposes `AGENT_TOOLS.predict_credit_score` to the agent (Select AI Tool on cloud / MCP wrapper on local). Wires into the `Recommendation` agent's evidence + `system_config` tier weights. See [`BACKLOG.md §3`](BACKLOG.md#3-xgboost-credit-scoring-tool).
-6. **Product-recommendation workflow** — second PAF Agent Builder flow over `REPORTING.cust_360`, mirroring the `CHAT_FLOW` pattern; consumes the credit-score tool from item 5 as one of its signals. See [`BACKLOG.md §1`](BACKLOG.md#1-proactive-product-recommendation-as-a-second-workflow).
-7. **TOON feasibility spike** — confirm whether a PAF Function node can run a `toon` library to transform tool output, or whether encoding has to happen in the prompt-builder outside PAF. Independent — can happen in parallel. See [`BACKLOG.md §4`](BACKLOG.md#4-toon-feasibility-spike).
-8. **Cloud deployment** (OCI Terraform + Ansible, ADB + LB).
+1. **Finish the cloud deployment.** The stack stands up on OCI and serves the UIs, the API and PAF over HTTPS; the four MCP wrappers run on the `backend` tier behind a private load balancer. What remains is the first clean end-to-end pass of `manage.py cloud test` against a Cohere generation model. See [`CLOUD.md`](CLOUD.md) and [`BACKLOG.md §1`](BACKLOG.md).
+2. **Verify PAF's certificate at the load balancer.** The public listener serves HTTPS, but the hop from the load balancer to PAF is encrypted and unverified — PAF issues its certificate during its own install, so it cannot be trusted in the same apply. [`BACKLOG.md §2`](BACKLOG.md).
+3. **`RESEARCH_WORKFLOW` flow** — backoffice-only, broader read-only scope (full transactions, `decision_audit`, `policy_parameter_history`, RAG over `policy_corpus`). No side-effect tools. Reuses the pattern proven by `CHAT_FLOW`.
+4. **Document uploads + Case Research panel** — a chat upload endpoint that stores the file against the application, and the research panel in the reviewer portal once item 3 exists.
+5. **XGBoost credit-scoring tool** — trains in-database with OML4SQL on `REPORTING.cust_360` and exposes `predict_credit_score` to the agent. ADB-only: Oracle Database Free rejects `ALGO_XGBOOST` with `ORA-40216`. [`BACKLOG.md §4`](BACKLOG.md).
+6. **Product-recommendation workflow** — second flow over the same view set, consuming the credit-score tool as one of its signals. [`BACKLOG.md §5`](BACKLOG.md).
+7. **TOON feasibility spike** — independent, can happen in parallel. [`BACKLOG.md §6`](BACKLOG.md).
 
 Schema-side follow-ups deferred until a consumer needs them: vector index on `policy_corpus` / `case_history` (waits for the embedding pipeline that populates the `VECTOR(1024, FLOAT32)` columns via bge-m3) and the `policy_corpus` / sanctions seed data.
 
 Two known constraints not in the "next" list because they're decided:
 
-- **Select AI profiles are ADB-only.** Oracle Free 26ai (23.26.x) rejects custom `provider_endpoint` values in `DBMS_CLOUD_AI` pre-flight. The local `CHAT_FLOW` flow uses MCP tools + LLM; full Select AI Bridge is the cloud path. See [`docs/DEPLOYMENT.md §7`](docs/DEPLOYMENT.md).
+- **Select AI is parked.** Oracle Free 26ai rejects custom `provider_endpoint` values in `DBMS_CLOUD_AI` pre-flight, so it was always the cloud path — but `CHAT_FLOW` reads through `banking-mcp` on both targets, so the cloud deployment runs the same MCP wrappers rather than a different tool transport. Adopting Select AI is a flow redesign, tracked in [`BACKLOG.md §3`](BACKLOG.md).
 - **Auth is out of scope.** Both UIs use a mock login (customer dropdown / role dropdown). The audience system is assumed to provide SSO in production.
