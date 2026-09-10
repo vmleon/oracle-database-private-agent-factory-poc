@@ -2302,7 +2302,10 @@ def _paf_bootstrap_cloud() -> None:
     console.print(Panel.fit("[bold]PAF UI Installer — cloud (OCI)[/bold]"))
 
     lb_ip = _tf_output("lb_ip")
-    wallet = _tf_output("adb_wallet_path") or "deploy/tf/app/generated/adb-wallet.zip"
+    # Terraform reports this relative to its own module directory, which is not
+    # a path anyone can paste into a file picker.
+    wallet_rel = _tf_output("adb_wallet_path") or "./generated/adb-wallet.zip"
+    wallet = (TF_DIR / wallet_rel).resolve()
     compartment = os.getenv("OCI_COMPARTMENT_OCID", "")
     endpoint = os.getenv("GENAI_ENDPOINT", "")
     db_service = str(os.getenv("DB_SERVICE", "")).lower()
@@ -2353,7 +2356,26 @@ def _paf_bootstrap_cloud() -> None:
         f"in the changelog.[/dim]\n"
     )
 
-    console.print("[bold]Step 5 — Select AI profiles[/bold]   (Select AI → Profiles)")
+    # The VCN's DNS label is the resource label with dashes removed, so tiers
+    # resolve each other at <tier>.private.<label>.oraclevcn.com.
+    vcn_dns = os.getenv("OCI_LABEL", "paf-poc").replace("-", "")
+    backend_host = f"backend.private.{vcn_dns}.oraclevcn.com"
+
+    console.print("[bold]Step 5 — data sources[/bold]   (Data Sources)")
+    console.print("  The connection entered in step 2 is PAF's own repository. Select AI and the")
+    console.print("  flows read through registered data sources, which are separate — without the")
+    console.print("  database registered here, Select AI's database list is empty.")
+    console.print("  [bold]Database[/bold]")
+    console.print("    Connection type:  [cyan]Wallet[/cyan]")
+    console.print(f"    Wallet file:      [cyan]{wallet}[/cyan]")
+    console.print(f"    Network alias:    [cyan]{db_service}[/cyan]")
+    console.print("    Username:         [cyan]AGENT_FACTORY[/cyan]   (the user the changelog grants the Select AI packages to)")
+    console.print("    Password:         same as DB_PASSWORD in .env")
+    console.print("  [bold]HTTP — company registry[/bold]   (employer verification for CHAT_FLOW)")
+    console.print(f"    OpenAPI document: [cyan]http://{backend_host}:8600/openapi.json[/cyan]")
+    console.print("    [dim]Reached over the VCN, so plain HTTP inside the private subnet.[/dim]\n")
+
+    console.print("[bold]Step 6 — Select AI profiles[/bold]   (Select AI → Profiles)")
     console.print("  PAF creates these as AGENT_FACTORY, which is why the changelog grants the")
     console.print("  packages rather than creating the profiles itself — a profile belongs to")
     console.print("  whichever user made it, and Liquibase connects as ADMIN.")
@@ -2365,7 +2387,7 @@ def _paf_bootstrap_cloud() -> None:
     console.print("  [bold]chat_profile[/bold]      object list: the six [cyan]REPORTING.chat_v_*[/cyan] views (customer-safe)")
     console.print("  [bold]research_profile[/bold]  object list: the six [cyan]REPORTING.research_v_*[/cyan] views (read-only)\n")
 
-    console.print("[bold]Step 6 — Select AI agent tools[/bold]   (Select AI → Tools)")
+    console.print("[bold]Step 7 — Select AI agent tools[/bold]   (Select AI → Tools)")
     console.print("  Two kinds. SQL tools give the flows NL2SQL over a profile's view set;")
     console.print("  function tools call the same PL/SQL the local MCP wrappers call, so the")
     console.print("  business logic is identical on both targets and only the transport differs.")
