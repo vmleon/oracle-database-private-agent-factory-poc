@@ -154,6 +154,11 @@ python manage.py cloud down
 python manage.py clean
 ```
 
+`cloud down` makes up to three passes. The first often fails on the database's
+network security group, which still reports attached VNICs for a few seconds
+after the database itself is gone — the ordering is right, the API is just
+behind.
+
 `clean` refuses while Terraform state still holds resources, then removes the
 rendered tfvars, the generated zips and every staged tier payload. The IAM root
 is left alone — it is reused by the next deployment into the same compartment.
@@ -166,3 +171,4 @@ is left alone — it is reused by the next deployment into the same compartment.
 | Model calls fail in PAF's LLM Management    | Step 5 was skipped, or the compartment in the connection is not the one the policy names      |
 | Select AI profiles are missing in PAF        | They belong to whoever created them — PAF creates them as `AGENT_FACTORY`, not Liquibase as `ADMIN` |
 | The load balancer does not answer            | Backend health in the OCI console; the tiers listen only once their play has finished          |
+| `cloud down` fails on a security group with "vnics attached" | Expected: the database's private endpoint VNIC detaches after the database is gone. `cloud down` retries by itself; a manual re-run is equally safe |

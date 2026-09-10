@@ -1871,7 +1871,30 @@ def cloud_down() -> None:
     """Destroy the workload stack. The IAM root is left alone for the next deployment."""
     _require_cloud_env()
     console.print(Panel.fit("[bold]Destroying the cloud stack[/bold]"))
-    _tf_run(TF_DIR, "destroy", "-input=false", "-auto-approve")
+
+    # The database's private endpoint VNIC is released asynchronously, so its
+    # network security group still reports attached VNICs for a few seconds
+    # after the database itself is gone and the delete fails with a 412. The
+    # ordering is already correct; the API is just behind. Destroy skips what
+    # has gone, so a second pass finishes the job.
+    for attempt in (1, 2, 3):
+        console.print(f"[dim]$ {' '.join(_tf_args(TF_DIR, 'destroy'))}[/dim]")
+        result = subprocess.run(_tf_args(TF_DIR, "destroy", "-input=false", "-auto-approve"))
+        if result.returncode == 0:
+            break
+        if attempt < 3:
+            console.print(
+                f"[yellow]Destroy incomplete (pass {attempt}).[/yellow] "
+                "Usually a resource whose dependant is still detaching — retrying in 30s."
+            )
+            time.sleep(30)
+    else:
+        console.print(
+            "[red]Destroy did not complete after three passes.[/red] "
+            "Re-run, or check the OCI console for what is still attached."
+        )
+        sys.exit(1)
+
     console.print("\n[green]✓[/green] Destroyed. Run [cyan]python manage.py clean[/cyan] to remove generated files.")
 
 
