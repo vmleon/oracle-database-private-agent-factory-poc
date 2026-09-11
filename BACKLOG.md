@@ -13,7 +13,7 @@ The stack stands up: four computes, ADB on a private endpoint, a public load bal
 
 Remaining:
 
-- **A clean end-to-end pass of `manage.py cloud test`.** The harness runs from the bastion and drives real agent turns; the last run failed on the generation model rather than the flow, and the model has since been switched to a Cohere one. Nothing has yet asserted a full happy-path tier on the cloud target.
+- **A clean end-to-end pass of `manage.py cloud test`.** The harness runs from the bastion and drives real agent turns; nothing has yet asserted a full happy-path tier on the cloud target.
 - **`RESEARCH_WORKFLOW` on cloud** — imported and linked the same way as `CHAT_FLOW`, once the chat flow passes.
 - **A rebuild from an empty compartment** with every fix in place, to confirm the runbook is complete rather than coaxed.
 

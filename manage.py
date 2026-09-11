@@ -1508,27 +1508,40 @@ def _select_genai_models(profile: str, region: str, tenancy: str, existing: dict
         )
         sys.exit(1)
 
-    # PAF's OCI Generative AI client parses streamed chunks as Cohere shapes —
-    # json.loads(chunk) then chunk["message"]. A Meta or Google model streams a
-    # different shape with a non-JSON terminal sentinel, and every agent turn
-    # dies with "JSONDecodeError: Expecting value: line 1 column 2 (char 1)".
-    cohere_chat = [m for m in chat_models if m.startswith("cohere.")]
+    # PAF streams every agent turn, and two of its OCI Generative AI stream
+    # parsers are incomplete: a cohere.* manager never delegates (its text tool
+    # call is returned as the reply) and a meta.* stream ends in a bare [DONE]
+    # that fails json.loads. Models on the generic format that end their stream
+    # with finishReason work as-is; gpt-oss-120b is the verified default.
+    # See issues/14-oci-genai-stream-parsers-incomplete.md.
+    def streams_through_paf(model: str) -> bool:
+        return not model.startswith(("cohere.", "meta."))
+
+    preferred = "openai.gpt-oss-120b"
+    supported = [m for m in chat_models if streams_through_paf(m)]
     chat_choices = [
-        {"name": m if m.startswith("cohere.") else f"{m}  (streaming unsupported by PAF)", "value": m}
+        {"name": m if streams_through_paf(m) else f"{m}  (streaming unsupported by PAF)", "value": m}
         for m in chat_models
     ]
     previous = existing.get("GENAI_MODEL")
+    if previous in supported:
+        default = previous
+    elif preferred in chat_models:
+        default = preferred
+    else:
+        default = supported[0] if supported else None
     genai_model = inquirer.select(
         message="Generation model:",
         choices=chat_choices,
-        default=previous if previous in chat_models else (cohere_chat[0] if cohere_chat else None),
+        default=default,
     ).execute()
 
-    if not genai_model.startswith("cohere."):
+    if not streams_through_paf(genai_model):
         console.print(
-            f"[yellow]{genai_model} streams in a shape PAF cannot parse.[/yellow] Its OCI\n"
-            "Generative AI client reads Cohere-format chunks, so every agent turn fails with\n"
-            "a JSONDecodeError. Pick a cohere.* model unless you have verified otherwise."
+            f"[yellow]{genai_model} streams in a shape PAF does not fully parse.[/yellow]\n"
+            "A cohere.* manager agent never delegates to its workers, and a meta.* stream\n"
+            "fails with a JSONDecodeError. Pick a model on the generic format unless you\n"
+            "have verified otherwise."
         )
         if not inquirer.confirm(message="Use it anyway?", default=False).execute():
             sys.exit(1)
@@ -1968,6 +1981,23 @@ def _ops_ssh(command: str, *, stream: bool = False) -> subprocess.CompletedProce
     return subprocess.run(argv, capture_output=True, text=True, timeout=300)
 
 
+def _ops_push_tests() -> None:
+    """Copy the local tests/ to the bastion, so a run exercises the current
+    harness rather than the copy that shipped in the tier's artifact."""
+    ip = _tf_output("ops_public_ip")
+    key_path = Path(os.getenv("OCI_SSH_KEY_PATH", "")).expanduser()
+    private_key = key_path.with_suffix("") if key_path.suffix == ".pub" else key_path
+    result = subprocess.run(
+        ["scp", "-q", "-r", "-i", str(private_key), "-o", "StrictHostKeyChecking=no",
+         "-o", "UserKnownHostsFile=/dev/null", "-o", "LogLevel=ERROR",
+         str(PROJECT_ROOT / "tests"), f"opc@{ip}:/home/opc/artifact/roles/opstools/files/"],
+        capture_output=True, text=True, timeout=120,
+    )
+    if result.returncode != 0:
+        console.print(f"[red]Could not copy tests/ to the bastion.[/red]\n{result.stderr.strip()[:300]}")
+        sys.exit(1)
+
+
 # Unknown options belong to pytest, not to click.
 @cloud.command("test", context_settings={"ignore_unknown_options": True})
 @click.argument("pytest_args", nargs=-1, type=click.UNPROCESSED)
@@ -1997,7 +2027,9 @@ def cloud_test(pytest_args: tuple) -> None:
         f"DB_WALLET_PASSWORD={os.getenv('DB_WALLET_PASSWORD', '')}",
     ])
     remote_env = "/home/opc/.poc-test-env"
-    args = " ".join(pytest_args) or "tests"
+    # Only the end-to-end suite ships to the bastion; the unit tests import
+    # from src/, which stays on the host.
+    args = " ".join(pytest_args) or "tests/test_chat_workflow.py"
     script = (
         f"set -e; umask 077; cat > {remote_env} <<'EOF'\n{env_lines}\nEOF\n"
         f"cd /home/opc/artifact/roles/opstools/files && "
@@ -2009,6 +2041,7 @@ def cloud_test(pytest_args: tuple) -> None:
 
     console.print(Panel.fit("[bold]End-to-end tests (from the bastion)[/bold]"))
     console.print(f"[dim]PAF: {_paf_base_url()}   database: {os.getenv('DB_SERVICE')} via wallet[/dim]")
+    _ops_push_tests()
     result = _ops_ssh(script, stream=True)
     if result.returncode != 0:
         sys.exit(result.returncode)
@@ -2395,6 +2428,50 @@ def paf_link_flow() -> None:
     console.print("[dim]Publish the flow so the change reaches the integration endpoint.[/dim]")
 
 
+@paf.command("gen-model")
+def paf_gen_model() -> None:
+    """Point PAF's `gen-model` configuration at the GENAI_MODEL in .env.
+
+    The model id is the only field that changes when swapping generation
+    models on OCI Generative AI, and CHAT_FLOW references the configuration
+    by name, so the flow needs no edit.
+    """
+    _ensure_env()
+    model_id = os.getenv("GENAI_MODEL", "").strip()
+    if not model_id:
+        console.print("[red]GENAI_MODEL is not set in .env.[/red] Run [cyan]python manage.py setup cloud[/cyan].")
+        sys.exit(1)
+    session = _paf_session()
+    r = session.get(f"{_paf_base_url()}/agentFactory/v1/getSavedLLMConfigurations", timeout=30)
+    if r.status_code != 200:
+        console.print(f"[red]Could not list LLM configurations: HTTP {r.status_code}.[/red]\n{r.text[:300]}")
+        sys.exit(1)
+    items = r.json().get("data", {}).get("savedConfiguration", [])
+    entry = next((i for i in items if i.get("name") == "gen-model"), None)
+    if entry is None:
+        console.print("[red]No LLM configuration named gen-model.[/red] Create it per `paf bootstrap` step 4.")
+        sys.exit(1)
+    details = entry.get("connectionDetails") or {}
+    if isinstance(details, str):
+        details = json.loads(details)
+    current = details.get("model_id")
+    if current == model_id:
+        console.print(f"[green]✓[/green] gen-model already uses [cyan]{model_id}[/cyan].")
+        return
+    details["model_id"] = model_id
+    r = session.put(
+        f"{_paf_base_url()}/agentFactory/v1/saveLLMConfig",
+        headers={"Origin": _paf_base_url()},
+        data={"name": "gen-model", "provider": entry.get("provider"),
+              "connectionDetails": json.dumps(details)},
+        timeout=60,
+    )
+    if r.status_code != 200:
+        console.print(f"[red]Could not save gen-model: HTTP {r.status_code}.[/red]\n{r.text[:500]}")
+        sys.exit(1)
+    console.print(f"[green]✓[/green] gen-model: [cyan]{current}[/cyan] → [cyan]{model_id}[/cyan]")
+
+
 @paf.command("api-key")
 def paf_api_key() -> None:
     """Mint an integration API key for CHAT_FLOW and store it in .env.
@@ -2528,6 +2605,11 @@ def _paf_bootstrap_local() -> None:
     )
 
 
+def _print_run(command: str) -> None:
+    """Print a command to run in its own block, so it cannot be skimmed past."""
+    console.print(f"\n  Run:\n\n      [bold cyan]{command}[/bold cyan]\n")
+
+
 def _paf_bootstrap_cloud() -> None:
     console.print(Panel.fit("[bold]PAF UI Installer — cloud (OCI)[/bold]"))
 
@@ -2539,6 +2621,10 @@ def _paf_bootstrap_cloud() -> None:
     compartment = os.getenv("OCI_COMPARTMENT_OCID", "")
     endpoint = os.getenv("GENAI_ENDPOINT", "")
     db_service = str(os.getenv("DB_SERVICE", "")).lower()
+    admin_user = os.getenv("PAF_ADMIN_USER", "")
+
+    console.print("This sheet walks the whole PAF install, browser steps and commands")
+    console.print("alike, in order. It ends by handing you back to CLOUD.md §9.\n")
 
     if lb_ip:
         console.print(f"Open the installer:\n  [cyan]https://{lb_ip}/agentFactory/installation[/cyan]\n"
@@ -2550,10 +2636,11 @@ def _paf_bootstrap_cloud() -> None:
         )
 
     console.print("[bold]Step 1 — admin user[/bold]")
-    console.print("  Create an admin user, then record it:")
-    console.print("    [cyan]python manage.py paf admin[/cyan]")
-    console.print("  [dim]setup asked for these before PAF existed, so .env holds a guess until now.[/dim]")
-    console.print("  [dim]trust-ca and api-key authenticate with them.[/dim]\n")
+    console.print(f"  Username:  [cyan]{admin_user}[/cyan]")
+    console.print("  Password:  same as PAF_ADMIN_PASS in .env")
+    console.print("  [dim]setup stored these; trust-ca, link-flow and api-key sign in with them.[/dim]")
+    console.print("  [dim]If you create the admin with different credentials, record them afterwards:[/dim]")
+    _print_run("python manage.py paf admin")
 
     console.print("[bold]Step 2 — database configuration[/bold] (ADB wallet)")
     console.print("  Connection type:  [cyan]Wallet[/cyan]")
@@ -2567,9 +2654,10 @@ def _paf_bootstrap_cloud() -> None:
     console.print("        so the Knowledge Assistant installs here — unlike the local target)\n")
 
     console.print("[bold]Step 3 — installation[/bold]")
-    console.print("  Click Install. PAF creates its metadata tables under AGENT_FACTORY.\n")
+    console.print("  Click Install. PAF creates its metadata tables under AGENT_FACTORY.")
+    console.print("  Sign in as the admin user for the remaining steps.\n")
 
-    console.print("[bold]Step 4 — LLM configuration[/bold]   (no key material — the compute")
+    console.print("[bold]Step 4 — LLM configuration[/bold]   (LLM Management — no key material; the compute")
     console.print("  authenticates as an instance principal through its dynamic group)")
     console.print("  [bold]Generative model[/bold]   (Model type radio: [cyan]Generative model[/cyan])")
     console.print("    LLM provider:        [cyan]OCI Generative AI — instance principal[/cyan]")
@@ -2586,8 +2674,10 @@ def _paf_bootstrap_cloud() -> None:
     console.print(f"    Compartment OCID:    [cyan]{compartment}[/cyan]")
     console.print(
         f"    [dim]Emits {os.getenv('GENAI_EMBED_DIM', '')} dimensions, matching the VECTOR width "
-        f"in the changelog.[/dim]\n"
+        f"in the changelog.[/dim]"
     )
+    console.print("  Run a test call on each. A failure here is almost always the dynamic group")
+    console.print("  or policy: re-apply deploy/tf/iam with a tenancy-admin profile.\n")
 
     # The VCN's DNS label is the resource label with dashes removed, so tiers
     # resolve each other at <tier>.private.<label>.oraclevcn.com.
@@ -2613,17 +2703,22 @@ def _paf_bootstrap_cloud() -> None:
     console.print("    [dim]Download it and upload the file; PAF calls the URL in its `servers`[/dim]")
     console.print("    [dim]block, which the backend tier sets to its own VCN address.[/dim]\n")
 
-    console.print("[bold]Step 6 — trust the gateway, allow private addresses[/bold]")
-    console.print("  Two one-off settings PAF needs before any MCP server will connect:")
-    console.print("    [cyan]python manage.py paf trust-ca[/cyan]           the internal load balancer's certificate")
-    console.print("    [cyan]python manage.py paf allow-internal-mcp[/cyan]   its address is private (10.0.x.x)")
-    console.print("  [dim]Skip the first and every server fails its connection test with[/dim]")
-    console.print("  [dim]\"could not connect\" — a TLS failure, not a reachability one. Skip the[/dim]")
-    console.print("  [dim]second and the first registration is rejected outright.[/dim]\n")
+    console.print("[bold]Step 6 — trust the gateway[/bold]")
+    console.print("  Registers the internal load balancer's certificate in PAF's trust store.")
+    console.print("  [dim]Skip it and every MCP server fails its connection test with \"could not[/dim]")
+    console.print("  [dim]connect\" — a TLS failure, not a reachability one.[/dim]")
+    _print_run("python manage.py paf trust-ca")
 
-    console.print("[bold]Step 7 — MCP servers[/bold]   (Admin → MCP Servers → Add MCP server)")
+    console.print("[bold]Step 7 — allow private addresses[/bold]")
+    console.print("  The MCP servers sit on a private address (10.0.x.x), which PAF refuses")
+    console.print("  by default.")
+    console.print("  [dim]Skip it and the first registration is rejected outright.[/dim]")
+    _print_run("python manage.py paf allow-internal-mcp")
+
+    console.print("[bold]Step 8 — MCP servers[/bold]   (Admin → MCP Servers → Add MCP server)")
     console.print("  Four registrations, [cyan]Direct[/cyan] authentication (no auth — they are reachable")
-    console.print("  only inside the VCN). The flow references them by these names, so they must match.")
+    console.print("  only inside the VCN). The flow references them by these names, so they")
+    console.print("  must match.")
     mcp_urls = _tf_output_json("mcp_server_urls") or {}
     for name, label in (("opa", "opa-mcp"), ("hitl", "hitl-mcp"),
                         ("banking", "banking-mcp"), ("application", "application-mcp")):
@@ -2631,12 +2726,7 @@ def _paf_bootstrap_cloud() -> None:
         console.print(f"    [cyan]{label:<16}[/cyan] {url}")
     console.print("  [dim]Each should report connected, and its tools surface inside the Agent node.[/dim]\n")
 
-    console.print("[bold]After install[/bold] — sign in as the admin user and:")
-    console.print("  - Verify LLM Management shows both configurations and that a test call succeeds.")
-    console.print("    A failure there is almost always the dynamic group or policy: apply")
-    console.print("    [cyan]deploy/tf/iam[/cyan] with a tenancy-admin profile.")
-    console.print("  - Import the Agent Builder flows: [cyan]CHAT_FLOW[/cyan], then [cyan]RESEARCH_WORKFLOW[/cyan],")
-    console.print("    then [cyan]python manage.py paf link-flow[/cyan] to rebind the MCP nodes to this install.")
+    console.print("[bold]Done here.[/bold] Continue at [cyan]CLOUD.md §9 — Load CHAT_FLOW[/cyan].")
     console.print(
         "\n[yellow]Note:[/yellow] API automation for these UI steps is intentionally out of "
         "scope (Playwright-style driving is fragile across PAF versions)."

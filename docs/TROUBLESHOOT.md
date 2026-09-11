@@ -132,13 +132,27 @@ touch paf-kit/applied-ai/volume/.config_complete.marker
 
 ## PAF runtime / MCP
 
+### The manager never delegates — the reply is its thoughts plus `{"name": "send_message", …}`
+
+**Symptom.** A `CHAT_FLOW` turn returns the manager's internal reasoning followed by a literal `{"name": "send_message", "parameters": {"message": "sess_…", "recipient": "Recommendation"}}`. The `banking-mcp` nodes all succeed; no worker runs and no `hitl_task` row is written. `manage.py cloud test` fails every scenario on the customer-facing reply. `agent_factory.log` shows `_managerworkersexecutor.py … Answering to user with content` with that text.
+
+**Cause.** The generation model is a `cohere.*` one. The manager in a manager + sub-agents flow uses a text-based tool-calling template, and PAF's Cohere stream parser never applies the output parser that turns the text into a delegation (`wayflowcore/models/ocigenaimodel.py`, `_CohereOciApiFormatter`). See [`../issues/14-oci-genai-stream-parsers-incomplete.md`](../issues/14-oci-genai-stream-parsers-incomplete.md).
+
+**Fix.** Use a generation model on OCI's generic format, `openai.gpt-oss-120b`: set `GENAI_MODEL` in `.env` and push it to the live install.
+
+```bash
+python manage.py paf gen-model
+```
+
+`manage.py setup cloud` defaults to that model and warns before letting a `cohere.*` or `meta.*` one through.
+
 ### Every agent turn returns "Expecting value: line 1 column 2 (char 1)"
 
-**Symptom.** A `CHAT_FLOW` turn returns that string as the customer-facing reply. The MCP tools all succeed — `get_context` resolves the customer, eligibility evaluates — and then the run dies. `manage.py cloud test` fails every scenario with it.
+**Symptom.** A `CHAT_FLOW` turn returns that string as the customer-facing reply. The MCP tools all succeed and then the run dies.
 
-**Cause.** The generation model is not a Cohere one. PAF's OCI Generative AI client parses each streamed chunk as a Cohere shape (`json.loads(chunk)`, then `chunk["message"]`, in `wayflowcore/models/ocigenaimodel.py`). Meta and Google models stream a different shape ending in a non-JSON sentinel, and the parse fails on the first chunk. The failure surfaces as the reply because the worker error becomes the run's output.
+**Cause.** The generation model is a `meta.*` one. Its stream ends with a bare `[DONE]` event, and PAF's generic stream parser runs `json.loads` on it. Same issue brief as above.
 
-**Fix.** Choose a `cohere.*` chat model in PAF's LLM Management, and set `GENAI_MODEL` in `.env` to match. `manage.py setup cloud` defaults to one and warns before letting a non-Cohere model through.
+**Fix.** Same as above — `openai.gpt-oss-120b`, then `python manage.py paf gen-model`.
 
 ### Every MCP server fails its connection test with "Could not connect to the remote MCP server"
 

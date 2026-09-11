@@ -8,7 +8,7 @@ Wants=network-online.target
 # carries the service alias rather than a host and port.
 Environment=TNS_ADMIN={{ wallet_dir }}
 Environment=SPRING_DATASOURCE_URL=jdbc:oracle:thin:@{{ adb_service }}?TNS_ADMIN={{ wallet_dir }}
-Environment=SPRING_DATASOURCE_USERNAME={{ adb_admin_user }}
+Environment=SPRING_DATASOURCE_USERNAME=APP
 Environment=SPRING_DATASOURCE_PASSWORD={{ adb_admin_password }}
 Environment=PAF_BASE_URL=https://{{ paf_host }}:8080
 Environment=OPA_URL=http://127.0.0.1:8181

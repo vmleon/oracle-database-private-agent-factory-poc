@@ -14,8 +14,22 @@ local runbook, see [`LOCAL.md`](LOCAL.md).
 
 ```bash
 brew install terraform oci-cli
+```
+
+```bash
 oci setup config
-python3 -m venv venv && source venv/bin/activate && pip install -r requirements.txt
+```
+
+```bash
+python3 -m venv venv
+```
+
+```bash
+source venv/bin/activate
+```
+
+```bash
+pip install -r requirements.txt
 ```
 
 Also required:
@@ -33,11 +47,18 @@ python manage.py setup cloud
 
 Discovers rather than assumes: probes every subscribed region for Generative AI,
 lists compartments as filterable paths, and offers only models that are `ACTIVE`
-**and** still served on demand. It defaults to a Cohere chat model — PAF can only
-parse Cohere-format streaming — and refuses an embedding model whose width does
-not match the `VECTOR` width in the changelog.
+**and** still served on demand. It defaults to `openai.gpt-oss-120b` — the
+generation model PAF's streaming parses end to end — and refuses an embedding
+model whose width does not match the `VECTOR` width in the changelog.
 
 Expect: `.env` with `DEPLOYMENT_TARGET=cloud`, generated ADB passwords, and both model ids.
+
+To change the generation model on a running install, re-run `setup cloud`, then
+push the new id to PAF's `gen-model` configuration:
+
+```bash
+python manage.py paf gen-model
+```
 
 ## 3. `build`
 
@@ -69,6 +90,9 @@ Expect: `3 to add` — two dynamic groups and one policy.
 
 ```bash
 python manage.py cloud plan
+```
+
+```bash
 python manage.py cloud up
 ```
 
@@ -81,7 +105,17 @@ until it succeeds. The sentinel is written only after the play passes.
 
 ```bash
 ssh opc@$(terraform -chdir=deploy/tf/app output -raw ops_public_ip)
+```
+
+On the bastion, check for the sentinel:
+
+```bash
 sudo test -f /var/lib/paf-poc/bootstrap.ok && echo built
+```
+
+Until it appears, follow the play:
+
+```bash
 sudo tail -f /var/log/paf-poc-bootstrap.log
 ```
 
@@ -94,14 +128,9 @@ play, so the schema and the demo dataset are in place when it finishes.
 python manage.py paf bootstrap
 ```
 
-Prints the installer URL and every value to paste into it. Work through the
-seven steps in a browser; the sheet tells you where these fit:
-
-```bash
-python manage.py paf admin
-python manage.py paf trust-ca
-python manage.py paf allow-internal-mcp
-```
+Prints the PAF install as one ordered sheet: the installer URL, every value to
+paste into it, and the two commands that sit between the browser steps. Follow
+it top to bottom; its last line sends you back here to §9.
 
 Expect: PAF installed, both model configurations answering a test call, the
 data sources registered, and four MCP servers reporting connected.
@@ -109,15 +138,21 @@ data sources registered, and four MCP servers reporting connected.
 ## 9. Load `CHAT_FLOW`
 
 Import `paf/flows/CHAT_FLOW.paf` (password `WelcomeAmigo123!`) through
-Agent Builder → My Custom Flows → Import, then:
+Agent Builder → My Custom Flows → Import.
+
+A bundle carries the MCP server ids of the install it came from, so rebind
+every MCP node by server name:
 
 ```bash
 python manage.py paf link-flow
-python manage.py paf api-key
 ```
 
-`link-flow` rebinds every MCP node by server name — a bundle carries the ids of
-the install it came from. Publish the flow, then mint the key.
+Publish the flow in Agent Builder — the integration endpoint only serves the
+published version. Then mint the key the backend calls it with:
+
+```bash
+python manage.py paf api-key
+```
 
 Expect: `PAF_AGENT_ID` and `PAF_API_KEY` in `.env`.
 
@@ -146,6 +181,9 @@ warns once.
 
 ```bash
 python manage.py cloud down
+```
+
+```bash
 python manage.py clean
 ```
 
@@ -171,7 +209,7 @@ python manage.py paf bootstrap
 | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
 | A tier never writes `bootstrap.ok`                 | `/var/log/<label>-bootstrap.log`, then `/home/opc/ansible-playbook.log` on that instance                |
 | Model calls fail in PAF's LLM Management           | Step 5 was skipped, or the connection names a different compartment from the one the policy grants      |
-| Every agent turn returns a JSON decode error       | The generation model is not a `cohere.*` one — see [`docs/TROUBLESHOOT.md`](docs/TROUBLESHOOT.md)        |
-| An MCP server will not connect                     | `paf trust-ca` and `paf allow-internal-mcp` both have to run before the first registration              |
+| The manager never delegates, or every turn is a JSON decode error | The generation model is a `cohere.*` or `meta.*` one — see [`docs/TROUBLESHOOT.md`](docs/TROUBLESHOOT.md) |
+| An MCP server will not connect                     | `paf trust-ca` and `paf allow-internal-mcp` (bootstrap steps 6 and 7) both have to run before the first registration |
 | The load balancer does not answer                  | Backend health in the OCI console; a tier listens only once its play has finished                       |
 | `cloud down` fails on a security group             | Expected — it retries by itself; a manual re-run is equally safe                                        |

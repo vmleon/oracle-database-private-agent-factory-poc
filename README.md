@@ -193,7 +193,7 @@ What works today on the local stack:
 
 What's next, in order — the detail lives in [`BACKLOG.md`](BACKLOG.md):
 
-1. **Finish the cloud deployment.** The stack stands up on OCI and serves the UIs, the API and PAF over HTTPS; the four MCP wrappers run on the `backend` tier behind a private load balancer. What remains is the first clean end-to-end pass of `manage.py cloud test` against a Cohere generation model. See [`CLOUD.md`](CLOUD.md) and [`BACKLOG.md §1`](BACKLOG.md).
+1. **Finish the cloud deployment.** The stack stands up on OCI and serves the UIs, the API and PAF over HTTPS; the four MCP wrappers run on the `backend` tier behind a private load balancer. What remains is the first clean end-to-end pass of `manage.py cloud test`. See [`CLOUD.md`](CLOUD.md) and [`BACKLOG.md §1`](BACKLOG.md).
 2. **Verify PAF's certificate at the load balancer.** The public listener serves HTTPS, but the hop from the load balancer to PAF is encrypted and unverified — PAF issues its certificate during its own install, so it cannot be trusted in the same apply. [`BACKLOG.md §2`](BACKLOG.md).
 3. **`RESEARCH_WORKFLOW` flow** — backoffice-only, broader read-only scope (full transactions, `decision_audit`, `policy_parameter_history`, RAG over `policy_corpus`). No side-effect tools. Reuses the pattern proven by `CHAT_FLOW`.
 4. **Document uploads + Case Research panel** — a chat upload endpoint that stores the file against the application, and the research panel in the reviewer portal once item 3 exists.

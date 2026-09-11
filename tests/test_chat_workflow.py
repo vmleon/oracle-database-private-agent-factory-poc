@@ -110,7 +110,7 @@ def test_token_app_id_ignored(resolve, mint_session, chat, new_hitl_rows):
     _, kyle_aid = resolve("Kyle DormantEmployer")
     token = mint_session(alice_cid, kyle_aid)
 
-    resp = chat(token, "Please review my loan application.")
+    resp = chat(token, "Please review my loan application and submit it for processing.")
 
     msg = resp.get("message", "")
     assert TIER_REPLY["APPROVE"] in msg, \
