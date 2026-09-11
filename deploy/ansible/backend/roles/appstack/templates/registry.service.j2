@@ -6,7 +6,7 @@ Wants=network-online.target
 [Service]
 WorkingDirectory={{ app_dir }}/registry
 # PAF imports this service's OpenAPI document and calls the URL it advertises,
-# so the document has to name this host rather than a compose service.
+# so the document has to name this host.
 Environment=REGISTRY_PUBLIC_URL=http://{{ self_host }}:8600
 # PAF imports this service's OpenAPI document as an HTTP datasource, so it
 # binds on the VCN address rather than loopback.

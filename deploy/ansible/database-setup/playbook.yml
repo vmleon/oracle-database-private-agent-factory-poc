@@ -1,5 +1,0 @@
-- name: Apply Oracle schema via Liquibase
-  hosts: database_setup
-  gather_facts: false
-  roles:
-    - database

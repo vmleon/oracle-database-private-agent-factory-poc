@@ -2,7 +2,7 @@
 
 Architecture, technologies, samples, and integration patterns. Generated study notes from Oracle docs, product pages, and linked articles.
 
-> **Scope:** this is a _generic_ PAF study guide (product mechanics, any use case). For how **this** project uses PAF, see [`DESIGN.md §5`](DESIGN.md) (runtime mapping), [`../LOCAL.md`](../LOCAL.md) (install + register tools), and [`../paf/flows/CHAT_FLOW.md`](../paf/flows/CHAT_FLOW.md) (the flow build). For banking/credit/compliance terms, see [`GLOSSARY.md`](GLOSSARY.md).
+> **Scope:** this is a _generic_ PAF study guide (product mechanics, any use case). For how **this** project uses PAF, see [`DESIGN.md §5`](DESIGN.md) (runtime mapping), [`../CLOUD.md`](../CLOUD.md) (install + register tools), and [`../paf/flows/CHAT_FLOW.md`](../paf/flows/CHAT_FLOW.md) (the flow build). For banking/credit/compliance terms, see [`GLOSSARY.md`](GLOSSARY.md).
 
 ---
 

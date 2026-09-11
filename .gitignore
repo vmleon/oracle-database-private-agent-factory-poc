@@ -24,9 +24,6 @@ out/
 wallets/
 *.wallet
 **/wallet/
-tcps-wallet/
-tcps-wallet.zip
-mcp-tls/
 
 # Terraform
 **/.terraform/
@@ -41,7 +38,7 @@ deploy/ansible/**/*.retry
 # Liquibase
 **/liquibase.properties
 
-# PAF kit — extracted from the vendor tarball; ~6 GB on disk, never commit
+# PAF kit extracted from the vendor tarball for source reading; ~6 GB, never commit
 paf-kit/
 
 # Playwright (browser-driven verification artifacts)
@@ -66,7 +63,7 @@ deploy/ansible/*/roles/*/files/*
 !deploy/ansible/*/roles/*/files/.gitkeep
 deploy/tf/app/generated/
 
-# PAF kit tarballs — vendor downloads, far too large to commit. The generic
+# PAF kit tarball — a vendor download, far too large to commit. The generic
 # `dist/` rule above would exclude the directory itself, and git cannot
 # re-include a file inside an excluded directory, so the directory is
 # re-admitted first.

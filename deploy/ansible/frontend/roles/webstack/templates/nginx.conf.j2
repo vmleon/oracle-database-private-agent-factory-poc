@@ -3,8 +3,8 @@
 # `default_server` here instead would collide with it and nginx would not start.
 #
 # The customer bundle is built with no base, so its assets resolve from the
-# document root and it is served at `/` — the same place the local Caddy front
-# door serves it. The backoffice bundle is built with base /backoffice/ and
+# document root and it is served at `/`. The backoffice bundle is built with
+# base /backoffice/ and
 # lives in a directory of that name.
 
 location /backoffice/ {

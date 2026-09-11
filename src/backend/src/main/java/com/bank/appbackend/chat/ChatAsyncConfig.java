@@ -7,7 +7,7 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import java.util.concurrent.Executor;
 
 /**
- * Executor for chat turns. PAF/vLLM is the bottleneck (~4 min per turn) and turns are
+ * Executor for chat turns. PAF is the bottleneck (minutes per turn) and turns are
  * one-at-a-time per session, so a small pool is sufficient for the PoC. If the queue ever
  * fills, the default AbortPolicy rejects the submission and the POST /v1/chat caller gets a 500.
  */

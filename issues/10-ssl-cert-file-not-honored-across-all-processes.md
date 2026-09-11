@@ -11,7 +11,7 @@ Setting `SSL_CERT_FILE` on the PAF container is **only partially effective**: so
 ## Reproduce
 
 1. Front an MCP server with TLS using a self-signed cert (e.g. a Caddy gateway), so its URL is `https://<gateway>/<svc>/mcp`.
-2. Build a CA bundle = `certifi` + the self-signed cert, mount it into the PAF container, and set `SSL_CERT_FILE=/path/to/bundle` (via compose `environment:`).
+2. Build a CA bundle = `certifi` + the self-signed cert, mount it into the PAF container, and set `SSL_CERT_FILE=/path/to/bundle` in the container environment.
 3. Register the MCP server in PAF → **connection test fails**.
 4. Inspect the real error:
    ```
@@ -56,7 +56,7 @@ Append the private CA to the bundle `certifi.where()` returns — the one trust 
 .../site-packages/certifi/cacert.pem   # inside the PAF image
 ```
 
-Because it lives in the image (not a bind mount), it must be re-applied whenever the container is recreated. Automated in this repo as `_inject_mcp_ca_into_paf()` in `manage.py` (runs on every `local up` and on `local mcp-tls`).
+Because it lives in the image (not a bind mount), it must be re-applied whenever the container is recreated. This repo relies on the administrator certificate store instead (`manage.py paf trust-ca`), which lives on the mounted volume.
 
 ## Suggested fix
 

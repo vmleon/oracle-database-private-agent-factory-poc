@@ -13,10 +13,12 @@ split the envelope — a RegexExtractor on `(?<=\[\[SESSION )[^\]]+` feeds the
 manager prompt's `token` port, and one on `(?<=\]\])[\s\S]+` feeds its
 `input` port. See paf/flows/CHAT_FLOW.md.
 
-Required env vars (.env, loaded automatically):
+Required env vars (`cloud test` writes them on the bastion for the run):
   - PAF_API_KEY, PAF_AGENT_ID — integration key for the published CHAT_FLOW,
     minted by `python manage.py paf api-key`
-  - DB_HOST, DB_PORT, DB_SERVICE, DB_PASSWORD — Oracle connection as APP
+  - DB_SERVICE, DB_PASSWORD, DB_WALLET_PASSWORD, TNS_ADMIN — the ADB wallet
+    connection as APP
+  - PAF_BASE — PAF's address behind the public load balancer
 
 The key is bound to one published workflow, so no agent lookup is needed.
 """
@@ -35,14 +37,13 @@ import requests
 from dotenv import load_dotenv
 from urllib3.exceptions import InsecureRequestWarning
 
-# PAF terminates TLS with a self-signed cert; accepted for the local POC.
+# The load balancer terminates TLS with a self-signed certificate.
 warnings.simplefilter("ignore", InsecureRequestWarning)
 
 PROJECT_ROOT = Path(__file__).parent.parent
-# The harness runs against the local stack by default. On the cloud target it
-# runs from the ops bastion — the only host that can reach both PAF and the
-# database — so both the PAF address and the env file are overridable.
-PAF_BASE = os.getenv("PAF_BASE", "https://localhost:8080")
+# The harness runs from the ops bastion — the only host that can reach both PAF
+# and the database — so `cloud test` passes the PAF address and the env file in.
+PAF_BASE = os.getenv("PAF_BASE", "")
 ENV_FILE = Path(os.getenv("POC_ENV_FILE") or (PROJECT_ROOT / ".env"))
 
 _SENTINEL_RE = re.compile(r"\[\[SESSION[^\]]*\]\]")
@@ -63,18 +64,15 @@ def _envelope(token: str, message: str, *, sanitize: bool = True) -> str:
 def env() -> dict[str, str]:
     """Load .env once and validate the keys the harness needs."""
     load_dotenv(ENV_FILE)
-    required = ["PAF_API_KEY", "PAF_AGENT_ID", "DB_SERVICE", "DB_PASSWORD"]
     # Autonomous Database is reached through a wallet alias, so there is no
     # host or port to supply.
-    if not os.getenv("TNS_ADMIN"):
-        required += ["DB_HOST", "DB_PORT"]
-    required = tuple(required)
+    required = ("PAF_API_KEY", "PAF_AGENT_ID", "DB_SERVICE", "DB_PASSWORD", "TNS_ADMIN", "PAF_BASE")
     missing = [k for k in required if not os.getenv(k)]
     if missing:
         pytest.exit(
             f"Missing required env vars: {', '.join(missing)}.\n"
-            f"Run `python manage.py setup local`, then `python manage.py paf api-key` "
-            f"once CHAT_FLOW is published."
+            f"Run `python manage.py paf api-key` once CHAT_FLOW is published, then "
+            f"`python manage.py cloud test`."
         )
     return {k: os.environ[k] for k in required}
 
@@ -97,22 +95,14 @@ def agent_id(env) -> str:
 @pytest.fixture(scope="session")
 def db(env):
     """Oracle connection as APP — owns auth_session and hitl_task."""
-    tns_admin = os.getenv("TNS_ADMIN")
-    if tns_admin:
-        conn = oracledb.connect(
-            user="APP",
-            password=env["DB_PASSWORD"],
-            dsn=env["DB_SERVICE"],
-            config_dir=tns_admin,
-            wallet_location=tns_admin,
-            wallet_password=os.getenv("DB_WALLET_PASSWORD", ""),
-        )
-    else:
-        conn = oracledb.connect(
-            user="APP",
-            password=env["DB_PASSWORD"],
-            dsn=f"{env['DB_HOST']}:{env['DB_PORT']}/{env['DB_SERVICE']}",
-        )
+    conn = oracledb.connect(
+        user="APP",
+        password=env["DB_PASSWORD"],
+        dsn=env["DB_SERVICE"],
+        config_dir=env["TNS_ADMIN"],
+        wallet_location=env["TNS_ADMIN"],
+        wallet_password=os.getenv("DB_WALLET_PASSWORD", ""),
+    )
     yield conn
     conn.close()
 
@@ -185,7 +175,7 @@ def chat(paf, agent_id):
         r = paf.post(
             f"{PAF_BASE}/agentFactory/v1/integrations/agents/{agent_id}/run",
             json={"message": _envelope(token, message, sanitize=sanitize)},
-            timeout=300,  # vLLM 72B can take 60-90s for a full agent turn
+            timeout=300,  # a full agent turn can take a minute or more
         )
         r.raise_for_status()
         body = r.json()

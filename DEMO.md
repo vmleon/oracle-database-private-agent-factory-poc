@@ -13,33 +13,27 @@ requests), **§4 reviewer decides**, **§5 verify the immutable audit trail**.
 
 ## 0. Before you start
 
-Confirm the stack is up — `podman ps` shows `application-backend`, `customer-ui`,
-`backoffice-ui`, `paf-proxy`, `paf-*`, `paf-oracle-free-26ai`. If not:
+The stack runs on OCI ([`CLOUD.md`](CLOUD.md)). Print its addresses:
 
 ```bash
-python manage.py local up
+python manage.py info
 ```
 
-URLs (same host, path-routed):
+URLs (same load balancer, path-routed; the certificate is self-signed, so the
+browser warns once):
 
-- **Chat UI (customer):** http://localhost:5173/
-- **Backoffice (reviewer):** http://localhost:5173/backoffice
+- **Chat UI (customer):** `https://<lb_ip>/`
+- **Backoffice (reviewer):** `https://<lb_ip>/backoffice`
 
-Open a DB shell for the verify steps (paste any query after the `ALTER SESSION`):
+The verify steps run SQL through the bastion, one statement per command:
 
 ```bash
-podman exec -i paf-oracle-free-26ai sqlplus -s -L / as sysdba <<'SQL'
-ALTER SESSION SET CONTAINER=FREEPDB1;
-SELECT 'db ok' FROM dual;
-SQL
+python manage.py cloud sql "SELECT 'db ok' FROM dual"
 ```
 
 Good to know:
 
-- A full agent turn takes **~1–4 minutes**. Be patient.
-- If a chat turn returns _"Sorry — we couldn't process your application right
-  now"_ in ~20s, that's the known streaming `session_token` bug — just send the
-  message again (the backend also auto-retries).
+- A full agent turn takes **~20–60 seconds**. Be patient.
 - `decision_audit` (the per-tool trace) is populated live and surfaces in the
   backoffice decision detail under **Tools called**.
 
@@ -54,10 +48,10 @@ live demo.
 1. Run:
 
    ```bash
-   python manage.py smoke
+   python manage.py cloud test -k "alice or frank or david"
    ```
 
-2. Wait **~5–10 min**. Expect all three to pass:
+2. Wait **~1–2 min**. Expect all three to pass:
 
    | Customer           | Recommendation |
    | ------------------ | -------------- |
@@ -72,19 +66,14 @@ live demo.
 3. (Optional) confirm the three rows:
 
    ```bash
-   podman exec -i paf-oracle-free-26ai sqlplus -s -L / as sysdba <<'SQL'
-   ALTER SESSION SET CONTAINER=FREEPDB1;
-   SET LINESIZE 140
-   SELECT task_id, application_id, agent_recommendation, state
-     FROM APP.hitl_task ORDER BY task_id DESC FETCH FIRST 3 ROWS ONLY;
-   SQL
+   python manage.py cloud sql "SELECT task_id, application_id, agent_recommendation, state FROM APP.hitl_task ORDER BY task_id DESC FETCH FIRST 3 ROWS ONLY"
    ```
 
 ---
 
 ## 2. See the smoke results in the backoffice
 
-1. Open http://localhost:5173/backoffice .
+1. Open `https://<lb_ip>/backoffice`.
 2. You see the three smoke requests in the queue. The **Agent Recommendation**
    tag is colour-coded — **green APPROVE / amber REVIEW / red DECLINE** — so
    Alice, Frank and David read green / amber / red at a glance.
@@ -111,10 +100,10 @@ Please review my loan application and submit it for processing.
 
 ### 3a. Mia Salaried → APPROVE
 
-1. Open http://localhost:5173/ .
+1. Open `https://<lb_ip>/`.
 2. Pick **Mia Salaried** from the login list.
 3. Paste the message above into the chat box and send.
-4. Wait **~1–4 min**. The reply ends with an _"under review / final approval"_-style
+4. Wait **~20–60 s**. The reply ends with an _"under review / final approval"_-style
    line. Behind the scenes the workflow pulls her context, computes policy
    (eligibility / AML / KYC / fair-lending) deterministically, verifies her
    employer, and writes an **APPROVE** recommendation to the queue.
@@ -122,18 +111,18 @@ Please review my loan application and submit it for processing.
 
 ### 3b. Kyle DormantEmployer → REVIEW
 
-1. Open http://localhost:5173/ .
+1. Open `https://<lb_ip>/`.
 2. Pick **Kyle DormantEmployer**.
-3. Send the same message; wait **~1–4 min**.
+3. Send the same message; wait **~20–60 s**.
 4. His employer is **dormant** in the Company Registry → the agent writes a
    **REVIEW** recommendation.
 5. Log out.
 
 ### 3c. Eva LowScore → DECLINE
 
-1. Open http://localhost:5173/ .
+1. Open `https://<lb_ip>/`.
 2. Pick **Eva LowScore**.
-3. Send the same message; wait **~1–4 min**.
+3. Send the same message; wait **~20–60 s**.
 4. Her credit score is **below the floor** → the agent writes a **DECLINE**
    recommendation.
 5. Log out.
@@ -141,17 +130,7 @@ Please review my loan application and submit it for processing.
 (Optional) confirm the three new tasks:
 
 ```bash
-podman exec -i paf-oracle-free-26ai sqlplus -s -L / as sysdba <<'SQL'
-ALTER SESSION SET CONTAINER=FREEPDB1;
-SET LINESIZE 140
-COLUMN full_name FORMAT A22
-SELECT t.task_id, c.full_name, t.agent_recommendation, t.state
-  FROM APP.hitl_task t
-  JOIN APP.loan_application la ON la.application_id = t.application_id
-  JOIN APP.customer c ON c.customer_id = la.customer_id
- WHERE c.full_name IN ('Mia Salaried','Kyle DormantEmployer','Eva LowScore')
- ORDER BY t.task_id DESC;
-SQL
+python manage.py cloud sql "SELECT t.task_id, c.full_name, t.agent_recommendation, t.state FROM APP.hitl_task t JOIN APP.loan_application la ON la.application_id = t.application_id JOIN APP.customer c ON c.customer_id = la.customer_id WHERE c.full_name IN ('Mia Salaried','Kyle DormantEmployer','Eva LowScore') ORDER BY t.task_id DESC"
 ```
 
 ---
@@ -162,7 +141,7 @@ Process the three requests you just created — one Approve, one Review-then-Dec
 one Decline. For each: open the queue, click the row, read the evidence, pick the
 button, type a mandatory comment, submit.
 
-1. Open http://localhost:5173/backoffice .
+1. Open `https://<lb_ip>/backoffice`.
 
 ### 4a. Mia (APPROVE) → **Approve**
 
@@ -193,51 +172,38 @@ button, type a mandatory comment, submit.
 
 Each human decision is now an immutable Blockchain Table row.
 
-```bash
-podman exec -i paf-oracle-free-26ai sqlplus -s -L / as sysdba <<'SQL'
-ALTER SESSION SET CONTAINER=FREEPDB1;
-SET LINESIZE 180 PAGESIZE 40
-COLUMN human_user FORMAT A22
-COLUMN human_note FORMAT A35
-
--- the three tasks closed with the human's call
-SELECT task_id, state, human_outcome, human_user, human_note
-  FROM APP.hitl_task WHERE state='CLOSED'
- ORDER BY task_id DESC FETCH FIRST 3 ROWS ONLY;
-
--- one immutable decision row per closed case
-SELECT decision_id, application_id, agent_recommendation,
-       human_outcome, human_user,
-       TO_CHAR(decided_at,'YYYY-MM-DD HH24:MI:SS') AS decided_at
-  FROM APP.decision ORDER BY decision_id DESC FETCH FIRST 3 ROWS ONLY;
-SQL
-```
-
-Prove it's tamper-evident (the big "wow"):
+The three tasks closed with the human's call:
 
 ```bash
-podman exec -i paf-oracle-free-26ai sqlplus -s -L / as sysdba <<'SQL'
-ALTER SESSION SET CONTAINER=FREEPDB1;
-SET SERVEROUTPUT ON
-
--- both are rejected: ORA-05715 operation not allowed on the blockchain table
-UPDATE APP.decision SET human_outcome='DECLINE'
- WHERE decision_id = (SELECT MAX(decision_id) FROM APP.decision);
-DELETE FROM APP.decision
- WHERE decision_id = (SELECT MAX(decision_id) FROM APP.decision);
-
--- cryptographic chain verification of every row
-DECLARE v NUMBER; BEGIN
-  DBMS_BLOCKCHAIN_TABLE.VERIFY_ROWS(schema_name => 'APP', table_name => 'DECISION',
-    number_of_rows_verified => v, verify_signature => FALSE);
-  DBMS_OUTPUT.PUT_LINE('rows cryptographically verified: ' || v);
-END;
-/
-SQL
+python manage.py cloud sql "SELECT task_id, state, human_outcome, human_user, human_note FROM APP.hitl_task WHERE state='CLOSED' ORDER BY task_id DESC FETCH FIRST 3 ROWS ONLY"
 ```
 
-Expect two `ORA-05715` rejections (the record can't be altered or deleted)
-followed by `rows cryptographically verified: N`.
+One immutable decision row per closed case:
+
+```bash
+python manage.py cloud sql "SELECT decision_id, application_id, agent_recommendation, human_outcome, human_user, TO_CHAR(decided_at,'YYYY-MM-DD HH24:MI:SS') AS decided_at FROM APP.decision ORDER BY decision_id DESC FETCH FIRST 3 ROWS ONLY"
+```
+
+Prove it's tamper-evident (the big "wow"). An update is rejected:
+
+```bash
+python manage.py cloud sql "UPDATE APP.decision SET human_outcome='DECLINE' WHERE decision_id = (SELECT MAX(decision_id) FROM APP.decision)"
+```
+
+So is a delete:
+
+```bash
+python manage.py cloud sql "DELETE FROM APP.decision WHERE decision_id = (SELECT MAX(decision_id) FROM APP.decision)"
+```
+
+Both print `ORA-05715: operation not allowed on the blockchain or immutable
+table`. Then verify the cryptographic chain of every row:
+
+```bash
+python manage.py cloud sql "DECLARE v NUMBER; BEGIN DBMS_BLOCKCHAIN_TABLE.VERIFY_ROWS(schema_name => 'APP', table_name => 'DECISION', number_of_rows_verified => v, verify_signature => FALSE); DBMS_OUTPUT.PUT_LINE('rows cryptographically verified: ' || v); END;"
+```
+
+Expect `rows cryptographically verified: N`.
 
 ---
 
@@ -270,16 +236,11 @@ agent collects amount/term/purpose before evaluating), clear a clean customer's
 seeded application first — here, Mia:
 
 ```bash
-podman exec -i paf-oracle-free-26ai sqlplus -s -L / as sysdba <<'SQL'
-ALTER SESSION SET CONTAINER=FREEPDB1;
-DELETE FROM APP.loan_application_document WHERE application_id IN
-  (SELECT la.application_id FROM APP.loan_application la
-     JOIN APP.customer c ON c.customer_id = la.customer_id
-    WHERE c.full_name = 'Mia Salaried');
-DELETE FROM APP.loan_application WHERE customer_id =
-  (SELECT customer_id FROM APP.customer WHERE full_name = 'Mia Salaried');
-COMMIT;
-SQL
+python manage.py cloud sql "DELETE FROM APP.loan_application_document WHERE application_id IN (SELECT la.application_id FROM APP.loan_application la JOIN APP.customer c ON c.customer_id = la.customer_id WHERE c.full_name = 'Mia Salaried')"
+```
+
+```bash
+python manage.py cloud sql "DELETE FROM APP.loan_application WHERE customer_id = (SELECT customer_id FROM APP.customer WHERE full_name = 'Mia Salaried')"
 ```
 
 Then log in as **Mia Salaried** and open with:
@@ -298,9 +259,5 @@ The agent records the new application, then evaluates it → **APPROVE**.
 - **Not wired into the agent flow:** RAG policy citations (`search_policy`) and
   similar-case lookup (`search_similar_cases`) — don't expect them in replies.
 - **Frontends:** customer chat and backoffice are separate SPAs (`customer-ui`,
-  `backoffice-ui`), served behind one path-routed front door (Caddy) on `:5173` —
-  `/backoffice` to the reviewer app, everything else to the customer app.
-
-```
-
-```
+  `backoffice-ui`), served by nginx behind the load balancer — `/backoffice` to
+  the reviewer app, everything else to the customer app.

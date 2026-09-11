@@ -24,31 +24,23 @@ from fastmcp import FastMCP
 
 mcp = FastMCP("application-mcp")
 
-DB_DSN = os.getenv("DB_DSN") or (
-    f"{os.environ['DB_HOST']}:{os.environ['DB_PORT']}/{os.environ['DB_SERVICE']}"
-)
+DB_DSN = os.environ["DB_DSN"]
 DB_USER = os.environ["DB_USER"]
-TNS_ADMIN = os.getenv("TNS_ADMIN", "")
+TNS_ADMIN = os.environ["TNS_ADMIN"]
 DB_WALLET_PASSWORD = os.getenv("DB_WALLET_PASSWORD", "")
 DB_PASSWORD = os.environ["DB_PASSWORD"]
 
 def _connect():
-    """Open a database connection.
-
-    The local target reaches Oracle Free directly on host:port. Autonomous
-    Database is behind mTLS, so the wallet directory supplies both the alias in
-    DB_DSN and the certificates; TNS_ADMIN being set is what distinguishes them.
-    """
-    if TNS_ADMIN:
-        return oracledb.connect(
-            user=DB_USER, password=DB_PASSWORD, dsn=DB_DSN,
-            config_dir=TNS_ADMIN, wallet_location=TNS_ADMIN,
-            wallet_password=DB_WALLET_PASSWORD,
-        )
-    return oracledb.connect(user=DB_USER, password=DB_PASSWORD, dsn=DB_DSN)
+    """Open a database connection. Autonomous Database is behind mTLS, so the
+    wallet directory supplies both the alias in DB_DSN and the certificates."""
+    return oracledb.connect(
+        user=DB_USER, password=DB_PASSWORD, dsn=DB_DSN,
+        config_dir=TNS_ADMIN, wallet_location=TNS_ADMIN,
+        wallet_password=DB_WALLET_PASSWORD,
+    )
 
 
-_AUDIT_URL = os.getenv("BACKEND_URL", "http://application-backend:8090").rstrip("/") + "/v1/audit/tool-call"
+_AUDIT_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8090").rstrip("/") + "/v1/audit/tool-call"
 
 
 def _now():

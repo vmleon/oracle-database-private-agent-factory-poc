@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * Internal collector for the per-tool CHAT_WORKFLOW audit trail. The MCP tool wrappers POST
- * here after each call; the backend (which owns APP) writes the row. Compose-network only.
+ * here after each call; the backend (which owns APP) writes the row. Reachable only inside the tier.
  */
 @RestController
 @RequestMapping("/v1/audit")

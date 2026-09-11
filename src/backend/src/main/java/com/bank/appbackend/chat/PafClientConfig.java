@@ -34,7 +34,7 @@ public class PafClientConfig {
                 .setSslContext(sslContext)
                 .setHostnameVerifier(NoopHostnameVerifier.INSTANCE)
                 .build();
-        // A CHAT_WORKFLOW run chains 4 agents on the 72B vLLM; observed runs are 200-240s and
+        // A CHAT_FLOW turn runs several agents in sequence; long runs reach a few minutes and
         // creep higher under load. The socket read timeout must sit well above that or the PAF
         // call dies with "Read timed out" and the chat turn 502s. 8 min gives headroom.
         var connectionManager = PoolingHttpClientConnectionManagerBuilder.create()

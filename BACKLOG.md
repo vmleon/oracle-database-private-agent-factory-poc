@@ -9,13 +9,12 @@ then optional residuals.
 
 Branch: `dev/cloud-deployment`. Runbook: [`CLOUD.md`](CLOUD.md).
 
-The stack stands up: four computes, ADB on a private endpoint, a public load balancer serving HTTPS with a port-80 redirect, and a private one fronting the four MCP wrappers that run as systemd services on the `backend` tier. `manage.py` owns the whole lifecycle — `setup cloud`, `build`, `tf`, `cloud iam|plan|up|down|test`.
+The stack stands up and `manage.py cloud test` passes 11/11: four computes, ADB on a private endpoint, a public load balancer serving HTTPS with a port-80 redirect, and a private one fronting the four MCP wrappers that run as systemd services on the `backend` tier. `manage.py` owns the whole lifecycle — `setup`, `build`, `tf`, `cloud iam|plan|up|down|test`.
 
 Remaining:
 
-- **A clean end-to-end pass of `manage.py cloud test`.** The harness runs from the bastion and drives real agent turns; nothing has yet asserted a full happy-path tier on the cloud target.
-- **`RESEARCH_WORKFLOW` on cloud** — imported and linked the same way as `CHAT_FLOW`, once the chat flow passes.
-- **A rebuild from an empty compartment** with every fix in place, to confirm the runbook is complete rather than coaxed.
+- **A rebuild from an empty compartment** with every fix in place, to confirm the runbook is complete rather than coaxed. The backend's database user and the generation model were both corrected on the live instance after its first bootstrap; the templates carry the fixes, the rebuild proves them.
+- **`RESEARCH_WORKFLOW`** — imported and linked the same way as `CHAT_FLOW`.
 
 ## 2. Verify PAF's certificate at the load balancer
 
@@ -27,9 +26,9 @@ The front certificate is self-signed for the same reason a real one is not used:
 
 ## 3. Select AI as the cloud tool transport — on standby
 
-`docs/DESIGN.md §11` describes Select AI Tools reached through the Select AI Bridge node as the cloud-side equivalent of the MCP wrappers. The database is ready for it — `018` grants `AGENT_FACTORY` the four packages PAF checks for, and the resource principal is enabled — but `CHAT_FLOW` does not use it: the flow reads context through `banking-mcp.get_context` and calls `create_hitl_task` through `hitl-mcp`, on both targets.
+`docs/DESIGN.md §11` describes Select AI Tools reached through the Select AI Bridge node as the cloud-side equivalent of the MCP wrappers. The database is ready for it — `018` grants `AGENT_FACTORY` the four packages PAF checks for, and the resource principal is enabled — but `CHAT_FLOW` does not use it: the flow reads context through `banking-mcp.get_context` and calls `create_hitl_task` through `hitl-mcp`.
 
-Adopting it is a flow redesign rather than a port. It reopens `issues/02` (SQL Query nodes ignore bind variables and fail open), and the deterministic nodes that make the current flow safe would have to be rebuilt and revalidated against a different tool surface. Worth doing for a more ADB-native demo, once the cloud deployment runs what the flow does today.
+Adopting it is a flow redesign rather than a port. It reopens `issues/02` (SQL Query nodes ignore bind variables and fail open), and the deterministic nodes that make the current flow safe would have to be rebuilt and revalidated against a different tool surface. Worth doing for a more ADB-native demo.
 
 ## 4. XGBoost credit-scoring tool
 
@@ -76,7 +75,7 @@ Optional or alternative — none are blocking.
 
 ### 7.1 Flow export/import
 
-Flow export/import is a **UI operation** (Agent Builder → My Custom Flows) — intentionally **not** scripted in `manage.py`. The round-trip works and is documented (`LOCAL.md §5`). The residuals are operational: deps re-link by hand on import, imports arrive unpublished, and `.paf` is binary so not git-diffable.
+Flow export/import is a **UI operation** (Agent Builder → My Custom Flows) — intentionally **not** scripted in `manage.py`. The round-trip works and is documented (`CLOUD.md §9`). The residuals are operational: deps re-link by hand on import, imports arrive unpublished, and `.paf` is binary so not git-diffable.
 
 ### 7.2 Deterministic `upsert` via marker — only if needed
 
@@ -86,14 +85,14 @@ The deterministic **read** path is shipped; `upsert_application` is **agentic on
 
 The **Oracle PL/SQL Executor node** runs only routines visible in the connected schema metadata, with bound named/positional args, overloads, `OUT`/`IN OUT`, and an optional auto-commit toggle — a first-class, fail-secure DB path. It does not fix the unsafe SQL Query node (`issues/02` stays open as a platform caveat), but the flow can stop depending on MCP shims for DB access.
 
-- **Code.** Spike: call `AGENT_TOOLS.PKG_AGENT_TOOLS.*` (grants in Liquibase 011/012) directly from a PL/SQL Executor node and evaluate retiring the `banking-mcp` / `application-mcp` wrapper containers (fewer moving parts). Keep MCP if the node can't resolve the token-keyed read/write cleanly — decide from the spike, don't rip out MCP blind.
-- **Docs.** If adopted: trim the `banking-mcp` / `application-mcp` registrations from `LOCAL.md §4`, update the tool-channel description in `docs/DESIGN.md`, and note in `issues/02` that the flow does not touch the SQL Query node.
+- **Code.** Spike: call `AGENT_TOOLS.PKG_AGENT_TOOLS.*` (grants in Liquibase 011/012) directly from a PL/SQL Executor node and evaluate retiring the `banking-mcp` / `application-mcp` wrappers (fewer moving parts). Keep MCP if the node can't resolve the token-keyed read/write cleanly — decide from the spike, don't rip out MCP blind.
+- **Docs.** If adopted: trim the `banking-mcp` / `application-mcp` registrations from the `paf bootstrap` sheet, update the tool-channel description in `docs/DESIGN.md`, and note in `issues/02` that the flow does not touch the SQL Query node.
 - **Guide steps.** Register a Database datasource for the node, select the approved routines, map the bound arguments; document the auto-commit setting for the `upsert` write.
 
 ### 7.4 Agent observability / OTel tracing — mitigates `issues/04` and `issues/08`
 
 PAF's OTel tracing (Arize Phoenix / Comet Opik / Langfuse) captures spans for flow steps, LLM calls, and tool executions, plus a Collect-Diagnostics ZIP. This is the missing diagnostic surface for the `max_iterations=5` cliff and the ID-only validator errors — neither root cause is fixed in code.
 
-- **Code.** Optional: add a local trace-collector service (e.g. Phoenix or Langfuse) to `deploy/podman/compose.local.yml` if traces are wanted without a cloud account; otherwise no code.
-- **Docs.** Add an "enable tracing" recipe to `docs/TROUBLESHOOT.md` and an optional step in `LOCAL.md`. Note in `issues/04` / `issues/08` that tracing makes the conditions observable even though the messages/cap are unchanged.
+- **Code.** Optional: a trace-collector service (e.g. Phoenix or Langfuse) on the `ops` tier; otherwise no code.
+- **Docs.** Add an "enable tracing" recipe to `docs/TROUBLESHOOT.md` and an optional step in `CLOUD.md`. Note in `issues/04` / `issues/08` that tracing makes the conditions observable even though the messages/cap are unchanged.
 - **Guide steps.** PAF Settings → tracing provider → point at the collector, enable masking; show where a `CHAT_FLOW` run's per-tool spans land.

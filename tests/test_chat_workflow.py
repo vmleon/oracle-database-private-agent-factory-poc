@@ -5,8 +5,7 @@ sources of deny / warn signals. Four security tests verify the fail-secure
 error path, the token→customer binding (the token's application_id is ignored),
 and prompt-injection resistance.
 
-Each test makes a single chat call (~40-90s on vLLM 72B). Full suite is
-~7-10 minutes wall clock. For fast iteration: `pytest -k <id>`.
+Each test makes a single chat call. Full suite is a few minutes wall clock. For fast iteration: `pytest -k <id>`.
 
 Scenario customers (from the synthetic seed in Liquibase 010 / 016). Tests
 address each by full_name and resolve its (customer_id, application_id) at

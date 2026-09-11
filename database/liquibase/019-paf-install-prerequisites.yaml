@@ -1,11 +1,8 @@
 databaseChangeLog:
   # Two things PAF's install wizard checks before it will accept the database
   # connection. Neither is in the kit's "Creating Database User" instructions.
-  #
-  # On the local target both are applied as SYSDBA by `manage.py local
-  # provision`, because SYSTEM cannot grant a SYS object. Autonomous Database
-  # has no SYSDBA, but ADMIN can grant it, so on this target they belong in the
-  # changelog like everything else.
+  # Both are SYS objects; Autonomous Database has no SYSDBA, but ADMIN can
+  # grant them, so they belong in the changelog like everything else.
 
   - changeSet:
       id: 019-grant-v-parameter-adb

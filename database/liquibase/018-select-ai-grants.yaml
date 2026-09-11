@@ -6,10 +6,6 @@ databaseChangeLog:
   # user, and Liquibase connects as ADMIN — objects it created would be
   # invisible to PAF, which connects as AGENT_FACTORY. PAF creates both through
   # its own UI, as itself; this changelog grants it the privileges to do so.
-  #
-  # Oracle Database Free rejects a custom provider_endpoint pre-flight
-  # (ORA-20401), so none of this applies to the local target, which reaches the
-  # same AGENT_TOOLS package through the MCP wrapper containers instead.
 
   - changeSet:
       id: 018-enable-resource-principal
@@ -61,7 +57,7 @@ databaseChangeLog:
       author: paf-poc
       context: adb
       # The Select AI agent tools call this package as AGENT_FACTORY, so the
-      # cloud tool channel needs the same EXECUTE the local MCP wrappers use.
+      # Select AI channel needs the same EXECUTE the MCP wrappers use.
       changes:
         - sql:
             sql: |-

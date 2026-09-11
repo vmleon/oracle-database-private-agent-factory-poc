@@ -1,4 +1,4 @@
-# Agent Builder Agent node can't request structured / constrained LLM output, though Wayflow + vLLM support it
+# Agent Builder Agent node can't request structured / constrained LLM output, though Wayflow and the model backends support it
 
 **Severity: low** — a markdown contract + a deterministic Condition gate is a working alternative (used in `CHAT_FLOW`). This is a robustness/ergonomics gap, not a blocker.
 
@@ -9,7 +9,7 @@ PAF's Agent Builder "Agent" node exposes only: LLM, tools, sub-agents, custom in
 The capability exists one layer down and is simply not surfaced:
 
 - The vendored **Wayflow** runtime builds an OpenAI `response_format: {type: json_schema}` request when a prompt carries a response format, and merges arbitrary generation params via `LlmGenerationConfig.extra_args`.
-- The configured backend, **vLLM**, supports structured outputs (`response_format` / guided decoding) natively.
+- The model backends PAF supports (OCI Generative AI, vLLM, OpenAI) accept structured outputs (`response_format` / guided decoding) natively.
 
 But the PAF Agent node passes **only `temperature`** into the generation config, so none of it is reachable from the builder.
 
@@ -18,7 +18,7 @@ Consequence: an agent whose final message must follow a fixed shape (our `Evalua
 ## Reproduce
 
 1. Open any Agent node in Agent Builder; inspect its config — 7 fields, none for output schema / response format (no advanced section either).
-2. LLM Management → open a vLLM LLM Configuration — no advanced / extra generation-params field.
+2. LLM Management → open any LLM Configuration — no advanced / extra generation-params field.
 3. Hand-edit an exported flow JSON to add a `response_format` field to the Agent node `template`, re-import via `importAgentIrFlow` — it imports without error, but the field is silently ignored at run time (the executor never reads it).
 
 ## Source confirmation

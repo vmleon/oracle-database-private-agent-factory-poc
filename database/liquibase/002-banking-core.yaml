@@ -1,8 +1,8 @@
 databaseChangeLog:
   # Banking core schema under APP. Tables and FKs follow the sketch in
   # docs/DECISIONING-ENGINE-USE-CASE.md. JSON columns use Oracle 21c+
-  # native JSON (binary OSON); requires max_string_size=EXTENDED which the
-  # podman init-script enforces at first boot.
+  # native JSON (binary OSON); requires max_string_size=EXTENDED, which
+  # Autonomous Database sets.
   #
   # Decisioning-specific tables (decision Blockchain Table, decision_audit,
   # research_audit, hitl_task) come in 003-decisioning-audit-hitl.yaml;

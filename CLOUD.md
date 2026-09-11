@@ -7,8 +7,7 @@ from the OCI Generative AI service.
 Nothing in the deployment stores an API key: the `paf` compute calls Generative
 AI as an **instance principal**, and the database as a **resource principal**.
 
-The design behind it is [`docs/DEPLOYMENT.md §4`](docs/DEPLOYMENT.md). For the
-local runbook, see [`LOCAL.md`](LOCAL.md).
+The design behind it is [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 
 ## 1. Prerequisites
 
@@ -36,13 +35,12 @@ Also required:
 
 - A profile in `~/.oci/config` for the workload compartment, and one with
   tenancy-admin rights for step 5. They may be the same profile.
-- The **x86_64** PAF kit in `paf/dist/` — the cloud computes are AMD, so the
-  ARM64 kit used locally will not run. See [`paf/dist/README.md`](paf/dist/README.md).
+- The **x86_64** PAF kit in `paf/dist/`. See [`paf/dist/README.md`](paf/dist/README.md).
 
-## 2. `setup cloud`
+## 2. `setup`
 
 ```bash
-python manage.py setup cloud
+python manage.py setup
 ```
 
 Discovers rather than assumes: probes every subscribed region for Generative AI,
@@ -53,7 +51,7 @@ model whose width does not match the `VECTOR` width in the changelog.
 
 Expect: `.env` with `DEPLOYMENT_TARGET=cloud`, generated ADB passwords, and both model ids.
 
-To change the generation model on a running install, re-run `setup cloud`, then
+To change the generation model on a running install, re-run `setup`, then
 push the new id to PAF's `gen-model` configuration:
 
 ```bash
@@ -195,7 +193,7 @@ after the database is gone. The IAM root is left alone for the next deployment.
 
 ```bash
 source venv/bin/activate
-python manage.py setup cloud
+python manage.py setup
 python manage.py build
 python manage.py tf
 python manage.py cloud iam

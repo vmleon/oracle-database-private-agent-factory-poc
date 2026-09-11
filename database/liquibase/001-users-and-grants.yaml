@@ -1,29 +1,8 @@
 databaseChangeLog:
-  # The only file whose SQL differs between the two targets. A changeset with
-  # no context runs everywhere; `context: local` and `context: adb` mark the
-  # pairs that diverge, so `--contexts=local` and `--contexts=adb` each select
-  # one half. Context is a runtime filter and is not part of a changeset's
-  # checksum, so tagging an already-applied changeset does not invalidate it.
-  #
-  # What actually differs: Oracle Database Free keeps application objects in
-  # the USERS tablespace, Autonomous Database in DATA; and ADB creates database
-  # links through DBMS_CLOUD_ADMIN rather than the CREATE DATABASE LINK
-  # privilege.
-
-  - changeSet:
-      id: 001-create-app-user
-      author: paf-poc
-      context: local
-      changes:
-        - sql:
-            sql: |-
-              CREATE USER APP IDENTIFIED BY "${db_password}"
-                DEFAULT TABLESPACE USERS
-                QUOTA UNLIMITED ON USERS
-        - sql:
-            sql: |-
-              GRANT CREATE SESSION, CREATE TABLE, CREATE VIEW, CREATE SEQUENCE,
-                    CREATE PROCEDURE, CREATE TRIGGER, CREATE TYPE TO APP
+  # Application objects live in the DATA tablespace, and database links are
+  # created through DBMS_CLOUD_ADMIN rather than the CREATE DATABASE LINK
+  # privilege, so every user here is created the Autonomous Database way.
+  # `context: adb` is a runtime filter selected by `--contexts=adb,seed`.
 
   - changeSet:
       id: 001-create-app-user-adb
@@ -41,20 +20,6 @@ databaseChangeLog:
                     CREATE PROCEDURE, CREATE TRIGGER, CREATE TYPE TO APP
 
   - changeSet:
-      id: 001-create-reporting-user
-      author: paf-poc
-      context: local
-      changes:
-        - sql:
-            sql: |-
-              CREATE USER REPORTING IDENTIFIED BY "${db_password}"
-                DEFAULT TABLESPACE USERS
-                QUOTA UNLIMITED ON USERS
-        - sql:
-            sql: |-
-              GRANT CREATE SESSION, CREATE VIEW TO REPORTING
-
-  - changeSet:
       id: 001-create-reporting-user-adb
       author: paf-poc
       context: adb
@@ -67,21 +32,6 @@ databaseChangeLog:
         - sql:
             sql: |-
               GRANT CREATE SESSION, CREATE VIEW TO REPORTING
-
-  - changeSet:
-      id: 001-create-agent-tools-user
-      author: paf-poc
-      context: local
-      changes:
-        - sql:
-            sql: |-
-              CREATE USER AGENT_TOOLS IDENTIFIED BY "${db_password}"
-                DEFAULT TABLESPACE USERS
-                QUOTA UNLIMITED ON USERS
-        - sql:
-            sql: |-
-              GRANT CREATE SESSION, CREATE PROCEDURE, CREATE TABLE,
-                    CREATE TYPE TO AGENT_TOOLS
 
   - changeSet:
       id: 001-create-agent-tools-user-adb
@@ -99,21 +49,6 @@ databaseChangeLog:
                     CREATE TYPE TO AGENT_TOOLS
 
   - changeSet:
-      id: 001-create-agent-factory-user
-      author: paf-poc
-      context: local
-      changes:
-        - sql:
-            sql: |-
-              CREATE USER AGENT_FACTORY IDENTIFIED BY "${db_password}"
-                DEFAULT TABLESPACE USERS
-                QUOTA UNLIMITED ON USERS
-        - sql:
-            sql: |-
-              GRANT CREATE SESSION, CREATE TABLE, CREATE VIEW, CREATE SEQUENCE,
-                    CREATE PROCEDURE, CREATE TRIGGER, CREATE TYPE TO AGENT_FACTORY
-
-  - changeSet:
       id: 001-create-agent-factory-user-adb
       author: paf-poc
       context: adb
@@ -127,24 +62,6 @@ databaseChangeLog:
             sql: |-
               GRANT CREATE SESSION, CREATE TABLE, CREATE VIEW, CREATE SEQUENCE,
                     CREATE PROCEDURE, CREATE TRIGGER, CREATE TYPE TO AGENT_FACTORY
-
-  - changeSet:
-      id: 002-grant-agent-factory-paf
-      author: paf-poc
-      context: local
-      # Extra grants required by Private Agent Factory (README.txt "Creating
-      # Database User" in the kit tarball). Kept as a separate changeset so the
-      # create-user checksum is preserved on databases where it has already run.
-      changes:
-        - sql:
-            sql: |-
-              GRANT CONNECT, RESOURCE,
-                    CREATE SYNONYM, CREATE DATABASE LINK,
-                    CREATE ANY INDEX, INSERT ANY TABLE
-                TO AGENT_FACTORY
-        - sql:
-            sql: |-
-              GRANT READ, WRITE ON DIRECTORY DATA_PUMP_DIR TO AGENT_FACTORY
 
   - changeSet:
       id: 002-grant-agent-factory-paf-adb

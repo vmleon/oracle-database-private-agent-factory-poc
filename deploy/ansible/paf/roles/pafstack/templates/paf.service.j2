@@ -4,7 +4,7 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-# Mirrors the local compose service that runs this same image. The image's
+# Runs the kit's image the way its own deploy script does. The image's
 # default entrypoint expects /etc/agent-factory/runtime.env and exits without
 # it; startup.sh is the path the kit actually supports, and /mount is where it
 # keeps its state. The kit's other bind mount, /dev-shared, is a developer

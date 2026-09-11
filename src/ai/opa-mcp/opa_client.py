@@ -8,8 +8,8 @@ MCP tools return the rule value directly.
 Rules return `undefined` when no clause matches. By default the
 result key is then absent — we map that to `None`.
 
-OPA URL is `$OPA_URL` (default http://opa:8181) so the same client
-works in compose (service-DNS) and ad-hoc local runs.
+OPA URL is `$OPA_URL` (default http://127.0.0.1:8181, OPA on the same
+host).
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from typing import Any
 
 import httpx
 
-OPA_URL = os.getenv("OPA_URL", "http://opa:8181").rstrip("/")
+OPA_URL = os.getenv("OPA_URL", "http://127.0.0.1:8181").rstrip("/")
 _TIMEOUT = float(os.getenv("OPA_TIMEOUT", "5"))
 
 

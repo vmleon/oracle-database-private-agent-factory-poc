@@ -11,9 +11,8 @@ oraclepki_url: "https://repo1.maven.org/maven2/com/oracle/database/security/orac
 wallet_dir: /opt/paf-poc/wallet
 liquibase_dir: /opt/liquibase
 changelog_dir: /home/opc/artifact/roles/opstools/files/database/liquibase
-# Selects the ADB half of the shared changelog, plus the seed data — the
-# cloud deployment is a demo, so it comes up with the same synthetic dataset
-# the local one has. Drop `,seed` for an empty schema.
+# Selects the ADB-tagged changesets plus the seed data — the deployment is a
+# demo, so it comes up with the synthetic dataset. Drop `,seed` for an empty schema.
 liquibase_contexts: "adb,seed"
 
 tests_dir: /home/opc/artifact/roles/opstools/files/tests

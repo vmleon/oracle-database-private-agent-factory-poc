@@ -2,8 +2,8 @@ import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 
 // The backoffice is served behind the proxy under the /backoffice path prefix,
-// so its built asset URLs must carry that base. nginx maps the prefix to the
-// static bundle (see nginx.conf).
+// so its built asset URLs must carry that base. The frontend tier's nginx maps
+// the prefix to the static bundle.
 const TEN_MIN = 600_000;
 
 export default defineConfig({

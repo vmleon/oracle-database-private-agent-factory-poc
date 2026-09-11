@@ -13,12 +13,11 @@ Three principles shape the whole design:
 2. **The database is the memory, loaded once deterministically.** PAF runs the flow statelessly per turn — agents have no memory between turns. A **Deterministic MCP node** calls `get_context(session_token)` at flow start with the token **wired** (Regex extractor → Prompt JSON-wrap → Type Convert → Deterministic MCP), so the authoritative DB facts enter the flow as data and **no model ever transcribes the opaque token on a read path** — transcription is what corrupts it, and the streaming layer is known to drop or duplicate a character in an agentic tool-call argument (see [`docs/superpowers/specs/2026-06-04-deterministic-get-context-design.md`](../../docs/superpowers/specs/2026-06-04-deterministic-get-context-design.md)). Anything that must survive to the next turn is written to the DB through a tool (`upsert_application`, `create_hitl_task`).
 3. **A pure function of values already in the database belongs in a deterministic node, not in a model.** Eligibility, the required-document set and the employer registry lookup are all pure functions of `context`, so they are `banking-mcp` `*_for_session` tools that take only the token. Every fact the decision rests on is computed server-side before any model runs, and no model ever copies an employer name or files a `dti` value where a policy expects it.
 
-This is the **flow-build SSOT**. Architecture rationale: [`docs/DESIGN.md`](../../docs/DESIGN.md); deploy + register the tools: [`LOCAL.md`](../../LOCAL.md).
+This is the **flow-build SSOT**. Architecture rationale: [`docs/DESIGN.md`](../../docs/DESIGN.md); deploy + register the tools: [`CLOUD.md`](../../CLOUD.md).
 
 Source-of-truth references:
 
-- Manager/sub-agent topology, tool table and gate word: [`docs/superpowers/specs/2026-08-25-chat-flow-manager-subagents-design.md`](../../docs/superpowers/specs/2026-08-25-chat-flow-manager-subagents-design.md)
-- Design + decisions (reason codes, customer hint): [`docs/superpowers/specs/2026-05-30-loan-origination-chat-design.md`](../../docs/superpowers/specs/2026-05-30-loan-origination-chat-design.md)
+- Manager/sub-agent topology and the multi-agent rules: [`docs/DESIGN.md §6.5`](../../docs/DESIGN.md)
 - Decision contract + tool inventory: [`docs/DECISIONING-ENGINE-USE-CASE.md`](../../docs/DECISIONING-ENGINE-USE-CASE.md)
 - PAF product gaps that shape this design: [`issues/02-sql-query-no-bind-variables.md`](../../issues/02-sql-query-no-bind-variables.md), [`issues/03-no-flow-start-inputs.md`](../../issues/03-no-flow-start-inputs.md), [`issues/04-agent-max-iterations-5-cap.md`](../../issues/04-agent-max-iterations-5-cap.md), [`issues/05-condition-edge-couples-control-and-data.md`](../../issues/05-condition-edge-couples-control-and-data.md), [`issues/08-non-descriptive-flow-validator-error.md`](../../issues/08-non-descriptive-flow-validator-error.md), [`issues/11-agent-custom-instructions-placeholders.md`](../../issues/11-agent-custom-instructions-placeholders.md)
 
@@ -117,7 +116,7 @@ The [node graph](#node-graph) above is the map; this section is the node-by-node
 - **A Deterministic MCP node escapes the inner quotes of its result.** It delivers its `Message` as `{"message":"<the tool's JSON>"}` with the inner quotes escaped (`{"message":"{\"customer\":{\"id\":1,…}}"}`), so **any quote-anchored regex matches nothing**. A gate matches a **bare word**: G0 matches `customer`, G3 matches `GATE_OK`.
 - There are **three terminal Chat outputs**, one per branch — never converge two branches onto one node (Wayflow rejects it, [`issues/08`](../../issues/08-non-descriptive-flow-validator-error.md)). Close each Condition's `False` branch with its own Chat output **immediately**, in the step right after the gate.
 
-All three agents use LLM Configuration **`gen-model`** (the generic generative config registered at install — see [LOCAL.md §3](../../LOCAL.md#3-install-paf)) at temperature **`0.01`**. An agent's tool surface is whatever MCP/REST nodes you wire to it (PAF has no per-tool filter) — wire each agent only the tools its step lists. The manager gets none, so `create_hitl_task` is unreachable from the intake path and `upsert_application` is unreachable from the decision path.
+All three agents use LLM Configuration **`gen-model`** (the generic generative config registered at install — `paf bootstrap` step 4) at temperature **`0.01`**. An agent's tool surface is whatever MCP/REST nodes you wire to it (PAF has no per-tool filter) — wire each agent only the tools its step lists. The manager gets none, so `create_hitl_task` is unreachable from the intake path and `upsert_application` is unreachable from the decision path.
 
 In each step's wiring diagram, the edge label reads `<source port> → <target port>`; dashed edges are branches you wire in a later step (the step number is on the label).
 
@@ -644,7 +643,7 @@ Two portable forms of this flow live in the repo, and they must agree.
 
 **This blueprint is the record.** It is what the flow is rebuilt from after a fresh install, and the only form that carries the reasoning behind each node.
 
-**[`CHAT_FLOW.paf`](CHAT_FLOW.paf) is a snapshot of it**, exported from the canvas and password-protected. Import it through Agent Builder → **My Custom Flows** → **Import**, with the bundle password `WelcomeAmigo123!`. Register the MCP servers, the datasources and the `gen-model` LLM first ([LOCAL.md §3–§4](../../LOCAL.md#3-install-paf)) — the flow references them by name — then run `python manage.py paf link-flow` to rebind every MCP node to your install's own server ids, and publish. Full runbook: [LOCAL.md §5](../../LOCAL.md#5-load-chat_flow).
+**[`CHAT_FLOW.paf`](CHAT_FLOW.paf) is a snapshot of it**, exported from the canvas and password-protected. Import it through Agent Builder → **My Custom Flows** → **Import**, with the bundle password `WelcomeAmigo123!`. Register the MCP servers, the datasources and the `gen-model` LLM first (`paf bootstrap` steps 4–8) — the flow references them by name — then run `python manage.py paf link-flow` to rebind every MCP node to your install's own server ids, and publish. Full runbook: [CLOUD.md §9](../../CLOUD.md#9-load-chat_flow).
 
 Re-export whenever you change the canvas and commit the bundle together with the blueprint edit that describes the same change. A bundle that disagrees with the blueprint is worse than no bundle: it silently reinstates whatever the blueprint says was fixed.
 
@@ -691,13 +690,13 @@ Non-obvious rules and limits that shape the build. Skim before iterating.
 
 ### Agent / LLM behaviour
 
-- **Use a strong tool-calling generative model** (registered as `gen-model`; validated on `Qwen/Qwen2.5-72B-Instruct-AWQ` — see [LOCAL.md §3 Recommended models](../../LOCAL.md#3-install-paf)). Smaller / heavily-quantised models are not recommended — they route to the wrong worker and are less reliable under prompt injection.
+- **Use a strong tool-calling generative model** (registered as `gen-model`; validated on `openai.gpt-oss-120b` on OCI Generative AI). Smaller / heavily-quantised models are not recommended — they route to the wrong worker and are less reliable under prompt injection. On OCI Generative AI the model must also be one PAF streams end to end: `cohere.*` and `meta.*` are not ([`issues/14`](../../issues/14-oci-genai-stream-parsers-incomplete.md)).
 - **The token hops a model copies are the flow's only fragile transcription.** The manager hands it to the worker verbatim and the worker passes it straight to its tool; both instruction blocks pin character-for-character copying, because the streaming layer drops or duplicates a character in an agentic tool-call argument. Every read path takes the token by wire instead. A corrupted token resolves to no session and the tool fails closed — it costs the turn, never correctness.
 - **A wired tool gets called even when the instructions say not to.** The narrow per-agent tool surface is the only enforceable boundary — DB constraints are the final net.
 - **The customer-facing reply contains no internal numbers, ids, tiers, adverse reasons or braces.** The three tier sentences, `Intake`'s questions and the apology are the only text the customer ever sees.
 
 ### Schema / data
 
-- **After a fresh `local down --purge && local up`, customer IDs are 1–11** plus the seeded no-application customer. Application IDs are deterministic from changelog order; verify with the SQL in [Test prompts](#test-prompts).
+- **On a fresh schema, customer IDs are 1–11** plus the seeded no-application customer. Application IDs are deterministic from changelog order; verify with the SQL in [Test prompts](#test-prompts).
 - **`get_context.derived` carries `dti` / `pti` / `monthly_payment`** computed server-side (`banking-mcp`), only when the application is complete; `evaluate_eligibility_for_session` reads the same values and passes them to OPA — both come from one server-side computation, so they never disagree.
 - **Enum-typed DB columns are uppercase (`SALARIED`, `RESIDENT`); OPA tool enums are lowercase.** `get_context` lowercases them, so the deterministic nodes hand OPA what it expects.

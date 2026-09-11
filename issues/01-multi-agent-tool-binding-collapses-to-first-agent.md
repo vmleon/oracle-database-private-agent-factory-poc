@@ -83,7 +83,7 @@ Not the cause / red herrings ruled out: wiring (correct), method/tool selection
 (correct), MCP reachability (every server reachable + correct tools direct and
 via proxy), publish/unpublish (just a DB flag), and the `mcp_auth_<n>` wallet
 "Could not get secret" / "Failed to retrieve token for MCP server" errors —
-benign, local MCP servers need no auth (`token_present=False` still works).
+benign, in-VCN MCP servers need no auth (`token_present=False` still works).
 
 ## Suggested fix
 

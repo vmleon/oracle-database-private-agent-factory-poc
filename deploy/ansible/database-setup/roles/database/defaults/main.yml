@@ -1,6 +1,0 @@
-ojdbc_version: 23.9.0.25.07
-ojdbc_url: "https://repo1.maven.org/maven2/com/oracle/database/jdbc/ojdbc11/{{ ojdbc_version }}/ojdbc11-{{ ojdbc_version }}.jar"
-liquibase_cache_dir: "{{ lookup('env', 'HOME') }}/.cache/paf-poc/liquibase-libs"
-liquibase_changelog_dir: "{{ project_root }}/database/liquibase"
-# Contexts select the local half of the shared changelog, plus the seed data.
-liquibase_contexts: "local,seed"
