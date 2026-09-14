@@ -1081,6 +1081,61 @@ while True:
     console.print(out or "[dim]done[/dim]")
 
 
+@cloud.command("reset")
+def cloud_reset() -> None:
+    """Empty the reviewer queue, both chat histories, the login sessions and the
+    tool traces, so a test run or a demo starts from the seeded state.
+
+    The seeded customers and their applications are untouched, so a customer
+    already processed can be run again. APP.decision is left alone: it is a
+    blockchain table declared NO DELETE LOCKED, and outliving a reset is the
+    property the demo exists to show.
+    """
+    _ensure_env()
+    script = """
+import json, oracledb
+p = json.load(open("/home/opc/ansible_params.json"))
+con = oracledb.connect(user="ADMIN", password=p["adb_admin_password"], dsn=p["adb_service"],
+                       config_dir="/opt/paf-poc/wallet", wallet_location="/opt/paf-poc/wallet",
+                       wallet_password=p["wallet_password"])
+cur = con.cursor()
+# Nothing references hitl_task, and the rest hang off customer and
+# loan_application, so no order is forced on these.
+for table in ("hitl_task", "chat_message", "auth_session", "decision_audit"):
+    cur.execute("DELETE FROM APP." + table)
+    print(table, cur.rowcount)
+con.commit()
+cur.execute("SELECT COUNT(*) FROM APP.decision")
+print("decision", cur.fetchone()[0])
+"""
+    console.print(Panel.fit("[bold]Resetting the demo data[/bold]"))
+    result = _ops_python(script)
+    if result.returncode != 0:
+        err = [l[l.index("ORA-"):] for l in (result.stderr or "").splitlines() if "ORA-" in l]
+        console.print("[red]" + (err[0] if err else "Reset failed.") + "[/red]")
+        console.print((result.stdout or "").strip()[:400])
+        sys.exit(1)
+
+    labels = {
+        "hitl_task": "reviewer queue",
+        "chat_message": "chat messages",
+        "auth_session": "login sessions",
+        "decision_audit": "tool traces",
+    }
+    kept = 0
+    for line in (result.stdout or "").splitlines():
+        name, _, count = line.rpartition(" ")
+        if name in labels:
+            console.print(f"  [cyan]{labels[name]:<16}[/cyan] {count} removed")
+        elif name == "decision":
+            kept = count
+    console.print(f"[green]\u2713[/green] Queue and chats are clear.")
+    console.print(
+        f"[dim]  APP.decision keeps its {kept} row(s) — a blockchain table declared "
+        f"NO DELETE LOCKED.[/dim]"
+    )
+
+
 @cloud.command("down")
 def cloud_down() -> None:
     """Destroy the workload stack. The IAM root is left alone for the next deployment."""

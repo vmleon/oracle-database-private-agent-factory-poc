@@ -251,29 +251,22 @@ if score ≥ 670 and clean).
 A run leaves four things behind: one `hitl_task` row per request (the reviewer
 queue), the chat transcripts both UIs render, a login session per customer you
 signed in as, and the per-tool trace rows behind **Tools called**. Clearing them
-hands the next demo an empty queue and empty chats. `cloud sql` runs one
-statement per call:
+hands the next demo an empty queue and empty chats:
 
 ```bash
-python manage.py cloud sql "DELETE FROM APP.hitl_task"
+python manage.py cloud reset
 ```
 
-```bash
-python manage.py cloud sql "DELETE FROM APP.chat_message"
+```
+  reviewer queue   42 removed
+  chat messages    4 removed
+  login sessions   8 removed
+  tool traces      395 removed
 ```
 
-```bash
-python manage.py cloud sql "DELETE FROM APP.auth_session"
-```
-
-```bash
-python manage.py cloud sql "DELETE FROM APP.decision_audit"
-```
-
-Nothing references `hitl_task`, and the other three hang off `customer` and
-`loan_application`, so the order does not matter. The seeded customers and their
-applications are untouched — §1 runs again straight away, and a customer you
-already processed can be demoed again because a fresh chat writes a new task.
+The seeded customers and their applications are untouched — §1 runs again
+straight away, and a customer you already processed can be demoed again because
+a fresh chat writes a new task.
 
 **`APP.decision` cannot be cleared, and that is the point.** It is declared:
 
