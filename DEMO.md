@@ -31,9 +31,22 @@ The verify steps run SQL through the bastion, one statement per command:
 python manage.py cloud sql "SELECT 'db ok' FROM dual"
 ```
 
+The customer chat reaches the flow through the application backend, which needs
+CHAT_FLOW's integration key. It is handed over once per deployment, after the
+flow is published:
+
+```bash
+python manage.py paf push-key
+```
+
 Good to know:
 
 - A full agent turn takes **~20–60 seconds**. Be patient.
+- **The agent writes each customer reply itself**, so the wording differs run to
+  run. What is fixed is the policy behind it: it may name the factor a decision
+  turned on — affordability, credit history, the employer's registration — and
+  never a number, score, threshold or internal code. Worth saying out loud during
+  the demo: the decision is computed in the database, the sentence is the model's.
 - `decision_audit` (the per-tool trace) is populated live and surfaces in the
   backoffice decision detail under **Tools called**.
 
@@ -103,8 +116,9 @@ Please review my loan application and submit it for processing.
 1. Open `https://<lb_ip>/`.
 2. Pick **Mia Salaried** from the login list.
 3. Paste the message above into the chat box and send.
-4. Wait **~20–60 s**. The reply ends with an _"under review / final approval"_-style
-   line. Behind the scenes the workflow pulls her context, computes policy
+4. Wait **~20–60 s**. She gets one warm sentence in the agent's own words — along
+   the lines of _"Your application looks good and is now with the team for final
+   checks."_ Behind the scenes the workflow pulls her context, computes policy
    (eligibility / AML / KYC / fair-lending) deterministically, verifies her
    employer, and writes an **APPROVE** recommendation to the queue.
 5. Log out.
@@ -115,7 +129,9 @@ Please review my loan application and submit it for processing.
 2. Pick **Kyle DormantEmployer**.
 3. Send the same message; wait **~20–60 s**.
 4. His employer is **dormant** in the Company Registry → the agent writes a
-   **REVIEW** recommendation.
+   **REVIEW** recommendation. He reads that a reviewer is taking a closer look at
+   his employer's trading status: the factor is named, the registry record behind
+   it is not.
 5. Log out.
 
 ### 3c. Eva LowScore → DECLINE
@@ -124,7 +140,9 @@ Please review my loan application and submit it for processing.
 2. Pick **Eva LowScore**.
 3. Send the same message; wait **~20–60 s**.
 4. Her credit score is **below the floor** → the agent writes a **DECLINE**
-   recommendation.
+   recommendation. She reads that it cannot go ahead as it stands and a specialist
+   will be in touch, with her credit history named as the factor — no score, no
+   floor, no policy threshold reaches her. The reviewer sees all of it.
 5. Log out.
 
 (Optional) confirm the three new tasks:

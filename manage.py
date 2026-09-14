@@ -6,6 +6,7 @@ import json
 import os
 import re
 import secrets
+import shlex
 import shutil
 import string
 import subprocess
@@ -944,6 +945,29 @@ def _backend_host() -> str:
     return f"backend.private.{vcn_dns}.oraclevcn.com"
 
 
+def _backend_ssh(command: str) -> subprocess.CompletedProcess:
+    """Run a shell command on the backend tier, jumping through the bastion.
+
+    The backend sits on the private subnet with no public address; the bastion
+    is the only host that reaches it, and both accept the same key.
+    """
+    ip = _tf_output("ops_public_ip")
+    if not ip:
+        console.print("[red]No bastion address.[/red] Apply deploy/tf/app first.")
+        sys.exit(1)
+    key_path = Path(os.getenv("OCI_SSH_KEY_PATH", "")).expanduser()
+    private_key = key_path.with_suffix("") if key_path.suffix == ".pub" else key_path
+    opts = ["-i", str(private_key), "-o", "StrictHostKeyChecking=no",
+            "-o", "UserKnownHostsFile=/dev/null", "-o", "LogLevel=ERROR"]
+    jump = " ".join(["ssh", "-i", shlex.quote(str(private_key)),
+                     "-o", "StrictHostKeyChecking=no",
+                     "-o", "UserKnownHostsFile=/dev/null",
+                     "-o", "LogLevel=ERROR", "-W", "%h:%p", f"opc@{ip}"])
+    argv = ["ssh", *opts, "-o", f"ProxyCommand={jump}", "-o", "ConnectTimeout=20",
+            f"opc@{_backend_host()}", command]
+    return subprocess.run(argv, capture_output=True, text=True, timeout=300)
+
+
 def _ops_push_tests() -> None:
     """Copy the repository's tests/ to the bastion, so a run exercises the current
     harness rather than the copy that shipped in the tier's artifact."""
@@ -992,7 +1016,9 @@ def cloud_test(pytest_args: tuple) -> None:
     remote_env = "/home/opc/.poc-test-env"
     # The unit tests import from src/, which stays on the host, so the bastion
     # runs the end-to-end suite only; extra arguments (-k, -x, -vv) pass through.
-    args = " ".join(["tests/test_chat_workflow.py", *pytest_args])
+    # Quoted: a multi-word selector (-k "alice or frank") reaches the bastion as
+    # one pytest argument instead of three shell words.
+    args = " ".join(["tests/test_chat_workflow.py", *(shlex.quote(a) for a in pytest_args)])
     script = (
         f"set -e; umask 077; cat > {remote_env} <<'EOF'\n{env_lines}\nEOF\n"
         f"cd /home/opc/artifact/roles/opstools/files && "
@@ -1429,6 +1455,58 @@ def paf_openapi() -> None:
 def _print_run(command: str) -> None:
     """Print a command to run in its own block, so it cannot be skimmed past."""
     console.print(f"\n  Run:\n\n      [bold cyan]{command}[/bold cyan]\n")
+
+
+@paf.command("push-key")
+def paf_push_key() -> None:
+    """Hand CHAT_FLOW's integration key to the backend tier and restart it.
+
+    The Spring backend calls the published flow with PAF_AGENT_ID and
+    PAF_API_KEY, and neither exists until the flow is published — long after
+    the tier built itself. They arrive as a systemd drop-in over the shipped
+    unit, so `api-key` is followed by this rather than by a rebuild.
+    """
+    _ensure_env()
+    for key in ("PAF_AGENT_ID", "PAF_API_KEY"):
+        if not os.getenv(key):
+            console.print(
+                f"[red]{key} is not set.[/red] Publish CHAT_FLOW, then run "
+                "[cyan]python manage.py paf api-key[/cyan]."
+            )
+            sys.exit(1)
+
+    script = f"""set -e
+sudo install -d -m 0755 /etc/systemd/system/paf-poc-backend.service.d
+sudo tee /etc/systemd/system/paf-poc-backend.service.d/paf-key.conf > /dev/null <<'UNIT'
+[Service]
+EnvironmentFile=/etc/paf-poc-backend.env
+UNIT
+sudo tee /etc/paf-poc-backend.env > /dev/null <<'ENVF'
+PAF_AGENT_ID={os.environ['PAF_AGENT_ID']}
+PAF_API_KEY={os.environ['PAF_API_KEY']}
+ENVF
+sudo chmod 0600 /etc/paf-poc-backend.env
+sudo systemctl daemon-reload
+sudo systemctl restart paf-poc-backend
+sleep 4
+systemctl is-active paf-poc-backend
+"""
+    console.print(f"Handing the key to [cyan]{_backend_host()}[/cyan] through the bastion")
+    result = _backend_ssh(script)
+    out = ((result.stderr or "") + (result.stdout or "")).strip()
+    if "not found" in out:
+        console.print(
+            "[red]The backend tier is still building.[/red] Its service unit does not "
+            "exist yet — wait for [cyan]/var/lib/paf-poc/bootstrap.ok[/cyan] on the "
+            "backend, then re-run."
+        )
+        sys.exit(1)
+    if result.returncode != 0 or "active" not in (result.stdout or ""):
+        console.print(f"[red]Could not hand over the key.[/red]\n{out[:400]}")
+        sys.exit(1)
+
+    console.print(f"[green]\u2713[/green] Backend restarted with agent {os.environ['PAF_AGENT_ID']}")
+    console.print("[dim]  The customer chat UI reaches CHAT_FLOW from here on.[/dim]")
 
 
 @paf.command("bootstrap")

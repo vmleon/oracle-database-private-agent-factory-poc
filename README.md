@@ -176,9 +176,9 @@ What's next, in order — the detail lives in [`BACKLOG.md`](BACKLOG.md):
 2. **Verify PAF's certificate at the load balancer.** The public listener serves HTTPS, but the hop from the load balancer to PAF is encrypted and unverified — PAF issues its certificate during its own install, so it cannot be trusted in the same apply. [`BACKLOG.md §2`](BACKLOG.md).
 3. **`RESEARCH_WORKFLOW` flow** — backoffice-only, broader read-only scope (full transactions, `decision_audit`, `policy_parameter_history`, RAG over `policy_corpus`). No side-effect tools. Reuses the pattern proven by `CHAT_FLOW`.
 4. **Document uploads + Case Research panel** — a chat upload endpoint that stores the file against the application, and the research panel in the reviewer portal once item 3 exists.
-5. **XGBoost credit-scoring tool** — trains in-database with OML4SQL on `REPORTING.cust_360` and exposes `predict_credit_score` to the agent. [`BACKLOG.md §4`](BACKLOG.md).
-6. **Product-recommendation workflow** — second flow over the same view set, consuming the credit-score tool as one of its signals. [`BACKLOG.md §5`](BACKLOG.md).
-7. **TOON feasibility spike** — independent, can happen in parallel. [`BACKLOG.md §6`](BACKLOG.md).
+5. **XGBoost credit-scoring tool** — trains in-database with OML4SQL on `REPORTING.cust_360` and exposes `predict_credit_score` to the agent. [`BACKLOG.md §5`](BACKLOG.md).
+6. **Product-recommendation workflow** — second flow over the same view set, consuming the credit-score tool as one of its signals. [`BACKLOG.md §6`](BACKLOG.md).
+7. **TOON feasibility spike** — independent, can happen in parallel. [`BACKLOG.md §7`](BACKLOG.md).
 
 Schema-side follow-ups deferred until a consumer needs them: vector index on `policy_corpus` / `case_history` (waits for the embedding pipeline that populates the `VECTOR(1024, FLOAT32)` columns via bge-m3) and the `policy_corpus` / sanctions seed data.
 
