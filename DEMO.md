@@ -246,6 +246,53 @@ if score ≥ 670 and clean).
 | **Jane UnknownEmployer** | **DECLINE**    | employer not found in the Company Registry          |
 | **Iris UnusableDocs**    | **DECLINE**    | document quality unusable                           |
 
+### Reset between demos
+
+A run leaves four things behind: one `hitl_task` row per request (the reviewer
+queue), the chat transcripts both UIs render, a login session per customer you
+signed in as, and the per-tool trace rows behind **Tools called**. Clearing them
+hands the next demo an empty queue and empty chats. `cloud sql` runs one
+statement per call:
+
+```bash
+python manage.py cloud sql "DELETE FROM APP.hitl_task"
+```
+
+```bash
+python manage.py cloud sql "DELETE FROM APP.chat_message"
+```
+
+```bash
+python manage.py cloud sql "DELETE FROM APP.auth_session"
+```
+
+```bash
+python manage.py cloud sql "DELETE FROM APP.decision_audit"
+```
+
+Nothing references `hitl_task`, and the other three hang off `customer` and
+`loan_application`, so the order does not matter. The seeded customers and their
+applications are untouched — §1 runs again straight away, and a customer you
+already processed can be demoed again because a fresh chat writes a new task.
+
+**`APP.decision` cannot be cleared, and that is the point.** It is declared:
+
+```sql
+NO DROP UNTIL 2555 DAYS IDLE
+NO DELETE LOCKED
+```
+
+Its rows outlive every reset short of destroying the database — exactly the
+property §5 demonstrates. Leave it alone: §5 reads the newest rows, and
+`VERIFY_ROWS` walks the whole chain, so a count that grows across demos reads as
+history rather than clutter. An empty `decision` table means `cloud down` then
+`cloud up`, and nothing less.
+
+One thing the reset does not undo: the from-scratch intake variant below deletes
+a customer's seeded application and lets the agent rebuild it from the
+conversation, so its amount, term and purpose are whatever that chat supplied.
+Only a rebuild restores the seeded values.
+
 ### Optional: "from-scratch intake" variant
 
 By default every demo customer already has a submitted application, so the agent
