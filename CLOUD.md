@@ -108,16 +108,28 @@ Cloud-init installs each tier from its own artifact and retries under systemd
 until it succeeds. The sentinel is written only after the play passes.
 
 ```bash
-ssh opc@$(terraform -chdir=deploy/tf/app output -raw ops_public_ip)
+python manage.py info
 ```
 
-On the bastion, check for the sentinel:
+It reads every tier's sentinel over the bastion in one pass:
+
+```
+Tiers
+  ✓ ops       ready
+  ✓ paf       ready
+  ✓ backend   ready
+  ✓ frontend  ready
+
+The stack is ready. Next: python manage.py paf bootstrap
+```
+
+Re-run it until all four are ready — cloud-init retries every 60 seconds, so a
+dependency that settles late costs one cycle rather than the tier. A tier still
+building after a few minutes is diagnosed on the instance itself:
 
 ```bash
-sudo test -f /var/lib/paf-poc/bootstrap.ok && echo built
+ssh opc@$(terraform -chdir=deploy/tf/app output -raw ops_public_ip)
 ```
-
-Until it appears, follow the play:
 
 ```bash
 sudo tail -f /var/log/paf-poc-bootstrap.log
@@ -191,8 +203,8 @@ python manage.py info
 ```
 
 Expect the load balancer address and the paths `/`, `/backoffice`, `/v1` and
-`/agentFactory`, all over HTTPS. The certificate is self-signed, so a browser
-warns once.
+`/agentFactory`, all over HTTPS, followed by the readiness of all four tiers.
+The certificate is self-signed, so a browser warns once.
 
 ## Teardown
 
@@ -254,7 +266,7 @@ The install sheet ends at PAF's UI; §9 onward — import, `link-flow`, publish,
 
 | Symptom                                            | Look at                                                                                              |
 | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| A tier never writes `bootstrap.ok`                 | `/var/log/<label>-bootstrap.log`, then `/home/opc/ansible-playbook.log` on that instance                |
+| A tier never writes `bootstrap.ok`                 | `manage.py info` names which one; then `/var/log/<label>-bootstrap.log` and `/home/opc/ansible-playbook.log` on that instance |
 | Model calls fail in PAF's LLM Management           | Step 5 was skipped or its IAM root was destroyed, or the connection names a different compartment from the one the policy grants |
 | The manager never delegates, or every turn is a JSON decode error | The generation model is a `cohere.*` or `meta.*` one — see [`docs/TROUBLESHOOT.md`](docs/TROUBLESHOOT.md) |
 | An MCP server will not connect                     | `paf trust-ca` and `paf allow-internal-mcp` (bootstrap steps 6 and 7) both have to run before the first registration |

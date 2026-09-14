@@ -808,9 +808,34 @@ def tf() -> None:
 
 # ---------------------------------------------------------------- info
 
+TIERS = ("ops", "paf", "backend", "frontend")
+
+
+def _tier_readiness(tier: str) -> tuple[str, str]:
+    """Where a tier stands: its bootstrap sentinel, or why it cannot be read.
+
+    Cloud-init writes /var/lib/<label>/bootstrap.ok only after the tier's play
+    returns success, so the sentinel is the one trustworthy readiness signal.
+    """
+    label = os.getenv("OCI_LABEL", "paf-poc")
+    result = _tier_ssh(
+        tier,
+        f"test -f /var/lib/{label}/bootstrap.ok && echo built || echo building",
+        timeout=40,
+    )
+    out = (result.stdout or "").strip()
+    if "built" in out:
+        return "green", "ready"
+    if "building" in out:
+        return "yellow", "building — the play has not finished"
+    if "timed out" in (result.stderr or ""):
+        return "red", "no answer — still booting, or unreachable"
+    return "red", "unreachable"
+
+
 @cli.command("info")
 def info() -> None:
-    """Print URLs and connection strings."""
+    """Print URLs, connection strings, and whether every tier has finished building."""
     _ensure_env()
     lb_ip = _tf_output("lb_ip")
     if not lb_ip:
@@ -830,6 +855,27 @@ def info() -> None:
     console.print(f"Models:         {os.getenv('GENAI_MODEL')} / {os.getenv('GENAI_EMBED_MODEL')}")
     console.print(f"                via {os.getenv('GENAI_ENDPOINT')}")
     console.print(f"                instance principal — no key material")
+
+    # Checked over the bastion rather than the load balancer: a tier answers on
+    # the load balancer only once its play has finished, so the sentinel says
+    # "building" where a health check would just say "down".
+    console.print("\n[bold]Tiers[/bold]")
+    with ThreadPoolExecutor(max_workers=len(TIERS)) as pool:
+        states = dict(zip(TIERS, pool.map(_tier_readiness, TIERS)))
+    for tier in TIERS:
+        colour, note = states[tier]
+        mark = "\u2713" if colour == "green" else "\u00b7"
+        console.print(f"  [{colour}]{mark}[/{colour}] [cyan]{tier:<9}[/cyan] {note}")
+
+    if all(colour == "green" for colour, _ in states.values()):
+        console.print("\n[green]The stack is ready.[/green] Next: "
+                      "[cyan]python manage.py paf bootstrap[/cyan]")
+    else:
+        console.print(
+            "\n[yellow]Not ready yet.[/yellow] Cloud-init retries every 60s; re-run "
+            "this. A tier stuck for longer than a few minutes is diagnosed from "
+            "[cyan]/var/log/" + os.getenv("OCI_LABEL", "paf-poc") + "-bootstrap.log[/cyan] on that instance."
+        )
 
 
 # ---------------------------------------------------------------- cloud
@@ -935,21 +981,25 @@ def _ops_ssh(command: str, *, stream: bool = False) -> subprocess.CompletedProce
     return subprocess.run(argv, capture_output=True, text=True, timeout=300)
 
 
-def _backend_host() -> str:
-    """The backend tier's VCN address.
+def _tier_host(tier: str) -> str:
+    """A tier's VCN address.
 
     The VCN's DNS label is the resource label with dashes removed, so tiers
     resolve each other at <tier>.private.<label>.oraclevcn.com.
     """
     vcn_dns = os.getenv("OCI_LABEL", "paf-poc").replace("-", "")
-    return f"backend.private.{vcn_dns}.oraclevcn.com"
+    return f"{tier}.private.{vcn_dns}.oraclevcn.com"
 
 
-def _backend_ssh(command: str) -> subprocess.CompletedProcess:
-    """Run a shell command on the backend tier, jumping through the bastion.
+def _backend_host() -> str:
+    return _tier_host("backend")
 
-    The backend sits on the private subnet with no public address; the bastion
-    is the only host that reaches it, and both accept the same key.
+
+def _tier_ssh(tier: str, command: str, *, timeout: int = 300) -> subprocess.CompletedProcess:
+    """Run a shell command on a tier, jumping through the bastion.
+
+    Only the bastion has a public address; the rest of the tiers are reachable
+    from it, and every instance accepts the same key.
     """
     ip = _tf_output("ops_public_ip")
     if not ip:
@@ -963,9 +1013,20 @@ def _backend_ssh(command: str) -> subprocess.CompletedProcess:
                      "-o", "StrictHostKeyChecking=no",
                      "-o", "UserKnownHostsFile=/dev/null",
                      "-o", "LogLevel=ERROR", "-W", "%h:%p", f"opc@{ip}"])
-    argv = ["ssh", *opts, "-o", f"ProxyCommand={jump}", "-o", "ConnectTimeout=20",
-            f"opc@{_backend_host()}", command]
-    return subprocess.run(argv, capture_output=True, text=True, timeout=300)
+    argv = ["ssh", *opts, "-o", "ConnectTimeout=20"]
+    # The bastion is reached directly; every other tier through it.
+    if tier == "ops":
+        argv += [f"opc@{ip}", command]
+    else:
+        argv += ["-o", f"ProxyCommand={jump}", f"opc@{_tier_host(tier)}", command]
+    try:
+        return subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(argv, 255, "", "timed out")
+
+
+def _backend_ssh(command: str) -> subprocess.CompletedProcess:
+    return _tier_ssh("backend", command)
 
 
 def _ops_push_tests() -> None:
