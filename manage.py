@@ -1077,9 +1077,19 @@ def cloud_test(pytest_args: tuple) -> None:
     remote_env = "/home/opc/.poc-test-env"
     # The unit tests import from src/, which stays on the host, so the bastion
     # runs the end-to-end suite only; extra arguments (-k, -x, -vv) pass through.
+    # The public load balancer terminates TLS with a self-signed certificate —
+    # there is no DNS name to issue against — so the harness calls PAF with
+    # verification off and urllib3 warns once per turn. The filter rides on the
+    # command rather than in conftest, because pytest resets the warning filters
+    # around every test item, and rather than in pytest.ini, because only
+    # `tests/` is copied to the bastion.
     # Quoted: a multi-word selector (-k "alice or frank") reaches the bastion as
     # one pytest argument instead of three shell words.
-    args = " ".join(["tests/test_chat_workflow.py", *(shlex.quote(a) for a in pytest_args)])
+    args = " ".join([
+        "tests/test_chat_workflow.py",
+        "-W", "ignore::urllib3.exceptions.InsecureRequestWarning",
+        *(shlex.quote(a) for a in pytest_args),
+    ])
     script = (
         f"set -e; umask 077; cat > {remote_env} <<'EOF'\n{env_lines}\nEOF\n"
         f"cd /home/opc/artifact/roles/opstools/files && "

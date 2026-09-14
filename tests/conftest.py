@@ -28,17 +28,12 @@ import json
 import os
 import re
 import secrets
-import warnings
 from pathlib import Path
 
 import oracledb
 import pytest
 import requests
 from dotenv import load_dotenv
-from urllib3.exceptions import InsecureRequestWarning
-
-# The load balancer terminates TLS with a self-signed certificate.
-warnings.simplefilter("ignore", InsecureRequestWarning)
 
 PROJECT_ROOT = Path(__file__).parent.parent
 # The harness runs from the ops bastion — the only host that can reach both PAF

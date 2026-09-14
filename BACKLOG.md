@@ -24,6 +24,8 @@ It cannot be closed in the same apply. PAF issues its certificate during its ins
 
 The front certificate is self-signed for the same reason a real one is not used: the deployment has no DNS name, so browsers warn on first visit. Giving it a hostname and issuing against that replaces the certificate and nothing else.
 
+The same certificate is why the end-to-end harness calls PAF with verification off: it cannot tell the real load balancer from an impostor, and the suppressed `InsecureRequestWarning` says so once per turn. Verifying is cheap and does not need a DNS name — Terraform already writes the MCP gateway's certificate to `deploy/tf/app/generated/mcp-ca.pem` through a `local_file`, so the public listener's can be exported the same way, shipped to the bastion alongside `tests/`, and named in the harness's session `verify`. The warning then goes away because it stops being true, and the filter on the `cloud test` command line comes off with it.
+
 ## 3. Converge a running tier instead of hot-patching it
 
 A tier builds itself once: cloud-init hands the bootstrap script to systemd, the
