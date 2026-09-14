@@ -934,6 +934,16 @@ def _ops_ssh(command: str, *, stream: bool = False) -> subprocess.CompletedProce
     return subprocess.run(argv, capture_output=True, text=True, timeout=300)
 
 
+def _backend_host() -> str:
+    """The backend tier's VCN address.
+
+    The VCN's DNS label is the resource label with dashes removed, so tiers
+    resolve each other at <tier>.private.<label>.oraclevcn.com.
+    """
+    vcn_dns = os.getenv("OCI_LABEL", "paf-poc").replace("-", "")
+    return f"backend.private.{vcn_dns}.oraclevcn.com"
+
+
 def _ops_push_tests() -> None:
     """Copy the repository's tests/ to the bastion, so a run exercises the current
     harness rather than the copy that shipped in the tier's artifact."""
@@ -1379,6 +1389,43 @@ def paf_api_key() -> None:
 
 
 
+@paf.command("openapi")
+def paf_openapi() -> None:
+    """Save the Company Registry's OpenAPI document for PAF's importer.
+
+    The registry listens on a private address, and PAF's data-source form takes
+    an uploaded file rather than a URL. The bastion is the only host that can
+    reach both, so it fetches the spec and the response is written here.
+    """
+    _ensure_env()
+    url = f"http://{_backend_host()}:8600/openapi.json"
+    console.print(f"Fetching [cyan]{url}[/cyan] from the bastion")
+
+    result = _ops_ssh(f"curl -sS --max-time 20 {url}")
+    if result.returncode != 0 or not result.stdout.strip():
+        console.print(
+            f"[red]Could not fetch the spec.[/red]\n{(result.stderr or '').strip()[:400]}\n"
+            "The registry runs on the backend tier — check paf-poc-registry there."
+        )
+        sys.exit(1)
+
+    try:
+        spec = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        console.print(f"[red]The response is not JSON.[/red]\n{result.stdout.strip()[:400]}")
+        sys.exit(1)
+
+    KIT_DIST_DIR.mkdir(parents=True, exist_ok=True)
+    target = KIT_DIST_DIR / "company-registry-openapi.json"
+    target.write_text(json.dumps(spec, indent=2) + "\n")
+
+    servers = ", ".join(s.get("url", "") for s in spec.get("servers", []))
+    console.print(f"[green]✓[/green] {target}")
+    console.print(f"[dim]  servers: {servers}[/dim]")
+    console.print("[dim]  Upload this file in PAF: Data Sources → Rest API → "
+                  "OpenAPI specification.[/dim]")
+
+
 def _print_run(command: str) -> None:
     """Print a command to run in its own block, so it cannot be skimmed past."""
     console.print(f"\n  Run:\n\n      [bold cyan]{command}[/bold cyan]\n")
@@ -1456,11 +1503,6 @@ def paf_bootstrap() -> None:
     console.print("  Run a test call on each. A failure here is almost always the dynamic group")
     console.print("  or policy: re-apply deploy/tf/iam with a tenancy-admin profile.\n")
 
-    # The VCN's DNS label is the resource label with dashes removed, so tiers
-    # resolve each other at <tier>.private.<label>.oraclevcn.com.
-    vcn_dns = os.getenv("OCI_LABEL", "paf-poc").replace("-", "")
-    backend_host = f"backend.private.{vcn_dns}.oraclevcn.com"
-
     console.print("[bold]Step 5 — data sources[/bold]   (Data Sources)")
     console.print("  The connection entered in step 2 is PAF's own repository. Select AI and the")
     console.print("  flows read through registered data sources, which are separate — without the")
@@ -1474,11 +1516,12 @@ def paf_bootstrap() -> None:
     console.print("    User:             [cyan]AGENT_FACTORY[/cyan]   (holds the Select AI package grants)")
     console.print("    Password:         same as DB_PASSWORD in .env")
     console.print("  [bold]HTTP — company registry[/bold]   (Source type: Rest API → OpenAPI specification)")
-    console.print("    Name:             [cyan]Company Registry[/cyan]")
-    console.print("    Description:      [cyan]Synthetic employer registry[/cyan]   (mandatory field)")
-    console.print(f"    OpenAPI document: [cyan]http://{backend_host}:8600/openapi.json[/cyan]")
-    console.print("    [dim]Download it and upload the file; PAF calls the URL in its `servers`[/dim]")
-    console.print("    [dim]block, which the backend tier sets to its own VCN address.[/dim]\n")
+    console.print("    The form asks for the spec file and nothing else: the name and description")
+    console.print("    come from the document's `info` block ([cyan]Company Registry[/cyan]), and PAF calls")
+    console.print("    the URL in its `servers` block, which the backend tier sets to its own VCN")
+    console.print("    address. The registry answers on that private address only, so the command")
+    console.print("    below fetches the spec through the bastion. Upload the file it writes.")
+    _print_run("python manage.py paf openapi")
 
     console.print("[bold]Step 6 — trust the gateway[/bold]")
     console.print("  Registers the internal load balancer's certificate in PAF's trust store.")

@@ -127,7 +127,7 @@ python manage.py paf bootstrap
 ```
 
 Prints the PAF install as one ordered sheet: the installer URL, every value to
-paste into it, and the two commands that sit between the browser steps. Follow
+paste into it, and the commands that sit between the browser steps. Follow
 it top to bottom; its last line sends you back here to §9.
 
 Expect: PAF installed, both model configurations answering a test call, the
