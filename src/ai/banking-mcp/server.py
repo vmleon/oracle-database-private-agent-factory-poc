@@ -39,7 +39,7 @@ import httpx
 import oracledb
 from fastmcp import FastMCP
 
-from gate import documents_payload, gate_decision, tier_from
+from gate import documents_payload, factors_for, gate_decision, tier_from
 
 
 def _now_utc() -> datetime:
@@ -532,8 +532,10 @@ def recommend_tier_for_session(session_token: str) -> dict:
     wrong slot: the returned `evidence` is the packet the reviewer's portal
     reads, built from the same records the decision rests on.
 
-    Returns {"tier", "reasoning", "evidence"}, or tier "UNAVAILABLE" with
-    evidence null for an invalid session or an incomplete application.
+    Returns {"tier", "reasoning", "factors", "evidence"}, or tier "UNAVAILABLE"
+    with evidence null for an invalid session or an incomplete application.
+    `factors` is the customer-safe vocabulary for the reason codes — the only
+    words about the outcome that may reach the customer.
     """
     started = _now_utc()
     print(f"[recommend_tier_for_session] called session_token={session_token!r}", flush=True)
@@ -570,6 +572,7 @@ def recommend_tier_for_session(session_token: str) -> dict:
     out = {
         "tier": tier,
         "reasoning": reasoning,
+        "factors": factors_for(codes),
         "evidence": {
             "reason_codes": codes,
             "eligibility": eligibility,

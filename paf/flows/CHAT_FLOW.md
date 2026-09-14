@@ -4,7 +4,7 @@ This is the build blueprint for the customer-facing workflow in PAF Agent Builde
 
 - **`Manager`** — the only Agent node in the graph. It holds **no tools**. It reads the server-computed facts in its prompt, decides whether the customer is still supplying loan details or is ready for a decision, and delegates to exactly one worker.
 - **`Intake`** (sub-agent) — collects the loan request (`amount` / `term_months` / `purpose`) through conversation, normalises the values, and writes the `DRAFT`. Tool: `application-mcp.upsert_application`.
-- **`Recommendation`** (sub-agent) — hands the session token to `create_hitl_task`, which computes the tier (`APPROVE` / `REVIEW` / `DECLINE`), its reason codes and the evidence packet server-side and records them; the worker reads the tier back and returns the matching compliance-safe sentence. Tool: `hitl-mcp.create_hitl_task`.
+- **`Recommendation`** (sub-agent) — hands the session token to `create_hitl_task`, which computes the tier (`APPROVE` / `REVIEW` / `DECLINE`), its reason codes and the evidence packet server-side and records them; the worker reads the tier and its customer-safe `factors` back, and writes the customer's reply within the [disclosure policy](#customer-disclosure-policy). Tool: `hitl-mcp.create_hitl_task`.
 - **Deterministic nodes (no agent)** — `get_context`, `evaluate_eligibility_for_session`, `required_documents_for_session` and `verify_employer_for_session` run **before** the manager off one wired token chain; `hitl_status_for_session` runs **after** it and reads the database.
 
 Three principles shape the whole design:
@@ -27,10 +27,30 @@ For a customer chatting with the bank:
 
 1. **Intake.** If the customer has no open application (or one with missing fields), the manager delegates to `Intake`, which collects `amount` / `term_months` / `purpose` conversationally and writes a `DRAFT` via `upsert_application`.
 2. **Evidence.** Eligibility, the required-document set and the employer record are computed deterministically before the manager runs, from the DB values the token resolves to. No agent gathers evidence.
-3. **Recommendation.** Once the application is complete and the customer confirms, the manager delegates to `Recommendation`, which calls `hitl-mcp.create_hitl_task` exactly once with the token alone. The tier, its reason codes and the evidence are computed and recorded server-side; the worker returns the compliance-safe sentence for the tier it gets back.
+3. **Recommendation.** Once the application is complete and the customer confirms, the manager delegates to `Recommendation`, which calls `hitl-mcp.create_hitl_task` exactly once with the token alone. The tier, its reason codes and the evidence are computed and recorded server-side; the worker writes the customer's reply from the tier and the `factors` it gets back, in its own words and within the [disclosure policy](#customer-disclosure-policy).
 4. **Assertion.** After the manager returns, `hitl_status_for_session` reads the database and the final gate decides whether the reply may be shown at all.
 
-No agent ever issues a binding decision to the customer: the human reviewer who picks up the HITL task does. The customer-facing reply is one of three qualitative tones and never exposes the tier, a number, or an adverse reason.
+No agent ever issues a binding decision to the customer: the human reviewer who picks up the HITL task does.
+
+## Customer disclosure policy
+
+The `Recommendation` worker writes the customer's reply itself — the wording is the model's, the policy is not. This section is the single source of truth for that policy: the worker's Custom Instructions restate it, and `tests/test_chat_workflow.py` asserts it.
+
+**May be said** — where the application stands (with the team for final checks / a reviewer is taking a closer look / a specialist will be in touch), and the **factors** `create_hitl_task` returns, in the worker's own words. The factor vocabulary is `CUSTOMER_FACTORS` in [`src/ai/banking-mcp/gate.py`](../../src/ai/banking-mcp/gate.py), keyed by reason code:
+
+| Reason codes                             | Factor the customer may be told |
+| ---------------------------------------- | ------------------------------- |
+| `DTI_TOO_HIGH`, `PTI_TOO_HIGH`, `INCOME_INSUFFICIENT` | affordability                   |
+| `SCORE_BELOW_FLOOR`, `SCORE_CAUTION_BAND`             | your credit history             |
+| `EMPLOYER_UNVERIFIED`, `EMPLOYER_DORMANT`             | your employer's registration / trading status |
+| `AGE_OUT_OF_RANGE`                                    | your eligibility for this product |
+| `POLICY_OTHER`                                        | your application details        |
+
+**Never said, in any tier** — a number of any kind (amount, score, percentage, threshold value); the words cap, floor, threshold, caution band or fair lending; the acronyms DTI, PTI, AML, KYC; any reason code; the tier name, a task id, an application id or the session token; a promise about the final outcome, which is the human reviewer's to make.
+
+The line is the **value, not the factor**: "affordability is the sticking point" and "your debt-to-income is above what we can lend against" are both fine; "DTI 0.48 exceeds cap 0.45" is the leak.
+
+**Never invented** — a factor the run's reason codes do not contain. The worker is given `factors`; naming anything else is a defect, not a phrasing choice.
 
 ## Flow inputs
 
@@ -75,7 +95,7 @@ flowchart TD
 
 Four deterministic calls fan off one Type Convert, so every fact the decision rests on is computed server-side before any model runs. The token is wired to every read. A model copies it only on the write path — the manager into its delegation message, then the worker into its tool argument — and that is the flow's whole transcription risk. A corrupted copy resolves to no session, the tool fails closed, and the turn ends in the apology.
 
-The **manager runs on every turn** — it is the front door. On a collecting turn it delegates to `Intake` and the turn ends with `Intake`'s question; on a confirming turn it delegates to `Recommendation` and the turn ends with the tier sentence. **The Agent node returns the delegated worker's final message**, so the worker's last sentence is what the customer reads; the manager's own sentence is returned only when it does not delegate. All three instruction blocks therefore end in a customer-safe sentence.
+The **manager runs on every turn** — it is the front door. On a collecting turn it delegates to `Intake` and the turn ends with `Intake`'s question; on a confirming turn it delegates to `Recommendation` and the turn ends with its decision reply. **The Agent node returns the delegated worker's final message**, so the worker's last sentence is what the customer reads; the manager's own sentence is returned only when it does not delegate. All three instruction blocks therefore end in a customer-safe sentence.
 
 ### The session-scoped `banking-mcp` tools
 
@@ -88,11 +108,11 @@ Each takes only `session_token`, resolves state through the same server-side rea
 | `required_documents_for_session`   | evaluates `decisioning.required_documents` from product/employment/residency/amount | `{required, amount_band, rationale}`                            |
 | `verify_employer_for_session`      | reads `profile.employer_name` and calls the company registry                        | `{name, registered, trading_status}`                            |
 | `hitl_status_for_session`          | reads the context, `APP.hitl_task` and the manager's reply                          | `{gate, stage, task_id}`                                        |
-| `recommend_tier_for_session`       | applies the tier rule to the eligibility and employer records                       | `{tier, reasoning, evidence}`                                   |
+| `recommend_tier_for_session`       | applies the tier rule to the eligibility and employer records                       | `{tier, reasoning, factors, evidence}`                          |
 
 `recommend_tier_for_session` is the only one with no node on the canvas: `hitl-mcp.create_hitl_task` calls it server-side so the recorded decision never passes through a model. The rule is `tier_from()` in [`src/ai/banking-mcp/gate.py`](../../src/ai/banking-mcp/gate.py) — DECLINE on any `deny` or an unregistered employer, REVIEW on any `warn` or a dormant one, APPROVE otherwise — and it is covered by host unit tests.
 
-`hitl_status_for_session` decides the gate server-side: `GATE_FAIL` on an invalid session, or on a reply that announces a decision (one of the customer-facing decision sentences) with no HITL task recorded for the application; `GATE_OK` on every other turn on a valid session, whatever stage the application is at.
+`hitl_status_for_session` decides the gate server-side: `GATE_FAIL` on an invalid session, or on a reply that announces a decision — the `[[DECISION ...]]` marker, or the language a decision uses (`DECISION_PATTERNS` in `gate.py`) — with no HITL task recorded for the application; `GATE_OK` on every other turn on a valid session, whatever stage the application is at.
 
 ### Ordering the assertion
 
@@ -365,8 +385,9 @@ opaque `sess_...` session token — that is the ONE thing you need.
 
 You do NOT decide the outcome. create_hitl_task computes the tier, its reasoning
 and the evidence packet server-side from the policy and the company registry,
-records them, and RETURNS the tier to you. Your job is to call it once and speak
-the sentence for the tier it returns.
+records them, and RETURNS the tier plus `factors` — the customer-safe words for
+what the outcome turned on. You call it once, then write the customer's reply
+yourself.
 
 Call create_hitl_task EXACTLY ONCE with:
   session_token  = the token from the manager's message, copied exactly (if it is
@@ -375,22 +396,41 @@ Call create_hitl_task EXACTLY ONCE with:
 Supply nothing else: no application id, no tier, no reasoning, no evidence, no
 agent_run_id. They are all computed server-side.
 
-Read `tier` from the tool's reply and answer with EXACTLY the ONE customer-facing
-sentence for THAT tier — never a tier you inferred yourself, and never one for a
-different tier. Nothing else: no marker, no tier name, no "APPROVE ->" prefix, no
-reason codes, no braces. The customer must never see the tier or any internal
-token. Output ONLY the sentence:
-  (APPROVE) "Looks strong — it's with our team for final approval; we'll confirm shortly."
-  (REVIEW)  "We'd like a closer look at <affordability | your employment details>; a reviewer will follow up."
-  (DECLINE) "Before we can proceed, a specialist needs to review this in detail — we'll be in touch."
+Then answer with ONE SINGLE LINE, in two parts, in this order:
 
-For REVIEW, pick the phrase from the returned reason codes: DTI/PTI_* ->
-"affordability"; EMPLOYER_* -> "your employment details"; SCORE_* -> do not
-surface. DECLINE states NO adverse reason. Never mention a number, score, tier, id, token,
-DTI/PTI, AML/KYC, fair lending, or any threshold in the customer sentence.
+1. The marker [[DECISION tier=<TIER>]], where <TIER> is the tier the tool
+   returned, copied exactly. The customer never sees it — it is stripped before
+   the reply is shown — and it is how the flow knows a decision was announced.
+2. A space, then one or two warm, plain sentences telling the customer where
+   their application stands, on that same line. Write them in your own words;
+   there is no template to copy.
+
+Your whole answer is one line: no line break anywhere, and no " character. The
+flow carries your reply inside a JSON field, and either one breaks it.
+
+What part 2 says, by the tier the tool returned:
+  APPROVE   it looks good and is with the team for final checks.
+  REVIEW    a reviewer is taking a closer look, at the returned factors.
+  DECLINE   it cannot go ahead as it stands and a specialist will be in touch,
+            at the returned factors.
+
+Name ONLY the factors the tool returned, phrased your way. If `factors` is empty,
+name none: say the application is being looked at without saying what at. Never
+name a factor the tool did not return.
+
+NEVER, in any tier:
+- a number of any kind — no amount, score, percentage or threshold value;
+- the words cap, floor, threshold, caution band or fair lending, the acronyms
+  DTI, PTI, AML or KYC, or any reason code;
+- the tier name, a task id, an application id, or the session token;
+- a promise about the final outcome — a human reviewer decides, not you;
+- a line break or a " character, anywhere in the answer.
+
+Name the factor, never the value behind it: "affordability is the sticking
+point" is fine, "0.48 against a cap of 0.45" is not.
 ```
 
-The three quoted customer sentences above are matched as substrings by `DECISION_PHRASES` in [`src/ai/banking-mcp/gate.py`](../../src/ai/banking-mcp/gate.py) and by `TIER_REPLY` in [`tests/test_chat_workflow.py`](../../tests/test_chat_workflow.py) — G3 uses them to tell a decision sentence from a question. Reword one here and you must reword all three.
+The policy those instructions restate is [Customer disclosure policy](#customer-disclosure-policy); the factor vocabulary is `CUSTOMER_FACTORS` in [`src/ai/banking-mcp/gate.py`](../../src/ai/banking-mcp/gate.py) and the assertions are in [`tests/test_chat_workflow.py`](../../tests/test_chat_workflow.py). The wording is the model's to choose — what is fixed is the marker, the factors it may name, and the vocabulary it may never use.
 
 - **Wire:**
 
@@ -444,16 +484,18 @@ Delegate exactly ONCE per turn, to exactly ONE worker. Never delegate to both, a
 never delegate again after a worker has replied — its reply ends the turn.
 
 When a worker has replied, your answer to the customer IS the worker's reply,
-copied character-for-character: no rewording, no additions, no greeting, no
-explanation, no reason. The eligibility, employer and document values in your
-prompt exist only to pick the stage; never state, summarise or hint at any of
-them to the customer.
+copied character-for-character — including a leading [[DECISION ...]] marker when
+it has one; that marker is read by the flow and stripped before the customer sees
+anything. No rewording, no additions, no greeting, no explanation, no reason. The
+eligibility, employer and document values in your prompt exist only to pick the
+stage; never state, summarise or hint at any of them to the customer.
 
 If neither stage fits, do not delegate: answer with one friendly sentence asking
 for the next loan detail you are waiting on.
 
-Whatever you send back is what the customer reads. One plain sentence, no marker,
-no braces, no JSON, no ids, no token, no tier, no numbers, no internal field names.
+When you answer without delegating, what you send is what the customer reads: one
+plain sentence, no marker, no braces, no JSON, no ids, no token, no tier, no
+numbers, no internal field names.
 ```
 
 - **Wire** — the prompt, then the two sub-agents. Drag each wire **from the worker's `Agent` output onto the manager's `Sub-agents` input**; drawing it is what writes the worker's node id into the manager's `subAgents` template value, and without that value the manager runs with no workers.
@@ -693,7 +735,7 @@ Non-obvious rules and limits that shape the build. Skim before iterating.
 - **Use a strong tool-calling generative model** (registered as `gen-model`; validated on `openai.gpt-oss-120b` on OCI Generative AI). Smaller / heavily-quantised models are not recommended — they route to the wrong worker and are less reliable under prompt injection. On OCI Generative AI the model must also be one PAF streams end to end: `cohere.*` and `meta.*` are not ([`issues/14`](../../issues/14-oci-genai-stream-parsers-incomplete.md)).
 - **The token hops a model copies are the flow's only fragile transcription.** The manager hands it to the worker verbatim and the worker passes it straight to its tool; both instruction blocks pin character-for-character copying, because the streaming layer drops or duplicates a character in an agentic tool-call argument. Every read path takes the token by wire instead. A corrupted token resolves to no session and the tool fails closed — it costs the turn, never correctness.
 - **A wired tool gets called even when the instructions say not to.** The narrow per-agent tool surface is the only enforceable boundary — DB constraints are the final net.
-- **The customer-facing reply contains no internal numbers, ids, tiers, adverse reasons or braces.** The three tier sentences, `Intake`'s questions and the apology are the only text the customer ever sees.
+- **The customer-facing reply holds to the [disclosure policy](#customer-disclosure-policy)** — no number, reason code, tier name, id or brace, and no factor the run's reason codes do not contain. The worker's decision reply, `Intake`'s questions and the apology are the only text the customer ever sees.
 
 ### Schema / data
 

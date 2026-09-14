@@ -6,25 +6,63 @@ where neither package is installed.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 GATE_OK = "GATE_OK"
 GATE_FAIL = "GATE_FAIL"
 
-# The customer-facing decision sentences, matched as substrings. These must stay
-# in step with the Recommendation worker's Custom Instructions in
-# paf/flows/CHAT_FLOW.md and with TIER_REPLY in tests/test_chat_workflow.py.
-DECISION_PHRASES = (
-    "final approval",
-    "a reviewer will follow up",
-    "a specialist needs to review",
-)
+# The Recommendation worker writes its own sentence, so a decision turn is
+# recognised by the language a decision uses, not by one fixed string. The
+# worker also prefixes `[[DECISION tier=...]]`, which the backend strips before
+# the customer sees the reply — that marker is the exact signal, and the
+# patterns below catch a decision announced without it.
+DECISION_MARKER = re.compile(r"\[\[\s*DECISION\b", re.IGNORECASE)
+DECISION_PATTERNS = tuple(re.compile(p, re.IGNORECASE) for p in (
+    r"\bfinal approval\b",
+    r"\b(?:a|our|the)\s+(?:reviewer|specialist|review team)\b",
+    r"\b(?:reviewer|specialist)\s+will\b",
+    r"\bcloser look\b",
+    r"\bbeing processed\b",
+    r"\b(?:we(?:'|’)?ll|we will)\s+(?:confirm|be in touch|get back)\b",
+    r"\bget back to you\b",
+    r"\bcannot\s+(?:be submitted|proceed|go ahead)\b",
+    r"\b(?:forwarded|submitted)\s+(?:it|this|your)\b",
+))
+
+# What a customer may be told a decision turned on: the factor, never the
+# number behind it. Keyed by the reason codes `tier_from` produces.
+CUSTOMER_FACTORS = {
+    "DTI_TOO_HIGH": "affordability",
+    "PTI_TOO_HIGH": "affordability",
+    "INCOME_INSUFFICIENT": "affordability",
+    "SCORE_BELOW_FLOOR": "your credit history",
+    "SCORE_CAUTION_BAND": "your credit history",
+    "AGE_OUT_OF_RANGE": "your eligibility for this product",
+    "EMPLOYER_UNVERIFIED": "your employer's registration",
+    "EMPLOYER_DORMANT": "your employer's trading status",
+    "POLICY_OTHER": "your application details",
+}
 
 
 def announces_a_decision(reply: str) -> bool:
-    """True when a reply carries one of the customer-facing decision sentences."""
-    text = (reply or "").lower()
-    return any(phrase in text for phrase in DECISION_PHRASES)
+    """True when a reply tells the customer where their application stands."""
+    text = reply or ""
+    if DECISION_MARKER.search(text):
+        return True
+    return any(pattern.search(text) for pattern in DECISION_PATTERNS)
+
+
+def factors_for(codes: list[str] | None) -> list[str]:
+    """The customer-safe factor phrases for a set of reason codes, in order and
+    without repeats. The Recommendation worker may name these and nothing else —
+    no number, threshold or code ever reaches the customer."""
+    factors: list[str] = []
+    for code in codes or []:
+        factor = CUSTOMER_FACTORS.get(code)
+        if factor and factor not in factors:
+            factors.append(factor)
+    return factors
 
 
 def documents_payload(context: dict[str, Any]) -> dict[str, Any] | None:

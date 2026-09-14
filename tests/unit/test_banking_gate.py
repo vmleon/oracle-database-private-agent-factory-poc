@@ -12,11 +12,11 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src" / "ai" / "banking-mcp"))
 
 from gate import (  # noqa: E402
-    DECISION_PHRASES,
     GATE_FAIL,
     GATE_OK,
     announces_a_decision,
     documents_payload,
+    factors_for,
     gate_decision,
     reason_code,
     tier_from,
@@ -92,9 +92,42 @@ def test_gate_passes_a_decision_sentence_when_the_task_exists():
     }
 
 
-@pytest.mark.parametrize("phrase", DECISION_PHRASES)
-def test_announces_a_decision_detects_every_phrase(phrase):
-    assert announces_a_decision(f"...{phrase}...")
+# The worker writes its own wording, so the gate has to recognise a decision in
+# whatever words it lands on — including the paraphrases seen in live runs.
+@pytest.mark.parametrize("reply", [
+    "[[DECISION tier=DECLINE]]\nWe can't take this forward as it stands.",
+    "Looks strong — it's with our team for final approval; we'll confirm shortly.",
+    "Before we can proceed, a specialist needs to review this in detail.",
+    "We'd like a closer look at affordability; a reviewer will follow up.",
+    "A specialist will review your application and get back to you shortly.",
+    "I've forwarded your request and a reviewer will take a closer look.",
+    "Your loan application is being processed and we'll confirm shortly.",
+    "I'm sorry, but your loan cannot be submitted right now.",
+])
+def test_announces_a_decision_detects_the_language_of_a_decision(reply):
+    assert announces_a_decision(reply)
+
+
+@pytest.mark.parametrize("reply", [
+    "Please confirm: 18000 over 36 months for home improvement. Shall I submit it?",
+    "Welcome! How much would you like to borrow?",
+    "Thanks — and over how many months would you like to repay it?",
+])
+def test_announces_a_decision_ignores_an_intake_turn(reply):
+    assert not announces_a_decision(reply)
+
+
+@pytest.mark.parametrize("codes,expected", [
+    ([], []),
+    (["DTI_TOO_HIGH"], ["affordability"]),
+    (["DTI_TOO_HIGH", "PTI_TOO_HIGH"], ["affordability"]),
+    (["SCORE_CAUTION_BAND"], ["your credit history"]),
+    (["EMPLOYER_DORMANT"], ["your employer's trading status"]),
+    (["SCORE_BELOW_FLOOR", "EMPLOYER_UNVERIFIED"],
+     ["your credit history", "your employer's registration"]),
+])
+def test_factors_for_maps_codes_to_customer_safe_words(codes, expected):
+    assert factors_for(codes) == expected
 
 
 ACTIVE = {"registered": True, "trading_status": "active"}

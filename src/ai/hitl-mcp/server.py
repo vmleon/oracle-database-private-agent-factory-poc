@@ -110,8 +110,10 @@ async def create_hitl_task(
     packet. No agent names an application, chooses a tier or re-words a policy
     message, so what the reviewer reads is what the policy actually returned.
 
-    The tier is returned to you — phrase the customer sentence for THAT tier,
-    not for one you inferred yourself.
+    The tier is returned to you with `factors` — the customer-safe words for
+    what the outcome turned on. Write the customer's reply from THOSE, never
+    from a tier or a factor you inferred yourself, and never quote a number,
+    threshold or reason code.
 
     Argument extraction guidance for the LLM:
       - session_token  — the opaque `sess_...` token from the manager's
@@ -140,6 +142,8 @@ async def create_hitl_task(
         return out
     recommendation = tier
     reasoning = packet.get("reasoning") or ""
+    factors = packet.get("factors") or []
+    reason_codes = (packet.get("evidence") or {}).get("reason_codes") or []
     evidence = json.dumps(packet.get("evidence"))
 
     try:
@@ -169,13 +173,17 @@ async def create_hitl_task(
     out = {
         "task_id": task_id,
         "tier": recommendation,
+        "factors": factors,
+        "reason_codes": reason_codes,
         "agent_run_id": agent_run_id,
         "state": "OPEN",
         "queue": "APP.HITL_REQUEST",
         "message": (
             f"HITL task {task_id} recorded with tier {recommendation}; "
-            f"enqueued on HITL_REQUEST. Answer the customer with the sentence "
-            f"for {recommendation}."
+            f"enqueued on HITL_REQUEST. Write the customer's reply for tier "
+            f"{recommendation}, naming only these factors: "
+            f"{factors or 'none — name no factor at all'}. Never mention a "
+            f"number, threshold, score, ratio, tier name or reason code."
         ),
     }
     _audit("create_hitl_task", "SUCCESS", started, _now(), tool_input, out,
