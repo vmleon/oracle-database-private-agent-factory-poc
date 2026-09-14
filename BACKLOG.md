@@ -96,3 +96,15 @@ PAF's OTel tracing (Arize Phoenix / Comet Opik / Langfuse) captures spans for fl
 - **Code.** Optional: a trace-collector service (e.g. Phoenix or Langfuse) on the `ops` tier; otherwise no code.
 - **Docs.** Add an "enable tracing" recipe to `docs/TROUBLESHOOT.md` and an optional step in `CLOUD.md`. Note in `issues/04` / `issues/08` that tracing makes the conditions observable even though the messages/cap are unchanged.
 - **Guide steps.** PAF Settings → tracing provider → point at the collector, enable masking; show where a `CHAT_FLOW` run's per-tool spans land.
+
+### 7.5 Make the decision gate run on every turn — workaround for `issues/15`
+
+G3 — `hitl_status_for_session` and the Condition reading it — sits after the Agent node, and PAF only executes nodes downstream of an agent on the turns where the manager's LLM answers and calls a tool in the same step: measured at one turn in five. So the property it encodes, _never tell a customer their application is progressing unless the HITL task exists_, holds intermittently, and nothing distinguishes "the gate passed" from "the gate never ran".
+
+The decisioning is untouched by this — tier, reason codes, evidence and the `hitl_task` row are computed and committed server-side before any reply text exists. What is missing is the guard on the delivery path.
+
+A second, sharper reason to move it: the assert-wrap Prompt builds the gate's input by interpolating the worker's reply into a JSON string with no escaping, so a `"` or a line break anywhere in that reply yields `{"value": …}`, the MCP call fails argument validation, and the customer reads the apology on a perfectly good application. Enforcing the property outside the flow retires that hazard too, because the gate stops needing the reply text.
+
+- **Code.** Enforce it in `ChatService.runTurn`, which every reply passes through: when the reply carries a `[[DECISION …]]` marker, confirm a `hitl_task` row exists for the customer's application before showing it, and fall back to the apology otherwise. `HitlRepository` already reads that table. No flow change, no model involvement removed — the worker still writes the sentence.
+- **Docs.** Describe the check in `docs/DESIGN.md` next to the fail-secure error path, and note in `paf/flows/CHAT_FLOW.md` that G3 stays on the canvas as the flow-level statement of the same property.
+- **Guide steps.** None — invisible to the operator.
