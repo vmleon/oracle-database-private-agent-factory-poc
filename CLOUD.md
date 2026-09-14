@@ -84,6 +84,12 @@ python manage.py cloud iam
 
 Expect: `3 to add` — two dynamic groups and one policy.
 
+These are tenancy-level identity resources, not part of the workload stack: they
+live in their own Terraform root, are created in the tenancy's home region, and
+`cloud down` deliberately leaves them behind. A second deployment into the same
+compartment skips this step — the dynamic groups match by compartment, so new
+computes and a new database are covered the moment they exist.
+
 ## 6. `cloud up`
 
 ```bash
@@ -202,6 +208,33 @@ python manage.py clean
 network security group, which still reports attached VNICs for a few seconds
 after the database is gone. The IAM root is left alone for the next deployment.
 
+### Removing the tenancy IAM as well
+
+Only when you are finished with the compartment for good. There is no
+`manage.py` command for it, because it is not part of a deployment's lifecycle —
+run Terraform against that root directly, with the tenancy-admin profile:
+
+```bash
+terraform -chdir=deploy/tf/iam destroy
+```
+
+Run it **before** `clean`, which deletes the rendered `terraform.tfvars` this
+root reads its profile and home region from. If you have already cleaned,
+`python manage.py tf` renders it again.
+
+It is a hard delete, and it reaches past this deployment:
+
+- Every stack in the same compartment loses Generative AI the moment the policy
+  goes — the `paf` compute's instance principal and the database's resource
+  principal are both granted through it, and neither holds an API key to fall
+  back on.
+- Putting it back needs tenancy-admin rights again. Without them the next
+  deployment stands up normally and then fails at PAF's model test call with a
+  permission error, which reads like a model problem rather than a missing
+  policy.
+- So the next deployment into this compartment starts at
+  [§5](#5-cloud-iam) again, before `cloud up`.
+
 ## Full rebuild in one paste
 
 ```bash
@@ -222,7 +255,7 @@ The install sheet ends at PAF's UI; §9 onward — import, `link-flow`, publish,
 | Symptom                                            | Look at                                                                                              |
 | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
 | A tier never writes `bootstrap.ok`                 | `/var/log/<label>-bootstrap.log`, then `/home/opc/ansible-playbook.log` on that instance                |
-| Model calls fail in PAF's LLM Management           | Step 5 was skipped, or the connection names a different compartment from the one the policy grants      |
+| Model calls fail in PAF's LLM Management           | Step 5 was skipped or its IAM root was destroyed, or the connection names a different compartment from the one the policy grants |
 | The manager never delegates, or every turn is a JSON decode error | The generation model is a `cohere.*` or `meta.*` one — see [`docs/TROUBLESHOOT.md`](docs/TROUBLESHOOT.md) |
 | An MCP server will not connect                     | `paf trust-ca` and `paf allow-internal-mcp` (bootstrap steps 6 and 7) both have to run before the first registration |
 | The load balancer does not answer                  | Backend health in the OCI console; a tier listens only once its play has finished                       |

@@ -22,3 +22,15 @@ python manage.py cloud iam   # init + apply, in the tenancy home region
 
 Terraform is driven through `manage.py`, which invokes it with `-chdir`. Running
 it here by hand is what leaves the root without its rendered tfvars.
+
+Teardown is the exception: `cloud down` leaves these resources standing for the
+next deployment, so removing them is a deliberate, by-hand step with the
+tenancy-admin profile, and it takes Generative AI away from every stack in the
+compartment:
+
+```bash
+terraform -chdir=deploy/tf/iam destroy
+```
+
+Do it before `manage.py clean`, which removes the tfvars this root reads. The
+consequences are spelled out in [`CLOUD.md`](../../../CLOUD.md) under Teardown.
