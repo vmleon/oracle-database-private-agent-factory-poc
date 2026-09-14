@@ -146,13 +146,26 @@ python manage.py paf link-flow
 ```
 
 Publish the flow in Agent Builder — the integration endpoint only serves the
-published version. Then mint the key the backend calls it with:
+published version, so publish after every edit. Then mint the key the backend
+calls it with:
 
 ```bash
 python manage.py paf api-key
 ```
 
 Expect: `PAF_AGENT_ID` and `PAF_API_KEY` in `.env`.
+
+Those two values reach the application backend through a systemd drop-in, not
+through the tier's payload — the flow is published long after the tier built
+itself:
+
+```bash
+python manage.py paf push-key
+```
+
+Expect a restarted `paf-poc-backend`. Skip it and the customer chat UI reaches
+PAF with no agent id: the harness still passes, because it calls the integration
+endpoint directly.
 
 ## 10. `cloud test`
 
@@ -201,6 +214,9 @@ python manage.py cloud up
 python manage.py paf bootstrap
 ```
 
+The install sheet ends at PAF's UI; §9 onward — import, `link-flow`, publish,
+`api-key`, `push-key` — closes the loop.
+
 ## When something does not come up
 
 | Symptom                                            | Look at                                                                                              |
@@ -210,4 +226,5 @@ python manage.py paf bootstrap
 | The manager never delegates, or every turn is a JSON decode error | The generation model is a `cohere.*` or `meta.*` one — see [`docs/TROUBLESHOOT.md`](docs/TROUBLESHOOT.md) |
 | An MCP server will not connect                     | `paf trust-ca` and `paf allow-internal-mcp` (bootstrap steps 6 and 7) both have to run before the first registration |
 | The load balancer does not answer                  | Backend health in the OCI console; a tier listens only once its play has finished                       |
+| The chat UI answers but never reaches the agent    | `paf push-key` has not run since the flow was published                                                 |
 | `cloud down` fails on a security group             | Expected — it retries by itself; a manual re-run is equally safe                                        |
