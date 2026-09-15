@@ -63,15 +63,31 @@ public interface HitlRepository extends JpaRepository<HitlTask, Long> {
     int closeTask(@Param("taskId") Long taskId, @Param("outcome") String outcome,
                   @Param("note") String note, @Param("reviewer") String reviewer);
 
+    /**
+     * One row per bank decision. The evidence packet carries the ratios, the reason
+     * codes and the indicative rate as JSON; they are lifted into their own columns
+     * here because the table is append-only — a value not written on the first
+     * insert can never be added to that row.
+     *
+     * pricing_offer follows the human's outcome, not the agent's tier: the packet
+     * prices every application it can so the reviewer sees the figure, but a
+     * declined application was never offered a rate.
+     */
     @Modifying
     @Query(value = """
             INSERT INTO BANK_CORE.decision
                 (application_id, human_outcome, human_user, human_note,
                  agent_recommendation, agent_reasoning, agent_explore_hints,
-                 agent_evidence, agent_run_id)
+                 agent_evidence, agent_run_id,
+                 pricing_offer, reason_codes, computed_dti, computed_pti)
             SELECT application_id, :outcome, :reviewer, :note,
                    agent_recommendation, agent_reasoning, agent_explore_hints,
-                   agent_evidence, agent_run_id
+                   agent_evidence, agent_run_id,
+                   CASE WHEN :outcome = 'APPROVE'
+                        THEN JSON_QUERY(agent_evidence, '$.pricing') END,
+                   JSON_QUERY(agent_evidence, '$.reason_codes'),
+                   JSON_VALUE(agent_evidence, '$.derived.dti' RETURNING NUMBER),
+                   JSON_VALUE(agent_evidence, '$.derived.pti' RETURNING NUMBER)
               FROM BANK_CORE.hitl_task
              WHERE task_id = :taskId
             """, nativeQuery = true)

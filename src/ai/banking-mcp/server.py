@@ -407,6 +407,37 @@ def _eligibility_impl(session_token: str) -> dict:
     return out
 
 
+def _pricing_impl(ctx: dict) -> dict | None:
+    """Indicative pricing for the recommendation packet, from the same context.
+
+    `opa/packages/pricing.rego` is the rate card keyed by risk band; the offer a
+    customer is eventually quoted is settled after a human approves, so this is
+    the reviewer's reference figure and the one the decision record keeps.
+
+    Returns None when the inputs are not all present or OPA cannot be reached:
+    the tier and its reason codes must not depend on the rate card being up.
+    """
+    app = ctx.get("application") or {}
+    der = ctx.get("derived") or {}
+    cred = ctx.get("credit") or {}
+    opa_input = {
+        "applicant": {"credit_score": cred.get("score"), "dti": der.get("dti")},
+        "application": {"amount": app.get("amount_requested"),
+                        "term_months": app.get("term_months")},
+    }
+    if any(v is None for v in opa_input["applicant"].values()) or \
+       any(v is None for v in opa_input["application"].values()):
+        return None
+    try:
+        resp = httpx.post(f"{_OPA_URL}/v1/data/decisioning/pricing/quote",
+                          json={"input": opa_input}, timeout=5.0)
+        resp.raise_for_status()
+        return resp.json().get("result") or None
+    except Exception as exc:  # noqa: BLE001 — pricing is informational
+        print(f"[recommend_tier_for_session] pricing unavailable: {exc}", flush=True)
+        return None
+
+
 def _documents_impl(session_token: str) -> dict:
     """Deterministic document set: token in -> the required doc_type list out.
 
@@ -580,6 +611,11 @@ def recommend_tier_for_session(session_token: str) -> dict:
             "eligibility": eligibility,
             "employer": employer,
             "documents": documents,
+            # The ratios the tier rests on and the indicative rate. They are
+            # computed on this turn and nowhere else, so the packet is where the
+            # decision record reads them from when the reviewer closes the task.
+            "derived": ctx.get("derived"),
+            "pricing": _pricing_impl(ctx),
         },
     }
     _audit("recommend_tier_for_session", "SUCCESS", started, _now_utc(), {}, out,
