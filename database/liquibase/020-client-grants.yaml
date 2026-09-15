@@ -1,0 +1,164 @@
+databaseChangeLog:
+  # The grant matrix. Every privilege a login identity holds is in this file,
+  # so the deployment's blast radius can be read in one place rather than
+  # reconstructed from the nineteen changesets before it.
+  #
+  # The rule is that privilege follows the audience of whoever can reach the
+  # identity. CUSTOMER_AGENT_* are reachable by anything a customer can talk
+  # the chat agent into doing, so they see the customer-safe views and one
+  # package. BACKOFFICE_AGENT_RO is reachable only from the bank's own
+  # backoffice, so it sees the broader view set — and holds no write path at
+  # all, which is what keeps a research agent structurally unable to decide
+  # anything. PAF_PLATFORM holds no data grant of any kind: it is the
+  # platform's own schema, and the kit's privilege requirements make it the
+  # last identity that should also be able to read banking data.
+  #
+  # Owners appear here only as the target of object privileges, never as the
+  # grantee of a session.
+
+  # ---------------------------------------------------- SVC_BACKEND (app) --
+  # The Spring Application Service: reads the banking tables it renders,
+  # writes chat, sessions, the per-tool audit trail, and closes HITL tasks.
+  # No privilege on BANK_VIEWS, BANK_TOOLS or PAF_PLATFORM.
+
+  - changeSet:
+      id: 020-grant-svc-backend-reads
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              GRANT SELECT ON BANK_CORE.customer TO SVC_BACKEND
+        - sql:
+            sql: |-
+              GRANT SELECT ON BANK_CORE.loan_application TO SVC_BACKEND
+        - sql:
+            sql: |-
+              GRANT SELECT ON BANK_CORE.product_catalog TO SVC_BACKEND
+
+  - changeSet:
+      id: 020-grant-svc-backend-writes
+      author: paf-poc
+      # hitl_task is updated (never deleted) when a reviewer closes a task.
+      # decision is a Blockchain Table: INSERT is the only write it accepts,
+      # by construction rather than by grant.
+      changes:
+        - sql:
+            sql: |-
+              GRANT SELECT, UPDATE ON BANK_CORE.hitl_task TO SVC_BACKEND
+        - sql:
+            sql: |-
+              GRANT SELECT, INSERT ON BANK_CORE.decision TO SVC_BACKEND
+        - sql:
+            sql: |-
+              GRANT SELECT, INSERT ON BANK_CORE.decision_audit TO SVC_BACKEND
+        - sql:
+            sql: |-
+              GRANT SELECT, INSERT ON BANK_CORE.chat_message TO SVC_BACKEND
+        - sql:
+            sql: |-
+              GRANT SELECT, INSERT, UPDATE, DELETE ON BANK_CORE.auth_session TO SVC_BACKEND
+
+  # -------------------------------------------- CUSTOMER_AGENT_RO (chat) --
+  # banking-mcp's connection. Fixed SQL, but the grants are what bound it if
+  # that ever stops being true: the customer-safe view set, plus the two
+  # tables the session-scoped tools resolve against.
+
+  - changeSet:
+      id: 020-grant-customer-agent-ro-views
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              GRANT SELECT ON BANK_VIEWS.chat_v_applicant_profile TO CUSTOMER_AGENT_RO
+        - sql:
+            sql: |-
+              GRANT SELECT ON BANK_VIEWS.chat_v_transactions_summary TO CUSTOMER_AGENT_RO
+        - sql:
+            sql: |-
+              GRANT SELECT ON BANK_VIEWS.chat_v_credit_bureau TO CUSTOMER_AGENT_RO
+        - sql:
+            sql: |-
+              GRANT SELECT ON BANK_VIEWS.chat_v_existing_facilities TO CUSTOMER_AGENT_RO
+        - sql:
+            sql: |-
+              GRANT SELECT ON BANK_VIEWS.chat_v_loan_application TO CUSTOMER_AGENT_RO
+        - sql:
+            sql: |-
+              GRANT SELECT ON BANK_VIEWS.chat_v_application_document TO CUSTOMER_AGENT_RO
+
+  - changeSet:
+      id: 020-grant-customer-agent-ro-session-lookup
+      author: paf-poc
+      # auth_session resolves the opaque token to a customer, and hitl_task
+      # answers "has a task been recorded for this application" for the
+      # decision gate. Both are table grants, which lets this identity read
+      # more of each table than the lookup needs; replacing them with
+      # definer's-rights functions is BACKLOG.md §12.
+      changes:
+        - sql:
+            sql: |-
+              GRANT SELECT ON BANK_CORE.auth_session TO CUSTOMER_AGENT_RO
+        - sql:
+            sql: |-
+              GRANT SELECT ON BANK_CORE.hitl_task TO CUSTOMER_AGENT_RO
+
+  # ------------------------------------------- CUSTOMER_AGENT_RW (chat) --
+  # hitl-mcp and application-mcp. One EXECUTE and nothing else: the package
+  # is definer's-rights, so every write this identity can reach is one
+  # PKG_AGENT_TOOLS chose to expose, with its own token checks in front.
+
+  - changeSet:
+      id: 020-grant-customer-agent-rw-tools
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              GRANT EXECUTE ON BANK_TOOLS.PKG_AGENT_TOOLS TO CUSTOMER_AGENT_RW
+
+  # ------------------------------------ BACKOFFICE_AGENT_RO (research) --
+  # RESEARCH_WORKFLOW's read scope: the broader view set, the RAG tables, and
+  # the feature view. Deliberately no EXECUTE anywhere and no table write.
+
+  - changeSet:
+      id: 020-grant-backoffice-agent-ro-views
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              GRANT SELECT ON BANK_VIEWS.research_v_full_transactions TO BACKOFFICE_AGENT_RO
+        - sql:
+            sql: |-
+              GRANT SELECT ON BANK_VIEWS.research_v_decision_history TO BACKOFFICE_AGENT_RO
+        - sql:
+            sql: |-
+              GRANT SELECT ON BANK_VIEWS.research_v_decision_audit TO BACKOFFICE_AGENT_RO
+        - sql:
+            sql: |-
+              GRANT SELECT ON BANK_VIEWS.research_v_research_audit TO BACKOFFICE_AGENT_RO
+        - sql:
+            sql: |-
+              GRANT SELECT ON BANK_VIEWS.research_v_policy_parameter_history TO BACKOFFICE_AGENT_RO
+        - sql:
+            sql: |-
+              GRANT SELECT ON BANK_VIEWS.research_v_hitl_task TO BACKOFFICE_AGENT_RO
+        - sql:
+            sql: |-
+              GRANT SELECT ON BANK_VIEWS.research_v_case_history TO BACKOFFICE_AGENT_RO
+        - sql:
+            sql: |-
+              GRANT SELECT ON BANK_VIEWS.cust_360 TO BACKOFFICE_AGENT_RO
+
+  - changeSet:
+      id: 020-grant-backoffice-agent-ro-rag
+      author: paf-poc
+      # policy_corpus is read directly rather than through a view, because a
+      # vector distance query needs the embedding column itself. case_history
+      # is also reachable through research_v_case_history; the direct grant
+      # keeps the vector column available if retrieval ever needs it.
+      changes:
+        - sql:
+            sql: |-
+              GRANT SELECT ON BANK_CORE.policy_corpus TO BACKOFFICE_AGENT_RO
+        - sql:
+            sql: |-
+              GRANT SELECT ON BANK_CORE.case_history TO BACKOFFICE_AGENT_RO

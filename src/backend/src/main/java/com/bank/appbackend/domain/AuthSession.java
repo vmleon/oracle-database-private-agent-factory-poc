@@ -11,7 +11,7 @@ import lombok.Setter;
 import java.time.Instant;
 
 @Entity
-@Table(name = "AUTH_SESSION")
+@Table(name = "AUTH_SESSION", schema = "BANK_CORE")
 @Getter
 @Setter
 @NoArgsConstructor

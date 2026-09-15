@@ -7,9 +7,10 @@ the PL/SQL function (bind variables) — never from the chat message, so this
 cannot be steered to another customer's application (IDOR-safe, same boundary
 as banking-mcp.lookup_application / get_context).
 
-Connects as AGENT_FACTORY, which has EXECUTE on AGENT_TOOLS.PKG_AGENT_TOOLS;
-the package runs with definer's rights (AGENT_TOOLS has INSERT/UPDATE on
-APP.loan_application via changeset 012). Mirrors hitl-mcp.
+Connects as CUSTOMER_AGENT_RW, the client user for CHAT_FLOW's write path,
+which holds EXECUTE on BANK_TOOLS.PKG_AGENT_TOOLS and no table privilege;
+the package runs with definer's rights (BANK_TOOLS has INSERT/UPDATE on
+BANK_CORE.loan_application via changeset 012). Mirrors hitl-mcp.
 """
 
 from __future__ import annotations
@@ -117,7 +118,7 @@ def _upsert_application_impl(
         with _connect() as conn:
             with conn.cursor() as cur:
                 application_id = cur.callfunc(
-                    "AGENT_TOOLS.PKG_AGENT_TOOLS.upsert_draft_application",
+                    "BANK_TOOLS.PKG_AGENT_TOOLS.upsert_draft_application",
                     int,
                     [session_token, amount, term_months, purpose],
                 )

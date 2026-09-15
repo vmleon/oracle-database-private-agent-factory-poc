@@ -17,7 +17,7 @@ Control flow edges: ControlFlowEdge(source_step=initial_step, source_branch=next
         ... 13 more edges, all keyed by node ID ...
 ```
 
-There is no node title (`Chat output`, `Condition`, `TextCombiner`, etc.) anywhere in the error. The user has to query `AGENT_FACTORY.AAI_AGENT_BUILDER.data` and join the IDs back to titles manually.
+There is no node title (`Chat output`, `Condition`, `TextCombiner`, etc.) anywhere in the error. The user has to query `PAF_PLATFORM.AAI_AGENT_BUILDER.data` and join the IDs back to titles manually.
 
 ## Reproduce
 

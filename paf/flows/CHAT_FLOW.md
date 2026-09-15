@@ -56,7 +56,7 @@ The line is the **value, not the factor**: "affordability is the sticking point"
 
 The flow's only runtime input is the **chat message** posted to PAF's Chat input. The per-request **session token travels in-band, prepended in a `[[SESSION <token>]]` envelope** and split back out at flow start by a deterministic `Regex extractor`. Per-invocation `customer_id` / `application_id` are **never** received from the user — they are resolved server-side from the token by every tool that needs them.
 
-- **Session token** — opaque, server-issued, unguessable. Looked up in `APP.auth_session` (Liquibase changeset 011) to resolve the customer. In production minted at login by the Spring backend (`/v1/login`), which also strips any `[[SESSION …]]` the customer typed before enveloping. The token binds to the **customer**; the application is resolved as that customer's open one.
+- **Session token** — opaque, server-issued, unguessable. Looked up in `BANK_CORE.auth_session` (Liquibase changeset 011) to resolve the customer. In production minted at login by the Spring backend (`/v1/login`), which also strips any `[[SESSION …]]` the customer typed before enveloping. The token binds to the **customer**; the application is resolved as that customer's open one.
 - **Chat message** — the customer's natural-language message. **Untrusted.** `Intake` reads it to extract loan-request values (amount/term/purpose) and to interpret confirmation; no agent ever takes an identifier from it.
 
 Two PAF product gaps shape this design (both verified against the installed kit):
@@ -107,7 +107,7 @@ Each takes only `session_token`, resolves state through the same server-side rea
 | `evaluate_eligibility_for_session` | builds the OPA `applicant` from the DB-derived age/income/score/dti/pti             | `{allow, deny, warn}`                                           |
 | `required_documents_for_session`   | evaluates `decisioning.required_documents` from product/employment/residency/amount | `{required, amount_band, rationale}`                            |
 | `verify_employer_for_session`      | reads `profile.employer_name` and calls the company registry                        | `{name, registered, trading_status}`                            |
-| `hitl_status_for_session`          | reads the context, `APP.hitl_task` and the manager's reply                          | `{gate, stage, task_id}`                                        |
+| `hitl_status_for_session`          | reads the context, `BANK_CORE.hitl_task` and the manager's reply                          | `{gate, stage, task_id}`                                        |
 | `recommend_tier_for_session`       | applies the tier rule to the eligibility and employer records                       | `{tier, reasoning, factors, evidence}`                          |
 
 `recommend_tier_for_session` is the only one with no node on the canvas: `hitl-mcp.create_hitl_task` calls it server-side so the recorded decision never passes through a model. The rule is `tier_from()` in [`src/ai/banking-mcp/gate.py`](../../src/ai/banking-mcp/gate.py) — DECLINE on any `deny` or an unregistered employer, REVIEW on any `warn` or a dormant one, APPROVE otherwise — and it is covered by host unit tests.
@@ -647,7 +647,7 @@ The backend mints session tokens; for canvas Playground testing you can use the 
 
 ```sql
 SELECT session_token, customer_id, application_id, scenario_label
-  FROM APP.auth_session ORDER BY scenario_label;
+  FROM BANK_CORE.auth_session ORDER BY scenario_label;
 ```
 
 **Intake walkthrough.** Use the Spring backend (`/v1/login` for the seeded no-application customer) to mint a token, then drive the conversation through `/v1/chat` (or paste the enveloped token into Playground turn by turn):
@@ -656,7 +656,7 @@ SELECT session_token, customer_id, application_id, scenario_label
 2. `"$18,000"` → `upsert_application(amount=18000)`, asks the term.
 3. `"over 3 years"` → `upsert_application(term_months=36)`, asks the purpose.
 4. `"home improvement"` → `upsert_application(purpose=...)`, reads back, asks to confirm.
-5. `"yes"` → manager → `Recommendation` → customer sentence + one `APP.hitl_task` row.
+5. `"yes"` → manager → `Recommendation` → customer sentence + one `BANK_CORE.hitl_task` row.
 
 **Tier scenarios.** Envelope each seeded token (these customers already have a complete application, so the first `"yes"` goes straight to `Recommendation`):
 
@@ -676,7 +676,7 @@ Verify each successful run:
 ```sql
 SELECT task_id, application_id, agent_recommendation, agent_run_id,
        SUBSTR(agent_reasoning, 1, 150) AS reasoning_head
-  FROM APP.hitl_task ORDER BY task_id DESC FETCH FIRST 1 ROW ONLY;
+  FROM BANK_CORE.hitl_task ORDER BY task_id DESC FETCH FIRST 1 ROW ONLY;
 ```
 
 Trace expectation per successful turn (Playground trace pane): the five deterministic `banking-mcp` nodes run once each — four before the manager, one after; the manager delegates once; the worker makes at most one tool call. More than that means the model is looping — tighten the instruction block.

@@ -4,7 +4,7 @@ databaseChangeLog:
   # Profiles and agent tools are NOT created here. DBMS_CLOUD_AI.CREATE_PROFILE
   # and DBMS_CLOUD_AI_AGENT.CREATE_TOOL create objects owned by the invoking
   # user, and Liquibase connects as ADMIN — objects it created would be
-  # invisible to PAF, which connects as AGENT_FACTORY. PAF creates both through
+  # invisible to PAF, which connects as PAF_PLATFORM. PAF creates both through
   # its own UI, as itself; this changelog grants it the privileges to do so.
 
   - changeSet:
@@ -22,7 +22,7 @@ databaseChangeLog:
             sql: |-
               BEGIN
                 DBMS_CLOUD_ADMIN.ENABLE_RESOURCE_PRINCIPAL(
-                  username => 'AGENT_FACTORY'
+                  username => 'PAF_PLATFORM'
                 );
               EXCEPTION WHEN OTHERS THEN
                 IF SQLCODE = -20000 THEN NULL; ELSE RAISE; END IF;
@@ -41,24 +41,14 @@ databaseChangeLog:
       changes:
         - sql:
             sql: |-
-              GRANT EXECUTE ON DBMS_CLOUD TO AGENT_FACTORY
+              GRANT EXECUTE ON DBMS_CLOUD TO PAF_PLATFORM
         - sql:
             sql: |-
-              GRANT EXECUTE ON DBMS_CLOUD_AI TO AGENT_FACTORY
+              GRANT EXECUTE ON DBMS_CLOUD_AI TO PAF_PLATFORM
         - sql:
             sql: |-
-              GRANT EXECUTE ON DBMS_CLOUD_AI_AGENT TO AGENT_FACTORY
+              GRANT EXECUTE ON DBMS_CLOUD_AI_AGENT TO PAF_PLATFORM
         - sql:
             sql: |-
-              GRANT EXECUTE ON DBMS_CLOUD_PIPELINE TO AGENT_FACTORY
+              GRANT EXECUTE ON DBMS_CLOUD_PIPELINE TO PAF_PLATFORM
 
-  - changeSet:
-      id: 018-grant-agent-tools-execute-to-agent-factory
-      author: paf-poc
-      context: adb
-      # The Select AI agent tools call this package as AGENT_FACTORY, so the
-      # Select AI channel needs the same EXECUTE the MCP wrappers use.
-      changes:
-        - sql:
-            sql: |-
-              GRANT EXECUTE ON AGENT_TOOLS.PKG_AGENT_TOOLS TO AGENT_FACTORY

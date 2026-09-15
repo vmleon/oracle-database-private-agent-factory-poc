@@ -4,11 +4,13 @@ wallet_dir: /opt/paf-poc/wallet
 opa_version: "1.0.0"
 opa_url: "https://openpolicyagent.org/downloads/v{{ opa_version }}/opa_linux_amd64_static"
 
-# The four MCP wrappers, on the ports the flow's server URLs use. banking reads
-# through REPORTING (SELECT-only on the views); the two that write go through
-# AGENT_FACTORY, which owns the AGENT_TOOLS grants.
+# The four MCP wrappers, on the ports the flow's server URLs use. The identity
+# each one connects with follows the audience it serves: the two CHAT_FLOW
+# write paths share the read-only-by-package CUSTOMER_AGENT_RW, the CHAT_FLOW
+# read path holds only the customer-safe views, and opa-mcp touches no database
+# at all. The grant behind each is in Liquibase 020-client-grants.yaml.
 mcp_services:
   - { name: opa-mcp, port: 8500 }
-  - { name: hitl-mcp, port: 8502, db_user: AGENT_FACTORY }
-  - { name: banking-mcp, port: 8503, db_user: REPORTING }
-  - { name: application-mcp, port: 8504, db_user: AGENT_FACTORY }
+  - { name: hitl-mcp, port: 8502, db_user: CUSTOMER_AGENT_RW, db_password_var: db_customer_rw_password }
+  - { name: banking-mcp, port: 8503, db_user: CUSTOMER_AGENT_RO, db_password_var: db_customer_ro_password }
+  - { name: application-mcp, port: 8504, db_user: CUSTOMER_AGENT_RW, db_password_var: db_customer_rw_password }

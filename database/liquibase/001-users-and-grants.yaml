@@ -1,70 +1,98 @@
 databaseChangeLog:
+  # Database identities, in two kinds.
+  #
+  # OWNERS own objects and nothing logs in as them — they are created without
+  # CREATE SESSION, so a leaked owner password buys no connection. Liquibase
+  # runs as ADMIN and creates every object fully qualified into these schemas.
+  #
+  # CLIENTS log in and own nothing. Each one carries only the grants its
+  # consumer needs, and each has its own password, so the blast radius of a
+  # compromised consumer is bounded by that user's grants. The grant matrix
+  # itself lives in 020-client-grants.yaml, after the objects exist.
+  #
+  # Passwords arrive as separate changelog parameters. `${db_owner_password}`
+  # is shared by the three owners because none of them can open a session;
+  # every client takes its own.
+  #
   # Application objects live in the DATA tablespace, and database links are
   # created through DBMS_CLOUD_ADMIN rather than the CREATE DATABASE LINK
   # privilege, so every user here is created the Autonomous Database way.
   # `context: adb` is a runtime filter selected by `--contexts=adb,seed`.
 
+  # ---------------------------------------------------------------- owners --
+
   - changeSet:
-      id: 001-create-app-user-adb
+      id: 001-create-bank-core-owner-adb
       author: paf-poc
       context: adb
+      # Banking tables, the decisioning and HITL tables, chat persistence,
+      # configuration, and the HITL_REQUEST queue.
       changes:
         - sql:
             sql: |-
-              CREATE USER APP IDENTIFIED BY "${db_password}"
+              CREATE USER BANK_CORE IDENTIFIED BY "${db_owner_password}"
+                DEFAULT TABLESPACE DATA
+                QUOTA UNLIMITED ON DATA
+        - sql:
+            sql: |-
+              GRANT CREATE TABLE, CREATE VIEW, CREATE SEQUENCE,
+                    CREATE PROCEDURE, CREATE TRIGGER, CREATE TYPE TO BANK_CORE
+
+  - changeSet:
+      id: 001-create-bank-views-owner-adb
+      author: paf-poc
+      context: adb
+      # The two curated read-only view sets: chat_v_* for the customer-facing
+      # agent, research_v_* for the backoffice one.
+      changes:
+        - sql:
+            sql: |-
+              CREATE USER BANK_VIEWS IDENTIFIED BY "${db_owner_password}"
+                DEFAULT TABLESPACE DATA
+                QUOTA UNLIMITED ON DATA
+        - sql:
+            sql: |-
+              GRANT CREATE VIEW TO BANK_VIEWS
+
+  - changeSet:
+      id: 001-create-bank-tools-owner-adb
+      author: paf-poc
+      context: adb
+      # PKG_AGENT_TOOLS — the definer's-rights package the agent write paths
+      # call. Callers get EXECUTE on the package and no table privilege at all.
+      changes:
+        - sql:
+            sql: |-
+              CREATE USER BANK_TOOLS IDENTIFIED BY "${db_owner_password}"
+                DEFAULT TABLESPACE DATA
+                QUOTA UNLIMITED ON DATA
+        - sql:
+            sql: |-
+              GRANT CREATE PROCEDURE, CREATE TABLE, CREATE TYPE TO BANK_TOOLS
+
+  # -------------------------------------------------------------- platform --
+
+  - changeSet:
+      id: 001-create-paf-platform-user-adb
+      author: paf-poc
+      context: adb
+      # PAF's own schema. It is both owner and login because the product
+      # installs its metadata as the user it connects with, and its privilege
+      # set is the kit's documented requirement rather than our choice — which
+      # is exactly why nothing else reuses this identity.
+      changes:
+        - sql:
+            sql: |-
+              CREATE USER PAF_PLATFORM IDENTIFIED BY "${db_paf_password}"
                 DEFAULT TABLESPACE DATA
                 QUOTA UNLIMITED ON DATA
         - sql:
             sql: |-
               GRANT CREATE SESSION, CREATE TABLE, CREATE VIEW, CREATE SEQUENCE,
-                    CREATE PROCEDURE, CREATE TRIGGER, CREATE TYPE TO APP
+                    CREATE PROCEDURE, CREATE TRIGGER, CREATE TYPE TO PAF_PLATFORM
 
   - changeSet:
-      id: 001-create-reporting-user-adb
-      author: paf-poc
-      context: adb
-      changes:
-        - sql:
-            sql: |-
-              CREATE USER REPORTING IDENTIFIED BY "${db_password}"
-                DEFAULT TABLESPACE DATA
-                QUOTA UNLIMITED ON DATA
-        - sql:
-            sql: |-
-              GRANT CREATE SESSION, CREATE VIEW TO REPORTING
-
-  - changeSet:
-      id: 001-create-agent-tools-user-adb
-      author: paf-poc
-      context: adb
-      changes:
-        - sql:
-            sql: |-
-              CREATE USER AGENT_TOOLS IDENTIFIED BY "${db_password}"
-                DEFAULT TABLESPACE DATA
-                QUOTA UNLIMITED ON DATA
-        - sql:
-            sql: |-
-              GRANT CREATE SESSION, CREATE PROCEDURE, CREATE TABLE,
-                    CREATE TYPE TO AGENT_TOOLS
-
-  - changeSet:
-      id: 001-create-agent-factory-user-adb
-      author: paf-poc
-      context: adb
-      changes:
-        - sql:
-            sql: |-
-              CREATE USER AGENT_FACTORY IDENTIFIED BY "${db_password}"
-                DEFAULT TABLESPACE DATA
-                QUOTA UNLIMITED ON DATA
-        - sql:
-            sql: |-
-              GRANT CREATE SESSION, CREATE TABLE, CREATE VIEW, CREATE SEQUENCE,
-                    CREATE PROCEDURE, CREATE TRIGGER, CREATE TYPE TO AGENT_FACTORY
-
-  - changeSet:
-      id: 002-grant-agent-factory-paf-adb
+      id: 002-grant-paf-platform-adb
       author: paf-poc
       context: adb
       # CREATE DATABASE LINK is absent: Autonomous Database creates links
@@ -76,26 +104,92 @@ databaseChangeLog:
               GRANT CONNECT, RESOURCE,
                     CREATE SYNONYM,
                     CREATE ANY INDEX, INSERT ANY TABLE
-                TO AGENT_FACTORY
+                TO PAF_PLATFORM
         - sql:
             sql: |-
-              GRANT READ, WRITE ON DIRECTORY DATA_PUMP_DIR TO AGENT_FACTORY
+              GRANT READ, WRITE ON DIRECTORY DATA_PUMP_DIR TO PAF_PLATFORM
 
   - changeSet:
-      id: 003-grant-agent-factory-readonly-user-mgmt
+      id: 003-grant-paf-platform-readonly-user-mgmt
       author: paf-poc
       # PAF's UI installer (step 3) creates a separate read-only DB user
-      # owned by AGENT_FACTORY. Without these grants the step fails with
+      # owned by PAF_PLATFORM. Without these grants the step fails with
       # `ORA-01031: insufficient privileges`. These three grants are
       # taken from the kit's quickstart startup.sh, and are grantable on
       # both targets.
       changes:
         - sql:
             sql: |-
-              GRANT CREATE USER TO AGENT_FACTORY
+              GRANT CREATE USER TO PAF_PLATFORM
         - sql:
             sql: |-
-              GRANT DROP USER TO AGENT_FACTORY
+              GRANT DROP USER TO PAF_PLATFORM
         - sql:
             sql: |-
-              GRANT CREATE SESSION TO AGENT_FACTORY WITH ADMIN OPTION
+              GRANT CREATE SESSION TO PAF_PLATFORM WITH ADMIN OPTION
+
+  # --------------------------------------------------------------- clients --
+
+  - changeSet:
+      id: 001-create-svc-backend-client-adb
+      author: paf-poc
+      context: adb
+      # The Spring Application Service. First-party code with no prompt
+      # surface, but it holds a login rather than the owner account so that
+      # no runtime identity in the deployment is also an object owner.
+      changes:
+        - sql:
+            sql: |-
+              CREATE USER SVC_BACKEND IDENTIFIED BY "${db_backend_password}"
+                DEFAULT TABLESPACE DATA
+        - sql:
+            sql: |-
+              GRANT CREATE SESSION TO SVC_BACKEND
+
+  - changeSet:
+      id: 001-create-customer-agent-ro-client-adb
+      author: paf-poc
+      context: adb
+      # CHAT_FLOW's read path, reached by banking-mcp. This is the identity
+      # exposed to whatever a customer can make the agent do, so it sees the
+      # customer-safe view set and nothing of the backoffice one.
+      changes:
+        - sql:
+            sql: |-
+              CREATE USER CUSTOMER_AGENT_RO IDENTIFIED BY "${db_customer_ro_password}"
+                DEFAULT TABLESPACE DATA
+        - sql:
+            sql: |-
+              GRANT CREATE SESSION TO CUSTOMER_AGENT_RO
+
+  - changeSet:
+      id: 001-create-customer-agent-rw-client-adb
+      author: paf-poc
+      context: adb
+      # CHAT_FLOW's write path, reached by hitl-mcp and application-mcp. It
+      # holds EXECUTE on one package and no table privilege, so every write it
+      # can perform is one the package chose to expose.
+      changes:
+        - sql:
+            sql: |-
+              CREATE USER CUSTOMER_AGENT_RW IDENTIFIED BY "${db_customer_rw_password}"
+                DEFAULT TABLESPACE DATA
+        - sql:
+            sql: |-
+              GRANT CREATE SESSION TO CUSTOMER_AGENT_RW
+
+  - changeSet:
+      id: 001-create-backoffice-agent-ro-client-adb
+      author: paf-poc
+      context: adb
+      # RESEARCH_WORKFLOW's read path. Reachable only from the bank's
+      # backoffice, so it sees the broader view set — and no write path at
+      # all, which is what keeps a research agent unable to decide anything.
+      changes:
+        - sql:
+            sql: |-
+              CREATE USER BACKOFFICE_AGENT_RO IDENTIFIED BY "${db_backoffice_ro_password}"
+                DEFAULT TABLESPACE DATA
+        - sql:
+            sql: |-
+              GRANT CREATE SESSION TO BACKOFFICE_AGENT_RO

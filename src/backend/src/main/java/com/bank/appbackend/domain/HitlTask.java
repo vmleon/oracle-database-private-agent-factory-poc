@@ -8,7 +8,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 @Entity
-@Table(name = "HITL_TASK")
+@Table(name = "HITL_TASK", schema = "BANK_CORE")
 @Getter
 @NoArgsConstructor
 public class HitlTask {

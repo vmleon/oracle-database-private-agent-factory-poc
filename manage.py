@@ -410,6 +410,22 @@ def setup() -> None:
         wallet_password = _generate_password()
         console.print("[green]✓[/green] Generated wallet password (saved to .env)")
 
+    # One password per database identity, always generated and never prompted:
+    # they exist so that a leak of any one of them reaches only that identity's
+    # grants. The ADMIN password above stays separate from all of them.
+    schema_passwords = {
+        key: existing.get(key) or _generate_password()
+        for key in (
+            "DB_OWNER_PASSWORD",
+            "DB_PAF_PASSWORD",
+            "DB_BACKEND_PASSWORD",
+            "DB_CUSTOMER_RO_PASSWORD",
+            "DB_CUSTOMER_RW_PASSWORD",
+            "DB_BACKOFFICE_RO_PASSWORD",
+        )
+    }
+    console.print("[green]✓[/green] Generated a password per database user (saved to .env)")
+
     paf_tarball = _resolve_kit_tarball("x86_64")
     console.print(f"[green]✓[/green] PAF kit: {Path(paf_tarball).name}")
 
@@ -447,6 +463,16 @@ def setup() -> None:
         "DB_ADMIN_USER=ADMIN\n"
         f"DB_PASSWORD={db_password}\n"
         f"DB_WALLET_PASSWORD={wallet_password}\n"
+        "\n"
+        "# One login per database identity. Owners hold no CREATE SESSION, so\n"
+        "# DB_OWNER_PASSWORD opens nothing; PAF requires its own user and the\n"
+        "# read-only worker it creates to share DB_PAF_PASSWORD.\n"
+        f"DB_OWNER_PASSWORD={schema_passwords['DB_OWNER_PASSWORD']}\n"
+        f"DB_PAF_PASSWORD={schema_passwords['DB_PAF_PASSWORD']}\n"
+        f"DB_BACKEND_PASSWORD={schema_passwords['DB_BACKEND_PASSWORD']}\n"
+        f"DB_CUSTOMER_RO_PASSWORD={schema_passwords['DB_CUSTOMER_RO_PASSWORD']}\n"
+        f"DB_CUSTOMER_RW_PASSWORD={schema_passwords['DB_CUSTOMER_RW_PASSWORD']}\n"
+        f"DB_BACKOFFICE_RO_PASSWORD={schema_passwords['DB_BACKOFFICE_RO_PASSWORD']}\n"
         "\n"
         "# Models (OCI Generative AI — no self-hosted inference on this target).\n"
         "# PAF connects with the oci_instance_principal provider, which carries\n"
@@ -784,6 +810,8 @@ def tf() -> None:
             "OCI_PROFILE", "OCI_REGION", "OCI_GENAI_REGION", "OCI_COMPARTMENT_OCID",
             "OCI_LABEL", "OCI_SSH_PUBLIC_KEY", "OCI_ADMIN_CIDR", "OCI_COMPUTE_SHAPE",
             "DB_NAME", "DB_PASSWORD", "DB_WALLET_PASSWORD", "PAF_TARBALL", "GENAI_MODEL",
+            "DB_OWNER_PASSWORD", "DB_PAF_PASSWORD", "DB_BACKEND_PASSWORD",
+            "DB_CUSTOMER_RO_PASSWORD", "DB_CUSTOMER_RW_PASSWORD", "DB_BACKOFFICE_RO_PASSWORD",
         ]),
         TF_IAM_VARS_TEMPLATE: (TF_IAM_VARS_FILE, [
             "OCI_PROFILE", "OCI_HOME_REGION", "OCI_TENANCY_OCID", "OCI_COMPARTMENT_OCID", "OCI_LABEL",
@@ -851,7 +879,9 @@ def info() -> None:
     console.print(f"PAF:            https://{lb_ip}/agentFactory")
     console.print(f"Bastion:        ssh opc@{_tf_output('ops_public_ip') or '<unknown>'}")
     console.print(f"ADB service:    {os.getenv('DB_SERVICE')}   (wallet: {_tf_output('adb_wallet_path') or 'not generated'})")
-    console.print(f"App schemas:    APP, REPORTING, AGENT_TOOLS, AGENT_FACTORY")
+    console.print("Schema owners:  BANK_CORE, BANK_VIEWS, BANK_TOOLS   (no login)")
+    console.print("Logins:         PAF_PLATFORM, SVC_BACKEND, CUSTOMER_AGENT_RO,")
+    console.print("                CUSTOMER_AGENT_RW, BACKOFFICE_AGENT_RO")
     console.print(f"Models:         {os.getenv('GENAI_MODEL')} / {os.getenv('GENAI_EMBED_MODEL')}")
     console.print(f"                via {os.getenv('GENAI_ENDPOINT')}")
     console.print(f"                instance principal — no key material")
@@ -1071,7 +1101,7 @@ def cloud_test(pytest_args: tuple) -> None:
         f"PAF_API_KEY={os.environ['PAF_API_KEY']}",
         f"PAF_AGENT_ID={os.environ['PAF_AGENT_ID']}",
         f"DB_SERVICE={os.getenv('DB_SERVICE', '')}",
-        f"DB_PASSWORD={os.getenv('DB_PASSWORD', '')}",
+        f"DB_BACKEND_PASSWORD={os.getenv('DB_BACKEND_PASSWORD', '')}",
         f"DB_WALLET_PASSWORD={os.getenv('DB_WALLET_PASSWORD', '')}",
     ])
     remote_env = "/home/opc/.poc-test-env"
@@ -1158,7 +1188,7 @@ def cloud_reset() -> None:
     tool traces, so a test run or a demo starts from the seeded state.
 
     The seeded customers and their applications are untouched, so a customer
-    already processed can be run again. APP.decision is left alone: it is a
+    already processed can be run again. BANK_CORE.decision is left alone: it is a
     blockchain table declared NO DELETE LOCKED, and outliving a reset is the
     property the demo exists to show.
     """
@@ -1173,10 +1203,10 @@ cur = con.cursor()
 # Nothing references hitl_task, and the rest hang off customer and
 # loan_application, so no order is forced on these.
 for table in ("hitl_task", "chat_message", "auth_session", "decision_audit"):
-    cur.execute("DELETE FROM APP." + table)
+    cur.execute("DELETE FROM BANK_CORE." + table)
     print(table, cur.rowcount)
 con.commit()
-cur.execute("SELECT COUNT(*) FROM APP.decision")
+cur.execute("SELECT COUNT(*) FROM BANK_CORE.decision")
 print("decision", cur.fetchone()[0])
 """
     console.print(Panel.fit("[bold]Resetting the demo data[/bold]"))
@@ -1202,7 +1232,7 @@ print("decision", cur.fetchone()[0])
             kept = count
     console.print(f"[green]\u2713[/green] Queue and chats are clear.")
     console.print(
-        f"[dim]  APP.decision keeps its {kept} row(s) — a blockchain table declared "
+        f"[dim]  BANK_CORE.decision keeps its {kept} row(s) — a blockchain table declared "
         f"NO DELETE LOCKED.[/dim]"
     )
 
@@ -1264,12 +1294,12 @@ con = oracledb.connect(user="ADMIN", password=p["adb_admin_password"], dsn=p["ad
                        wallet_password=p["wallet_password"])
 cur = con.cursor()
 try:
-    cur.execute("UPDATE AGENT_FACTORY.AAI_APPLICATION_SETTINGS SET value='false' "
+    cur.execute("UPDATE PAF_PLATFORM.AAI_APPLICATION_SETTINGS SET value='false' "
                 "WHERE field='BLOCK_PRIVATE_OUTBOUND_URLS'")
     con.commit()
 except Exception as exc:
     print("SETTINGS_TABLE_MISSING", exc); raise SystemExit(0)
-cur.execute("SELECT field||'='||value FROM AGENT_FACTORY.AAI_APPLICATION_SETTINGS "
+cur.execute("SELECT field||'='||value FROM PAF_PLATFORM.AAI_APPLICATION_SETTINGS "
             "WHERE field IN ('BLOCK_PRIVATE_OUTBOUND_URLS','ALLOW_INSECURE_HTTP_URLS')")
 for (row,) in cur:
     print(row)
@@ -1674,15 +1704,15 @@ def paf_bootstrap() -> None:
     console.print("  Connection type:  [cyan]Wallet[/cyan]")
     console.print(f"  Wallet file:      drop [cyan]{wallet}[/cyan]")
     console.print(f"  Network alias:    [cyan]{db_service}[/cyan]   (from the wallet's tnsnames)")
-    console.print("  Username:         [cyan]AGENT_FACTORY[/cyan]")
-    console.print("  Password:         same as DB_PASSWORD in .env")
+    console.print("  Username:         [cyan]PAF_PLATFORM[/cyan]   (PAF's own schema — holds no banking data)")
+    console.print("  Password:         same as DB_PAF_PASSWORD in .env")
     console.print("  [bold]PAF then asks two more questions:[/bold]")
     console.print("    Air-gapped environment?            [cyan]No[/cyan]")
     console.print("    OCI certificates added to wallet?  [cyan]Yes[/cyan]   (an ADB wallet carries them,")
     console.print("        so the Knowledge Assistant installs)\n")
 
     console.print("[bold]Step 3 — installation[/bold]")
-    console.print("  Click Install. PAF creates its metadata tables under AGENT_FACTORY.")
+    console.print("  Click Install. PAF creates its metadata tables under PAF_PLATFORM.")
     console.print("  Sign in as the admin user for the remaining steps.\n")
 
     console.print("[bold]Step 4 — LLM configuration[/bold]   (LLM Management — no key material; the compute")
@@ -1711,14 +1741,27 @@ def paf_bootstrap() -> None:
     console.print("  The connection entered in step 2 is PAF's own repository. Select AI and the")
     console.print("  flows read through registered data sources, which are separate — without the")
     console.print("  database registered here, Select AI's database list is empty.")
-    console.print("  [bold]Database[/bold]   (Add new data source → Source type: Database)")
-    console.print("    Name:             [cyan]Banking Application DB[/cyan]")
-    console.print("    Description:      [cyan]Read-only REPORTING views[/cyan]   (mandatory field)")
+    console.print("  Register [bold]one data source per audience[/bold]. The connection user is what")
+    console.print("  bounds a compromised flow, so the customer-facing agent and the backoffice")
+    console.print("  one never share a login. Neither is PAF_PLATFORM.")
+    console.print("  [bold]Database — customer[/bold]   (Add new data source → Source type: Database)")
+    console.print("    Name:             [cyan]Banking DB (customer)[/cyan]")
+    console.print("    Description:      [cyan]Customer-safe chat_v_* views[/cyan]   (mandatory field)")
     console.print("    Connection type:  [cyan]Wallet[/cyan]")
     console.print(f"    Wallet file:      [cyan]{wallet}[/cyan]")
     console.print(f"    Database alias:   [cyan]{db_service}[/cyan]")
-    console.print("    User:             [cyan]AGENT_FACTORY[/cyan]   (holds the Select AI package grants)")
-    console.print("    Password:         same as DB_PASSWORD in .env")
+    console.print("    User:             [cyan]CUSTOMER_AGENT_RO[/cyan]")
+    console.print("    Password:         same as DB_CUSTOMER_RO_PASSWORD in .env")
+    console.print("  [bold]Database — backoffice[/bold]   (a second Database data source)")
+    console.print("    Name:             [cyan]Banking DB (backoffice)[/cyan]")
+    console.print("    Description:      [cyan]Backoffice research_v_* views[/cyan]")
+    console.print("    Connection type:  [cyan]Wallet[/cyan]")
+    console.print(f"    Wallet file:      [cyan]{wallet}[/cyan]")
+    console.print(f"    Database alias:   [cyan]{db_service}[/cyan]")
+    console.print("    User:             [cyan]BACKOFFICE_AGENT_RO[/cyan]")
+    console.print("    Password:         same as DB_BACKOFFICE_RO_PASSWORD in .env")
+    console.print("    [dim]Wire this one into RESEARCH_WORKFLOW only — it is the identity that[/dim]")
+    console.print("    [dim]can read the full transaction history and the decision audit.[/dim]")
     console.print("  [bold]HTTP — company registry[/bold]   (Source type: Rest API → OpenAPI specification)")
     console.print("    The form asks for the spec file and nothing else: the name and description")
     console.print("    come from the document's `info` block ([cyan]Company Registry[/cyan]), and PAF calls")

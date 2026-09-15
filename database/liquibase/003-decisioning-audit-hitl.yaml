@@ -1,5 +1,5 @@
 databaseChangeLog:
-  # Decisioning tables under APP — the agent's write surface for a credit
+  # Decisioning tables under BANK_CORE — the agent's write surface for a credit
   # decision and its full audit trail. DDL follows the sketch in
   # docs/DECISIONING-ENGINE-USE-CASE.md. Blockchain Tables on Oracle 21c+
   # enforce append-only semantics at the kernel level; no foreign keys are
@@ -23,7 +23,7 @@ databaseChangeLog:
       changes:
         - sql:
             sql: |-
-              CREATE BLOCKCHAIN TABLE APP.decision (
+              CREATE BLOCKCHAIN TABLE BANK_CORE.decision (
                 decision_id          NUMBER GENERATED ALWAYS AS IDENTITY,
                 application_id       NUMBER NOT NULL,
                 -- Human's final decision (written by the Application Service on HITL close)
@@ -50,17 +50,17 @@ databaseChangeLog:
                 HASHING USING "SHA2_512" VERSION "v1"
         - sql:
             sql: |-
-              CREATE INDEX APP.ix_decision_application ON APP.decision(application_id)
+              CREATE INDEX BANK_CORE.ix_decision_application ON BANK_CORE.decision(application_id)
         - sql:
             sql: |-
-              CREATE INDEX APP.ix_decision_agent_run ON APP.decision(agent_run_id)
+              CREATE INDEX BANK_CORE.ix_decision_agent_run ON BANK_CORE.decision(agent_run_id)
         - sql:
             sql: |-
-              CREATE INDEX APP.ix_decision_human_outcome ON APP.decision(human_outcome)
+              CREATE INDEX BANK_CORE.ix_decision_human_outcome ON BANK_CORE.decision(human_outcome)
         - sql:
             sql: |-
-              CREATE INDEX APP.ix_decision_agent_recommendation
-                ON APP.decision(agent_recommendation)
+              CREATE INDEX BANK_CORE.ix_decision_agent_recommendation
+                ON BANK_CORE.decision(agent_recommendation)
 
   - changeSet:
       id: 003-create-decision-audit
@@ -68,7 +68,7 @@ databaseChangeLog:
       changes:
         - sql:
             sql: |-
-              CREATE TABLE APP.decision_audit (
+              CREATE TABLE BANK_CORE.decision_audit (
                 audit_id     NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
                 agent_run_id VARCHAR2(60) NOT NULL,
                 step_no      NUMBER NOT NULL,
@@ -83,11 +83,11 @@ databaseChangeLog:
               )
         - sql:
             sql: |-
-              CREATE INDEX APP.ix_decision_audit_run ON APP.decision_audit(agent_run_id)
+              CREATE INDEX BANK_CORE.ix_decision_audit_run ON BANK_CORE.decision_audit(agent_run_id)
         - sql:
             sql: |-
-              CREATE UNIQUE INDEX APP.uq_decision_audit_step
-                ON APP.decision_audit(agent_run_id, step_no)
+              CREATE UNIQUE INDEX BANK_CORE.uq_decision_audit_step
+                ON BANK_CORE.decision_audit(agent_run_id, step_no)
 
   - changeSet:
       id: 003-create-research-audit
@@ -95,7 +95,7 @@ databaseChangeLog:
       changes:
         - sql:
             sql: |-
-              CREATE TABLE APP.research_audit (
+              CREATE TABLE BANK_CORE.research_audit (
                 audit_id        NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
                 research_run_id VARCHAR2(60) NOT NULL,
                 hitl_task_id    NUMBER,
@@ -112,20 +112,20 @@ databaseChangeLog:
               )
         - sql:
             sql: |-
-              CREATE INDEX APP.ix_research_audit_run
-                ON APP.research_audit(research_run_id)
+              CREATE INDEX BANK_CORE.ix_research_audit_run
+                ON BANK_CORE.research_audit(research_run_id)
         - sql:
             sql: |-
-              CREATE INDEX APP.ix_research_audit_task
-                ON APP.research_audit(hitl_task_id)
+              CREATE INDEX BANK_CORE.ix_research_audit_task
+                ON BANK_CORE.research_audit(hitl_task_id)
         - sql:
             sql: |-
-              CREATE INDEX APP.ix_research_audit_reviewer
-                ON APP.research_audit(reviewer)
+              CREATE INDEX BANK_CORE.ix_research_audit_reviewer
+                ON BANK_CORE.research_audit(reviewer)
         - sql:
             sql: |-
-              CREATE UNIQUE INDEX APP.uq_research_audit_step
-                ON APP.research_audit(research_run_id, step_no)
+              CREATE UNIQUE INDEX BANK_CORE.uq_research_audit_step
+                ON BANK_CORE.research_audit(research_run_id, step_no)
 
   - changeSet:
       id: 003-create-hitl-task
@@ -133,10 +133,10 @@ databaseChangeLog:
       changes:
         - sql:
             sql: |-
-              CREATE TABLE APP.hitl_task (
+              CREATE TABLE BANK_CORE.hitl_task (
                 task_id              NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
                 application_id       NUMBER NOT NULL
-                  REFERENCES APP.loan_application(application_id),
+                  REFERENCES BANK_CORE.loan_application(application_id),
                 assigned_to          VARCHAR2(120),
                 state                VARCHAR2(20) DEFAULT 'OPEN' NOT NULL
                   CHECK (state IN ('OPEN','IN_REVIEW','CLOSED','EXPIRED')),
@@ -157,17 +157,17 @@ databaseChangeLog:
               )
         - sql:
             sql: |-
-              CREATE INDEX APP.ix_hitl_task_application ON APP.hitl_task(application_id)
+              CREATE INDEX BANK_CORE.ix_hitl_task_application ON BANK_CORE.hitl_task(application_id)
         - sql:
             sql: |-
-              CREATE INDEX APP.ix_hitl_task_state ON APP.hitl_task(state)
+              CREATE INDEX BANK_CORE.ix_hitl_task_state ON BANK_CORE.hitl_task(state)
         - sql:
             sql: |-
-              CREATE INDEX APP.ix_hitl_task_assignee ON APP.hitl_task(assigned_to)
+              CREATE INDEX BANK_CORE.ix_hitl_task_assignee ON BANK_CORE.hitl_task(assigned_to)
         - sql:
             sql: |-
-              CREATE INDEX APP.ix_hitl_task_recommendation
-                ON APP.hitl_task(agent_recommendation)
+              CREATE INDEX BANK_CORE.ix_hitl_task_recommendation
+                ON BANK_CORE.hitl_task(agent_recommendation)
         - sql:
             sql: |-
-              CREATE INDEX APP.ix_hitl_task_agent_run ON APP.hitl_task(agent_run_id)
+              CREATE INDEX BANK_CORE.ix_hitl_task_agent_run ON BANK_CORE.hitl_task(agent_run_id)

@@ -1,9 +1,9 @@
 databaseChangeLog:
-  # APP.auth_session — opaque session-token table. The trust boundary between
+  # BANK_CORE.auth_session — opaque session-token table. The trust boundary between
   # untrusted user input (chat messages, etc.) and the authoritative
   # (customer_id, application_id) the workflow acts on. Named `auth_session`
   # rather than `session` because SESSION is an Oracle reserved word in DDL
-  # contexts (ORA-00903 on CREATE TABLE APP.session).
+  # contexts (ORA-00903 on CREATE TABLE BANK_CORE.session).
   #
   # Why it exists:
   # PAF's flow inputs are limited to the Chat input message; an operator
@@ -26,20 +26,20 @@ databaseChangeLog:
       changes:
         - sql:
             sql: |-
-              CREATE TABLE APP.auth_session (
+              CREATE TABLE BANK_CORE.auth_session (
                 session_token   VARCHAR2(64) PRIMARY KEY,
                 customer_id     NUMBER NOT NULL
-                  REFERENCES APP.customer(customer_id),
+                  REFERENCES BANK_CORE.customer(customer_id),
                 application_id  NUMBER NOT NULL
-                  REFERENCES APP.loan_application(application_id),
+                  REFERENCES BANK_CORE.loan_application(application_id),
                 scenario_label  VARCHAR2(60),
                 created_at      TIMESTAMP DEFAULT SYSTIMESTAMP NOT NULL,
                 expires_at      TIMESTAMP
               )
         - sql:
             sql: |-
-              CREATE INDEX APP.ix_auth_session_customer
-                ON APP.auth_session(customer_id, application_id)
+              CREATE INDEX BANK_CORE.ix_auth_session_customer
+                ON BANK_CORE.auth_session(customer_id, application_id)
 
   - changeSet:
       id: 011-grant-session-readonly-to-reporting
@@ -47,7 +47,7 @@ databaseChangeLog:
       changes:
         - sql:
             sql: |-
-              GRANT SELECT ON APP.auth_session TO REPORTING
+              GRANT SELECT ON BANK_CORE.auth_session TO BANK_VIEWS
 
   # Seed test tokens — one per CHAT_WORKFLOW scenario, plus a mismatch
   # case for the no-row guard test. Tokens are deterministic + readable
@@ -56,8 +56,8 @@ databaseChangeLog:
   # In production these are opaque random strings minted at login.
   #
   # customer_id / application_id are resolved by customer name joined to
-  # their loan_application, not hardcoded: APP.customer and
-  # APP.loan_application use IDENTITY columns whose values are non-
+  # their loan_application, not hardcoded: BANK_CORE.customer and
+  # BANK_CORE.loan_application use IDENTITY columns whose values are non-
   # contiguous (a rolled-back insert still consumes a number), so the
   # surrogate keys cannot be assumed. Each scenario customer owns exactly
   # one application.
@@ -67,57 +67,57 @@ databaseChangeLog:
       changes:
         - sql:
             sql: |-
-              INSERT INTO APP.auth_session (session_token, customer_id, application_id, scenario_label)
+              INSERT INTO BANK_CORE.auth_session (session_token, customer_id, application_id, scenario_label)
               SELECT 'paf-test-alice-1', la.customer_id, la.application_id, 'Alice — clean APPROVE'
-                FROM APP.loan_application la
-                JOIN APP.customer c ON c.customer_id = la.customer_id
+                FROM BANK_CORE.loan_application la
+                JOIN BANK_CORE.customer c ON c.customer_id = la.customer_id
                WHERE c.full_name = 'Alice Salaried'
         - sql:
             sql: |-
-              INSERT INTO APP.auth_session (session_token, customer_id, application_id, scenario_label)
+              INSERT INTO BANK_CORE.auth_session (session_token, customer_id, application_id, scenario_label)
               SELECT 'paf-test-david-3', la.customer_id, la.application_id, 'David — DTI hard cap → DECLINE'
-                FROM APP.loan_application la
-                JOIN APP.customer c ON c.customer_id = la.customer_id
+                FROM BANK_CORE.loan_application la
+                JOIN BANK_CORE.customer c ON c.customer_id = la.customer_id
                WHERE c.full_name = 'David HighDti'
         - sql:
             sql: |-
-              INSERT INTO APP.auth_session (session_token, customer_id, application_id, scenario_label)
+              INSERT INTO BANK_CORE.auth_session (session_token, customer_id, application_id, scenario_label)
               SELECT 'paf-test-eva-4', la.customer_id, la.application_id, 'Eva — score below floor → DECLINE'
-                FROM APP.loan_application la
-                JOIN APP.customer c ON c.customer_id = la.customer_id
+                FROM BANK_CORE.loan_application la
+                JOIN BANK_CORE.customer c ON c.customer_id = la.customer_id
                WHERE c.full_name = 'Eva LowScore'
         - sql:
             sql: |-
-              INSERT INTO APP.auth_session (session_token, customer_id, application_id, scenario_label)
+              INSERT INTO BANK_CORE.auth_session (session_token, customer_id, application_id, scenario_label)
               SELECT 'paf-test-frank-5', la.customer_id, la.application_id, 'Frank — mid-band → REVIEW'
-                FROM APP.loan_application la
-                JOIN APP.customer c ON c.customer_id = la.customer_id
+                FROM BANK_CORE.loan_application la
+                JOIN BANK_CORE.customer c ON c.customer_id = la.customer_id
                WHERE c.full_name = 'Frank MidBand'
         - sql:
             sql: |-
-              INSERT INTO APP.auth_session (session_token, customer_id, application_id, scenario_label)
+              INSERT INTO BANK_CORE.auth_session (session_token, customer_id, application_id, scenario_label)
               SELECT 'paf-test-jane-9', la.customer_id, la.application_id, 'Jane — unknown employer → DECLINE'
-                FROM APP.loan_application la
-                JOIN APP.customer c ON c.customer_id = la.customer_id
+                FROM BANK_CORE.loan_application la
+                JOIN BANK_CORE.customer c ON c.customer_id = la.customer_id
                WHERE c.full_name = 'Jane UnknownEmployer'
         - sql:
             sql: |-
-              INSERT INTO APP.auth_session (session_token, customer_id, application_id, scenario_label)
+              INSERT INTO BANK_CORE.auth_session (session_token, customer_id, application_id, scenario_label)
               SELECT 'paf-test-kyle-10', la.customer_id, la.application_id, 'Kyle — dormant employer → REVIEW'
-                FROM APP.loan_application la
-                JOIN APP.customer c ON c.customer_id = la.customer_id
+                FROM BANK_CORE.loan_application la
+                JOIN BANK_CORE.customer c ON c.customer_id = la.customer_id
                WHERE c.full_name = 'Kyle DormantEmployer'
         # Valid session for Alice, but pointing at an application that
         # belongs to a different customer (Bob) — exercises the cross-
         # customer guard, which must reject even though the token is valid.
         - sql:
             sql: |-
-              INSERT INTO APP.auth_session (session_token, customer_id, application_id, scenario_label)
+              INSERT INTO BANK_CORE.auth_session (session_token, customer_id, application_id, scenario_label)
               SELECT 'paf-test-mismatch', alice.customer_id, bob_app.application_id,
                      'Mismatch — valid session, app belongs to another customer'
-                FROM APP.customer alice
-                JOIN APP.loan_application bob_app
-                  ON bob_app.customer_id = (SELECT customer_id FROM APP.customer WHERE full_name = 'Bob Selfemployed')
+                FROM BANK_CORE.customer alice
+                JOIN BANK_CORE.loan_application bob_app
+                  ON bob_app.customer_id = (SELECT customer_id FROM BANK_CORE.customer WHERE full_name = 'Bob Selfemployed')
                WHERE alice.full_name = 'Alice Salaried'
 
   # Token slugs carry the scenario meaning (customer name + profile) and are
@@ -133,25 +133,25 @@ databaseChangeLog:
       changes:
         - sql:
             sql: |-
-              UPDATE APP.auth_session SET session_token = 'paf-test-alice-salaried'
+              UPDATE BANK_CORE.auth_session SET session_token = 'paf-test-alice-salaried'
                WHERE session_token = 'paf-test-alice-1'
         - sql:
             sql: |-
-              UPDATE APP.auth_session SET session_token = 'paf-test-david-highdti'
+              UPDATE BANK_CORE.auth_session SET session_token = 'paf-test-david-highdti'
                WHERE session_token = 'paf-test-david-3'
         - sql:
             sql: |-
-              UPDATE APP.auth_session SET session_token = 'paf-test-eva-lowscore'
+              UPDATE BANK_CORE.auth_session SET session_token = 'paf-test-eva-lowscore'
                WHERE session_token = 'paf-test-eva-4'
         - sql:
             sql: |-
-              UPDATE APP.auth_session SET session_token = 'paf-test-frank-midband'
+              UPDATE BANK_CORE.auth_session SET session_token = 'paf-test-frank-midband'
                WHERE session_token = 'paf-test-frank-5'
         - sql:
             sql: |-
-              UPDATE APP.auth_session SET session_token = 'paf-test-jane-unknownemployer'
+              UPDATE BANK_CORE.auth_session SET session_token = 'paf-test-jane-unknownemployer'
                WHERE session_token = 'paf-test-jane-9'
         - sql:
             sql: |-
-              UPDATE APP.auth_session SET session_token = 'paf-test-kyle-dormantemployer'
+              UPDATE BANK_CORE.auth_session SET session_token = 'paf-test-kyle-dormantemployer'
                WHERE session_token = 'paf-test-kyle-10'

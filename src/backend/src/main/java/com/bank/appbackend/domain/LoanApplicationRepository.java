@@ -9,7 +9,7 @@ import java.util.Optional;
 public interface LoanApplicationRepository extends JpaRepository<LoanApplication, Long> {
 
     @Query(value = """
-            SELECT * FROM APP.loan_application
+            SELECT * FROM BANK_CORE.loan_application
              WHERE customer_id = :customerId
                AND status IN ('DRAFT','SUBMITTED','IN_REVIEW')
              ORDER BY application_id DESC

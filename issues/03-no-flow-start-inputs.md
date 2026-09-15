@@ -41,7 +41,7 @@ The underlying Wayflow runtime already supports `Flow.start_conversation(inputs=
 
 For the POC test harness we accept the limitation and use a Text Input node to carry an opaque session token. The flow:
 
-1. `APP.auth_session(session_token PK, customer_id, application_id, expires_at)` — one row per test scenario, seeded by Liquibase changeset 011. Tokens are deterministic + readable for ergonomics (`paf-test-alice-salaried`, `paf-test-david-highdti`, etc.).
+1. `BANK_CORE.auth_session(session_token PK, customer_id, application_id, expires_at)` — one row per test scenario, seeded by Liquibase changeset 011. Tokens are deterministic + readable for ergonomics (`paf-test-alice-salaried`, `paf-test-david-highdti`, etc.).
 2. Operator pastes the desired scenario's token into a `Text Input(session_token)` node in the canvas, saves the flow, runs.
 3. A Prompt template renders `Session token: {{session_token}}` into the EvaluationAgent's prompt.
 4. EvaluationAgent's first tool call is `banking-mcp.lookup_application(session_token)` — the MCP wrapper validates the token and returns the joined application context using `cx_Oracle` bind variables.

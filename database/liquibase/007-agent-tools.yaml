@@ -1,5 +1,5 @@
 databaseChangeLog:
-  # AGENT_TOOLS PL/SQL packages exposed to PAF agent flows as in-DB tools.
+  # BANK_TOOLS PL/SQL packages exposed to PAF agent flows as in-DB tools.
   # See docs/DESIGN.md §8 and docs/DECISIONING-ENGINE-USE-CASE.md.
   #
   # 007 ships the single tool CHAT_AGENT cannot operate without:
@@ -29,13 +29,13 @@ databaseChangeLog:
             splitStatements: false
             stripComments: false
             sql: |-
-              CREATE OR REPLACE PACKAGE AGENT_TOOLS.PKG_AGENT_TOOLS AS
+              CREATE OR REPLACE PACKAGE BANK_TOOLS.PKG_AGENT_TOOLS AS
                 -- create_hitl_task: write the CHAT_AGENT recommendation packet
-                -- to APP.hitl_task and return the new task_id. state defaults
+                -- to BANK_CORE.hitl_task and return the new task_id. state defaults
                 -- to 'OPEN', created_at to SYSTIMESTAMP.
                 --
                 -- p_recommendation must be one of 'APPROVE', 'REVIEW',
-                -- 'DECLINE' (enforced by the APP.hitl_task CHECK constraint).
+                -- 'DECLINE' (enforced by the BANK_CORE.hitl_task CHECK constraint).
                 -- p_explore_hints and p_evidence are JSON text; the target
                 -- columns are JSON-typed and accept CLOB on insert.
                 FUNCTION create_hitl_task(
@@ -61,22 +61,10 @@ databaseChangeLog:
   - changeSet:
       id: 007-grant-insert-hitl-task-to-agent-tools
       author: paf-poc
-      # Package runs with definer's rights (default), so AGENT_TOOLS itself
-      # needs INSERT on APP.hitl_task — callers do not.
+      # Package runs with definer's rights (default), so BANK_TOOLS itself
+      # needs INSERT on BANK_CORE.hitl_task — callers do not.
       changes:
         - sql:
             sql: |-
-              GRANT INSERT ON APP.hitl_task TO AGENT_TOOLS
+              GRANT INSERT ON BANK_CORE.hitl_task TO BANK_TOOLS
 
-  - changeSet:
-      id: 007-grant-execute-pkg-agent-tools-to-agent-factory
-      author: paf-poc
-      # PAF connects as AGENT_FACTORY today, so that is the only schema that
-      # needs EXECUTE. The "CHAT_AGENT only; RESEARCH_AGENT no execute"
-      # boundary (DESIGN.md §8) is enforced at the PAF flow-config layer
-      # (which tools are wired into which agent). If CHAT_AGENT later gets
-      # its own DB user, this grant moves there.
-      changes:
-        - sql:
-            sql: |-
-              GRANT EXECUTE ON AGENT_TOOLS.PKG_AGENT_TOOLS TO AGENT_FACTORY

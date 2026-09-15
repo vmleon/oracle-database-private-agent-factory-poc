@@ -14,7 +14,7 @@ import lombok.Setter;
 import java.time.Instant;
 
 @Entity
-@Table(name = "CHAT_MESSAGE")
+@Table(name = "CHAT_MESSAGE", schema = "BANK_CORE")
 @Getter
 @Setter
 @NoArgsConstructor

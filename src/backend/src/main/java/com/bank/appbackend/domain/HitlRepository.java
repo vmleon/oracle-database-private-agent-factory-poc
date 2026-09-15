@@ -18,9 +18,9 @@ public interface HitlRepository extends JpaRepository<HitlTask, Long> {
                    la.amount_requested   AS amountRequested,
                    la.term_months        AS termMonths,
                    t.created_at          AS createdAt
-              FROM APP.hitl_task t
-              JOIN APP.loan_application la ON la.application_id = t.application_id
-              JOIN APP.customer c          ON c.customer_id = la.customer_id
+              FROM BANK_CORE.hitl_task t
+              JOIN BANK_CORE.loan_application la ON la.application_id = t.application_id
+              JOIN BANK_CORE.customer c          ON c.customer_id = la.customer_id
              WHERE t.state = :state
              ORDER BY t.created_at
             """, nativeQuery = true)
@@ -42,16 +42,16 @@ public interface HitlRepository extends JpaRepository<HitlTask, Long> {
                    t.human_outcome       AS humanOutcome,
                    t.created_at          AS createdAt,
                    t.closed_at           AS closedAt
-              FROM APP.hitl_task t
-              JOIN APP.loan_application la ON la.application_id = t.application_id
-              JOIN APP.customer c          ON c.customer_id = la.customer_id
+              FROM BANK_CORE.hitl_task t
+              JOIN BANK_CORE.loan_application la ON la.application_id = t.application_id
+              JOIN BANK_CORE.customer c          ON c.customer_id = la.customer_id
              WHERE t.task_id = :taskId
             """, nativeQuery = true)
     Optional<HitlTaskRow> findDetail(@Param("taskId") Long taskId);
 
     @Modifying
     @Query(value = """
-            UPDATE APP.hitl_task
+            UPDATE BANK_CORE.hitl_task
                SET state        = 'CLOSED',
                    human_outcome = :outcome,
                    human_note    = :note,
@@ -65,14 +65,14 @@ public interface HitlRepository extends JpaRepository<HitlTask, Long> {
 
     @Modifying
     @Query(value = """
-            INSERT INTO APP.decision
+            INSERT INTO BANK_CORE.decision
                 (application_id, human_outcome, human_user, human_note,
                  agent_recommendation, agent_reasoning, agent_explore_hints,
                  agent_evidence, agent_run_id)
             SELECT application_id, :outcome, :reviewer, :note,
                    agent_recommendation, agent_reasoning, agent_explore_hints,
                    agent_evidence, agent_run_id
-              FROM APP.hitl_task
+              FROM BANK_CORE.hitl_task
              WHERE task_id = :taskId
             """, nativeQuery = true)
     void insertDecision(@Param("taskId") Long taskId, @Param("outcome") String outcome,
@@ -89,9 +89,9 @@ public interface HitlRepository extends JpaRepository<HitlTask, Long> {
                    d.agent_recommendation AS agentRecommendation,
                    la.amount_requested  AS amountRequested,
                    la.term_months       AS termMonths
-              FROM APP.decision d
-              JOIN APP.loan_application la ON la.application_id = d.application_id
-              JOIN APP.customer c          ON c.customer_id = la.customer_id
+              FROM BANK_CORE.decision d
+              JOIN BANK_CORE.loan_application la ON la.application_id = d.application_id
+              JOIN BANK_CORE.customer c          ON c.customer_id = la.customer_id
              WHERE (:customerId IS NULL OR c.customer_id = :customerId)
                AND (:applicationId IS NULL OR d.application_id = :applicationId)
              ORDER BY d.decided_at DESC
@@ -120,9 +120,9 @@ public interface HitlRepository extends JpaRepository<HitlTask, Long> {
                    JSON_SERIALIZE(d.reason_codes RETURNING VARCHAR2)  AS reasonCodes,
                    d.computed_dti       AS computedDti,
                    d.computed_pti       AS computedPti
-              FROM APP.decision d
-              JOIN APP.loan_application la ON la.application_id = d.application_id
-              JOIN APP.customer c          ON c.customer_id = la.customer_id
+              FROM BANK_CORE.decision d
+              JOIN BANK_CORE.loan_application la ON la.application_id = d.application_id
+              JOIN BANK_CORE.customer c          ON c.customer_id = la.customer_id
              WHERE d.decision_id = :decisionId
             """, nativeQuery = true)
     Optional<DecisionDetailRow> findDecision(@Param("decisionId") Long decisionId);
@@ -141,7 +141,7 @@ public interface HitlRepository extends JpaRepository<HitlTask, Long> {
                    a.ended_at      AS endedAt,
                    a.duration_ms   AS durationMs,
                    a.status        AS status
-              FROM APP.decision_audit a
+              FROM BANK_CORE.decision_audit a
              WHERE a.application_id = :applicationId
              ORDER BY a.step_no
             """, nativeQuery = true)

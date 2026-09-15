@@ -64,6 +64,42 @@ variable "db_admin_password" {
   sensitive   = true
 }
 
+variable "db_owner_password" {
+  description = "Password for the schema owners. They hold no CREATE SESSION, so it opens nothing."
+  type        = string
+  sensitive   = true
+}
+
+variable "db_paf_password" {
+  description = "PAF_PLATFORM password, shared with AAI_RO_PAF_PLATFORM because PAF requires the pair to match."
+  type        = string
+  sensitive   = true
+}
+
+variable "db_backend_password" {
+  description = "SVC_BACKEND password — the Application Service's login."
+  type        = string
+  sensitive   = true
+}
+
+variable "db_customer_ro_password" {
+  description = "CUSTOMER_AGENT_RO password — CHAT_FLOW's read path."
+  type        = string
+  sensitive   = true
+}
+
+variable "db_customer_rw_password" {
+  description = "CUSTOMER_AGENT_RW password — CHAT_FLOW's write path."
+  type        = string
+  sensitive   = true
+}
+
+variable "db_backoffice_ro_password" {
+  description = "BACKOFFICE_AGENT_RO password — RESEARCH_WORKFLOW's read path."
+  type        = string
+  sensitive   = true
+}
+
 variable "db_ecpu_count" {
   description = "ECPUs allocated to the ADB instance."
   type        = number

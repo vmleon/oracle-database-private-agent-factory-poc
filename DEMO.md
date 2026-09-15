@@ -79,7 +79,7 @@ live demo.
 3. (Optional) confirm the three rows:
 
    ```bash
-   python manage.py cloud sql "SELECT task_id, application_id, agent_recommendation, state FROM APP.hitl_task ORDER BY task_id DESC FETCH FIRST 3 ROWS ONLY"
+   python manage.py cloud sql "SELECT task_id, application_id, agent_recommendation, state FROM BANK_CORE.hitl_task ORDER BY task_id DESC FETCH FIRST 3 ROWS ONLY"
    ```
 
 ---
@@ -148,7 +148,7 @@ Please review my loan application and submit it for processing.
 (Optional) confirm the three new tasks:
 
 ```bash
-python manage.py cloud sql "SELECT t.task_id, c.full_name, t.agent_recommendation, t.state FROM APP.hitl_task t JOIN APP.loan_application la ON la.application_id = t.application_id JOIN APP.customer c ON c.customer_id = la.customer_id WHERE c.full_name IN ('Mia Salaried','Kyle DormantEmployer','Eva LowScore') ORDER BY t.task_id DESC"
+python manage.py cloud sql "SELECT t.task_id, c.full_name, t.agent_recommendation, t.state FROM BANK_CORE.hitl_task t JOIN BANK_CORE.loan_application la ON la.application_id = t.application_id JOIN BANK_CORE.customer c ON c.customer_id = la.customer_id WHERE c.full_name IN ('Mia Salaried','Kyle DormantEmployer','Eva LowScore') ORDER BY t.task_id DESC"
 ```
 
 ---
@@ -193,32 +193,32 @@ Each human decision is now an immutable Blockchain Table row.
 The three tasks closed with the human's call:
 
 ```bash
-python manage.py cloud sql "SELECT task_id, state, human_outcome, human_user, human_note FROM APP.hitl_task WHERE state='CLOSED' ORDER BY task_id DESC FETCH FIRST 3 ROWS ONLY"
+python manage.py cloud sql "SELECT task_id, state, human_outcome, human_user, human_note FROM BANK_CORE.hitl_task WHERE state='CLOSED' ORDER BY task_id DESC FETCH FIRST 3 ROWS ONLY"
 ```
 
 One immutable decision row per closed case:
 
 ```bash
-python manage.py cloud sql "SELECT decision_id, application_id, agent_recommendation, human_outcome, human_user, TO_CHAR(decided_at,'YYYY-MM-DD HH24:MI:SS') AS decided_at FROM APP.decision ORDER BY decision_id DESC FETCH FIRST 3 ROWS ONLY"
+python manage.py cloud sql "SELECT decision_id, application_id, agent_recommendation, human_outcome, human_user, TO_CHAR(decided_at,'YYYY-MM-DD HH24:MI:SS') AS decided_at FROM BANK_CORE.decision ORDER BY decision_id DESC FETCH FIRST 3 ROWS ONLY"
 ```
 
 Prove it's tamper-evident (the big "wow"). An update is rejected:
 
 ```bash
-python manage.py cloud sql "UPDATE APP.decision SET human_outcome='DECLINE' WHERE decision_id = (SELECT MAX(decision_id) FROM APP.decision)"
+python manage.py cloud sql "UPDATE BANK_CORE.decision SET human_outcome='DECLINE' WHERE decision_id = (SELECT MAX(decision_id) FROM BANK_CORE.decision)"
 ```
 
 So is a delete:
 
 ```bash
-python manage.py cloud sql "DELETE FROM APP.decision WHERE decision_id = (SELECT MAX(decision_id) FROM APP.decision)"
+python manage.py cloud sql "DELETE FROM BANK_CORE.decision WHERE decision_id = (SELECT MAX(decision_id) FROM BANK_CORE.decision)"
 ```
 
 Both print `ORA-05715: operation not allowed on the blockchain or immutable
 table`. Then verify the cryptographic chain of every row:
 
 ```bash
-python manage.py cloud sql "DECLARE v NUMBER; BEGIN DBMS_BLOCKCHAIN_TABLE.VERIFY_ROWS(schema_name => 'APP', table_name => 'DECISION', number_of_rows_verified => v, verify_signature => FALSE); DBMS_OUTPUT.PUT_LINE('rows cryptographically verified: ' || v); END;"
+python manage.py cloud sql "DECLARE v NUMBER; BEGIN DBMS_BLOCKCHAIN_TABLE.VERIFY_ROWS(schema_name => 'BANK_CORE', table_name => 'DECISION', number_of_rows_verified => v, verify_signature => FALSE); DBMS_OUTPUT.PUT_LINE('rows cryptographically verified: ' || v); END;"
 ```
 
 Expect `rows cryptographically verified: N`.
@@ -268,7 +268,7 @@ The seeded customers and their applications are untouched — §1 runs again
 straight away, and a customer you already processed can be demoed again because
 a fresh chat writes a new task.
 
-**`APP.decision` cannot be cleared, and that is the point.** It is declared:
+**`BANK_CORE.decision` cannot be cleared, and that is the point.** It is declared:
 
 ```sql
 NO DROP UNTIL 2555 DAYS IDLE
@@ -294,11 +294,11 @@ agent collects amount/term/purpose before evaluating), clear a clean customer's
 seeded application first — here, Mia:
 
 ```bash
-python manage.py cloud sql "DELETE FROM APP.loan_application_document WHERE application_id IN (SELECT la.application_id FROM APP.loan_application la JOIN APP.customer c ON c.customer_id = la.customer_id WHERE c.full_name = 'Mia Salaried')"
+python manage.py cloud sql "DELETE FROM BANK_CORE.loan_application_document WHERE application_id IN (SELECT la.application_id FROM BANK_CORE.loan_application la JOIN BANK_CORE.customer c ON c.customer_id = la.customer_id WHERE c.full_name = 'Mia Salaried')"
 ```
 
 ```bash
-python manage.py cloud sql "DELETE FROM APP.loan_application WHERE customer_id = (SELECT customer_id FROM APP.customer WHERE full_name = 'Mia Salaried')"
+python manage.py cloud sql "DELETE FROM BANK_CORE.loan_application WHERE customer_id = (SELECT customer_id FROM BANK_CORE.customer WHERE full_name = 'Mia Salaried')"
 ```
 
 Then log in as **Mia Salaried** and open with:

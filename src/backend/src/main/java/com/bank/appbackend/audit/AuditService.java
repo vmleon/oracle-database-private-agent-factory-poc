@@ -15,7 +15,7 @@ import java.time.Instant;
 
 /**
  * Collects per-tool CHAT_WORKFLOW audit rows posted by the MCP tool wrappers and writes
- * them to APP.decision_audit. The application is resolved server-side from the opaque
+ * them to BANK_CORE.decision_audit. The application is resolved server-side from the opaque
  * session token only — never from a caller-supplied field — so a row can only ever be
  * written for the application that token authenticates (no cross-application forgery).
  * The session's cached application_id is a login-time snapshot and is null for a customer
@@ -63,11 +63,11 @@ public class AuditService {
                     ? Duration.between(req.startedAt(), req.endedAt()).toMillis()
                     : null;
             Integer stepNo = jdbc.queryForObject(
-                    "SELECT NVL(MAX(step_no), 0) + 1 FROM APP.decision_audit WHERE application_id = ?",
+                    "SELECT NVL(MAX(step_no), 0) + 1 FROM BANK_CORE.decision_audit WHERE application_id = ?",
                     Integer.class, applicationId);
 
             jdbc.update("""
-                    INSERT INTO APP.decision_audit
+                    INSERT INTO BANK_CORE.decision_audit
                         (application_id, step_no, tool_name, tool_input, tool_output,
                          started_at, ended_at, duration_ms, status)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)

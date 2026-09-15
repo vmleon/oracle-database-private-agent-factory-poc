@@ -56,3 +56,6 @@ databaseChangeLog:
   - include:
       file: 019-paf-install-prerequisites.yaml
       relativeToChangelogFile: true
+  - include:
+      file: 020-client-grants.yaml
+      relativeToChangelogFile: true

@@ -3,7 +3,7 @@
 # Per the design, this is a SIGNAL that something looks like a
 # disparate-impact pattern the institution chose to monitor — not a
 # decision. The bigger picture (4/5 rule across cohorts) is the
-# periodic backoffice sampler that writes APP.fair_lending_review.
+# periodic backoffice sampler that writes BANK_CORE.fair_lending_review.
 #
 # Input shape:
 #   {

@@ -17,14 +17,14 @@ databaseChangeLog:
       changes:
         - sql:
             sql: |-
-              GRANT SELECT ON SYS.V_$PARAMETER TO AGENT_FACTORY
+              GRANT SELECT ON SYS.V_$PARAMETER TO PAF_PLATFORM
 
   - changeSet:
       id: 019-create-readonly-worker-user-adb
       author: paf-poc
       # The wizard requires this user to already exist, failing with "Required
-      # read-only user AAI_RO_AGENT_FACTORY does not exist". Its password must
-      # match the runtime user's, which is why both take ${db_password}. PAF
+      # read-only user AAI_RO_PAF_PLATFORM does not exist". Its password must
+      # match the runtime user's, which is why both take ${db_paf_password}. PAF
       # grants it the read-only SELECTs itself during the install; it needs
       # only a session here.
       context: adb
@@ -35,11 +35,11 @@ databaseChangeLog:
               DECLARE
                 n NUMBER;
               BEGIN
-                SELECT COUNT(*) INTO n FROM dba_users WHERE username = 'AAI_RO_AGENT_FACTORY';
+                SELECT COUNT(*) INTO n FROM dba_users WHERE username = 'AAI_RO_PAF_PLATFORM';
                 IF n = 0 THEN
-                  EXECUTE IMMEDIATE 'CREATE USER AAI_RO_AGENT_FACTORY IDENTIFIED BY "${db_password}"';
+                  EXECUTE IMMEDIATE 'CREATE USER AAI_RO_PAF_PLATFORM IDENTIFIED BY "${db_paf_password}"';
                 ELSE
-                  EXECUTE IMMEDIATE 'ALTER USER AAI_RO_AGENT_FACTORY IDENTIFIED BY "${db_password}"';
+                  EXECUTE IMMEDIATE 'ALTER USER AAI_RO_PAF_PLATFORM IDENTIFIED BY "${db_paf_password}"';
                 END IF;
-                EXECUTE IMMEDIATE 'GRANT CREATE SESSION TO AAI_RO_AGENT_FACTORY';
+                EXECUTE IMMEDIATE 'GRANT CREATE SESSION TO AAI_RO_PAF_PLATFORM';
               END;

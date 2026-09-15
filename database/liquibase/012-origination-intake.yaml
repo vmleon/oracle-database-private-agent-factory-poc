@@ -18,11 +18,11 @@ databaseChangeLog:
             expectedResult: "1"
             sql: >-
               SELECT COUNT(*) FROM all_tab_columns
-               WHERE owner='APP' AND table_name='AUTH_SESSION'
+               WHERE owner='BANK_CORE' AND table_name='AUTH_SESSION'
                  AND column_name='APPLICATION_ID' AND nullable='N'
       changes:
         - sql:
-            sql: ALTER TABLE APP.auth_session MODIFY (application_id NULL)
+            sql: ALTER TABLE BANK_CORE.auth_session MODIFY (application_id NULL)
 
   - changeSet:
       id: 012-chat-message-application-id-nullable
@@ -33,11 +33,11 @@ databaseChangeLog:
             expectedResult: "1"
             sql: >-
               SELECT COUNT(*) FROM all_tab_columns
-               WHERE owner='APP' AND table_name='CHAT_MESSAGE'
+               WHERE owner='BANK_CORE' AND table_name='CHAT_MESSAGE'
                  AND column_name='APPLICATION_ID' AND nullable='N'
       changes:
         - sql:
-            sql: ALTER TABLE APP.chat_message MODIFY (application_id NULL)
+            sql: ALTER TABLE BANK_CORE.chat_message MODIFY (application_id NULL)
 
   - changeSet:
       id: 012-loan-application-amount-term-nullable
@@ -48,13 +48,13 @@ databaseChangeLog:
             expectedResult: "2"
             sql: >-
               SELECT COUNT(*) FROM all_tab_columns
-               WHERE owner='APP' AND table_name='LOAN_APPLICATION'
+               WHERE owner='BANK_CORE' AND table_name='LOAN_APPLICATION'
                  AND column_name IN ('AMOUNT_REQUESTED','TERM_MONTHS')
                  AND nullable='N'
       changes:
         - sql:
             sql: |-
-              ALTER TABLE APP.loan_application
+              ALTER TABLE BANK_CORE.loan_application
                 MODIFY (amount_requested NULL, term_months NULL)
 
   - changeSet:
@@ -63,47 +63,47 @@ databaseChangeLog:
       changes:
         - sql:
             sql: |-
-              INSERT INTO APP.customer
+              INSERT INTO BANK_CORE.customer
                 (full_name, date_of_birth, residency, email, phone, kyc_status, kyc_updated_at)
               VALUES ('Liam NoApplication', DATE '1989-04-12', 'RESIDENT',
                       'liam@example.com', '+10000000011', 'PASSED', SYSTIMESTAMP)
         - sql:
             sql: |-
-              INSERT INTO APP.employment
+              INSERT INTO BANK_CORE.employment
                 (customer_id, employer_name, employment_type, monthly_salary, is_current)
               SELECT customer_id, 'Globex Corporation', 'SALARIED', 5200, 'Y'
-                FROM APP.customer WHERE full_name = 'Liam NoApplication'
+                FROM BANK_CORE.customer WHERE full_name = 'Liam NoApplication'
         - sql:
             sql: |-
-              INSERT INTO APP.credit_bureau_snapshot
+              INSERT INTO BANK_CORE.credit_bureau_snapshot
                 (customer_id, snapshot_date, score, score_scale_min, score_scale_max)
               SELECT customer_id, SYSDATE, 705, 300, 850
-                FROM APP.customer WHERE full_name = 'Liam NoApplication'
+                FROM BANK_CORE.customer WHERE full_name = 'Liam NoApplication'
 
   - changeSet:
       id: 012-grant-loan-application-write-to-agent-tools
       author: paf-poc
       changes:
         - sql:
-            sql: GRANT INSERT, UPDATE ON APP.loan_application TO AGENT_TOOLS
+            sql: GRANT INSERT, UPDATE ON BANK_CORE.loan_application TO BANK_TOOLS
 
   - changeSet:
       id: 012-grant-loan-application-read-to-agent-tools
       author: paf-poc
       changes:
         - sql:
-            sql: GRANT SELECT ON APP.loan_application TO AGENT_TOOLS
+            sql: GRANT SELECT ON BANK_CORE.loan_application TO BANK_TOOLS
 
   - changeSet:
       id: 012-grant-auth-session-read-to-agent-tools
       author: paf-poc
       changes:
         - sql:
-            sql: GRANT SELECT ON APP.auth_session TO AGENT_TOOLS
+            sql: GRANT SELECT ON BANK_CORE.auth_session TO BANK_TOOLS
 
   - changeSet:
       id: 012-grant-product-catalog-read-to-agent-tools
       author: paf-poc
       changes:
         - sql:
-            sql: GRANT SELECT ON APP.product_catalog TO AGENT_TOOLS
+            sql: GRANT SELECT ON BANK_CORE.product_catalog TO BANK_TOOLS

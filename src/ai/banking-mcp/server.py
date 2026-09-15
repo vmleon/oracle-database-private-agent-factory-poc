@@ -10,7 +10,7 @@ customer_id / application_id directly, any caller (or a prompt-injected
 chat message that overrode the agent's instructions) could substitute
 someone else's IDs. The session token is opaque, server-issued, and
 unguessable — the agent gets no authority by holding it; it only resolves
-to a row in APP.auth_session that was minted at login.
+to a row in BANK_CORE.auth_session that was minted at login.
 
 Why an MCP wrapper instead of the PAF SQL Query node:
 PAF's SQL Query node ignores `:name` bind variables (issues/02-sql-query-no-bind-variables.md):
@@ -25,8 +25,10 @@ Fail-secure contract:
   "application_not_found_or_closed", "customer_id": ..., "application_id": ...}.
 - No "first matching row" fallback exists anywhere in this code path.
 
-Connects to Oracle as REPORTING. REPORTING owns the chat_v_*
-views and is granted SELECT on APP.auth_session by Liquibase changeset 011.
+Connects to Oracle as CUSTOMER_AGENT_RO, the client user for CHAT_FLOW's read
+path. It is granted SELECT on the customer-safe BANK_VIEWS.chat_v_* set and on
+the two BANK_CORE tables the session-scoped tools resolve against — and on
+nothing in the backoffice research_v_* set (Liquibase changeset 020).
 """
 
 from __future__ import annotations
@@ -97,7 +99,7 @@ def _connect():
 
 _SESSION_LOOKUP_SQL = """
     SELECT customer_id, application_id
-      FROM APP.auth_session
+      FROM BANK_CORE.auth_session
      WHERE session_token = :token
        AND (expires_at IS NULL OR expires_at > SYSTIMESTAMP)
 """
@@ -117,11 +119,11 @@ _APPLICATION_CONTEXT_SQL = """
            p.kyc_status,
            b.score                          AS credit_score,
            NVL((SELECT SUM(f.monthly_payment)
-                  FROM REPORTING.chat_v_existing_facilities f
+                  FROM BANK_VIEWS.chat_v_existing_facilities f
                  WHERE f.customer_id = la.customer_id), 0) AS existing_monthly_debt
-      FROM REPORTING.chat_v_loan_application  la
-      JOIN REPORTING.chat_v_applicant_profile p ON p.customer_id = la.customer_id
-      LEFT JOIN REPORTING.chat_v_credit_bureau b ON b.customer_id = la.customer_id
+      FROM BANK_VIEWS.chat_v_loan_application  la
+      JOIN BANK_VIEWS.chat_v_applicant_profile p ON p.customer_id = la.customer_id
+      LEFT JOIN BANK_VIEWS.chat_v_credit_bureau b ON b.customer_id = la.customer_id
      WHERE la.customer_id    = :customer_id
        AND la.application_id = :application_id
        AND la.status IN ('SUBMITTED', 'DRAFT', 'IN_REVIEW')
@@ -130,7 +132,7 @@ _APPLICATION_CONTEXT_SQL = """
 
 _CUSTOMER_BY_TOKEN_SQL = """
     SELECT customer_id
-      FROM APP.auth_session
+      FROM BANK_CORE.auth_session
      WHERE session_token = :token
        AND (expires_at IS NULL OR expires_at > SYSTIMESTAMP)
 """
@@ -147,17 +149,17 @@ _PROFILE_SQL = """
            p.employer_name,
            b.score                   AS credit_score,
            NVL((SELECT SUM(f.monthly_payment)
-                  FROM REPORTING.chat_v_existing_facilities f
+                  FROM BANK_VIEWS.chat_v_existing_facilities f
                  WHERE f.customer_id = p.customer_id), 0) AS existing_monthly_debt
-      FROM REPORTING.chat_v_applicant_profile p
-      LEFT JOIN REPORTING.chat_v_credit_bureau b ON b.customer_id = p.customer_id
+      FROM BANK_VIEWS.chat_v_applicant_profile p
+      LEFT JOIN BANK_VIEWS.chat_v_credit_bureau b ON b.customer_id = p.customer_id
      WHERE p.customer_id = :customer_id
 """
 
 _OPEN_APPLICATION_SQL = """
     SELECT application_id, amount_requested, term_months,
            product_type, purpose, status
-      FROM REPORTING.chat_v_loan_application
+      FROM BANK_VIEWS.chat_v_loan_application
      WHERE customer_id = :customer_id
        AND status IN ('DRAFT','SUBMITTED','IN_REVIEW')
      ORDER BY application_id DESC
@@ -181,7 +183,7 @@ def lookup_application(session_token: str) -> dict:
     Parameters
     ----------
     session_token : str
-        Opaque token issued at login, looked up in APP.auth_session. Treat as
+        Opaque token issued at login, looked up in BANK_CORE.auth_session. Treat as
         a credential — do not log, do not echo back to the customer.
 
     Returns
@@ -612,7 +614,7 @@ def hitl_status_for_session(session_token: str, reply: str = "") -> dict:
         with _connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT MAX(task_id) FROM APP.hitl_task WHERE application_id = :a",
+                    "SELECT MAX(task_id) FROM BANK_CORE.hitl_task WHERE application_id = :a",
                     a=int(application_id),
                 )
                 row = cur.fetchone()

@@ -1,6 +1,6 @@
 # Configuration defaults referenced by every decisioning package.
 #
-# Values mirror APP.system_config seeds (database/liquibase/oracle/
+# Values mirror BANK_CORE.system_config seeds (database/liquibase/oracle/
 # 005-system-config.yaml). Today they're baked into Rego; once the
 # Application Service can sync system_config changes into OPA, the
 # MCP wrapper will `PUT /v1/data/decisioning/config` on every
@@ -38,7 +38,7 @@ risk_band_mid_floor := 650
 
 # Required documents matrix keyed by
 # (product_type, employment_type, residency, amount_band).
-# Mirrors APP.system_config.document_requirements_matrix.
+# Mirrors BANK_CORE.system_config.document_requirements_matrix.
 required_documents_matrix := {
     "PERSONAL_LOAN": {
         "salaried": {

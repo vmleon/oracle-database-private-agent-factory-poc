@@ -1,7 +1,7 @@
 r"""Pytest fixtures for the CHAT_FLOW end-to-end test harness.
 
 Strategy: each test mints a unique opaque session token (`sess_<hex>`) into
-APP.auth_session pointing at the desired (customer_id, application_id), then
+BANK_CORE.auth_session pointing at the desired (customer_id, application_id), then
 sends it in-band to the flow inside a `[[SESSION <token>]]` envelope. The
 flow's RegexExtractor splits the token from the customer message at flow
 start; each agent's first call is banking-mcp.get_context, which resolves the
@@ -16,7 +16,7 @@ manager prompt's `token` port, and one on `(?<=\]\])[\s\S]+` feeds its
 Required env vars (`cloud test` writes them on the bastion for the run):
   - PAF_API_KEY, PAF_AGENT_ID — integration key for the published CHAT_FLOW,
     minted by `python manage.py paf api-key`
-  - DB_SERVICE, DB_PASSWORD, DB_WALLET_PASSWORD, TNS_ADMIN — the ADB wallet
+  - DB_SERVICE, DB_BACKEND_PASSWORD, DB_WALLET_PASSWORD, TNS_ADMIN — the ADB wallet
     connection as APP
   - PAF_BASE — PAF's address behind the public load balancer
 
@@ -61,7 +61,7 @@ def env() -> dict[str, str]:
     load_dotenv(ENV_FILE)
     # Autonomous Database is reached through a wallet alias, so there is no
     # host or port to supply.
-    required = ("PAF_API_KEY", "PAF_AGENT_ID", "DB_SERVICE", "DB_PASSWORD", "TNS_ADMIN", "PAF_BASE")
+    required = ("PAF_API_KEY", "PAF_AGENT_ID", "DB_SERVICE", "DB_BACKEND_PASSWORD", "TNS_ADMIN", "PAF_BASE")
     missing = [k for k in required if not os.getenv(k)]
     if missing:
         pytest.exit(
@@ -91,8 +91,8 @@ def agent_id(env) -> str:
 def db(env):
     """Oracle connection as APP — owns auth_session and hitl_task."""
     conn = oracledb.connect(
-        user="APP",
-        password=env["DB_PASSWORD"],
+        user="SVC_BACKEND",
+        password=env["DB_BACKEND_PASSWORD"],
         dsn=env["DB_SERVICE"],
         config_dir=env["TNS_ADMIN"],
         wallet_location=env["TNS_ADMIN"],
@@ -113,8 +113,8 @@ def resolve(db):
         with db.cursor() as cur:
             cur.execute(
                 "SELECT c.customer_id, la.application_id "
-                "FROM APP.customer c "
-                "JOIN APP.loan_application la ON la.customer_id = c.customer_id "
+                "FROM BANK_CORE.customer c "
+                "JOIN BANK_CORE.loan_application la ON la.customer_id = c.customer_id "
                 "WHERE c.full_name = :n",
                 n=full_name,
             )
@@ -128,7 +128,7 @@ def resolve(db):
 
 @pytest.fixture
 def mint_session(db):
-    """Per-test: mint unique opaque session tokens in APP.auth_session and clean
+    """Per-test: mint unique opaque session tokens in BANK_CORE.auth_session and clean
     them up on teardown. Returns mint(customer_id, application_id) -> token.
 
     Each call issues a fresh `sess_<hex>` token with a 15-minute expiry, so tests
@@ -139,7 +139,7 @@ def mint_session(db):
         token = "sess_" + secrets.token_hex(16)
         with db.cursor() as cur:
             cur.execute(
-                "INSERT INTO APP.auth_session "
+                "INSERT INTO BANK_CORE.auth_session "
                 "(session_token, customer_id, application_id, scenario_label, "
                 " expires_at) "
                 "VALUES (:t, :c, :a, 'pytest-mint', "
@@ -156,7 +156,7 @@ def mint_session(db):
         with db.cursor() as cur:
             for t in minted:
                 cur.execute(
-                    "DELETE FROM APP.auth_session WHERE session_token = :t", t=t
+                    "DELETE FROM BANK_CORE.auth_session WHERE session_token = :t", t=t
                 )
         db.commit()
 
@@ -188,11 +188,11 @@ def evidence_and_trace(db):
     """Return a callable: application_id -> (evidence dict, tool-name list).
 
     The review portal reads the evidence by key name and renders the trace from
-    APP.decision_audit, so both are part of the contract a run must satisfy."""
+    BANK_CORE.decision_audit, so both are part of the contract a run must satisfy."""
     def _for(application_id: int) -> tuple[dict, list[str]]:
         with db.cursor() as cur:
             cur.execute(
-                "SELECT agent_evidence FROM APP.hitl_task "
+                "SELECT agent_evidence FROM BANK_CORE.hitl_task "
                 "WHERE application_id = :a ORDER BY task_id DESC FETCH FIRST 1 ROWS ONLY",
                 a=application_id,
             )
@@ -203,7 +203,7 @@ def evidence_and_trace(db):
             if isinstance(ev, str):
                 ev = json.loads(ev)
             cur.execute(
-                "SELECT tool_name FROM APP.decision_audit "
+                "SELECT tool_name FROM BANK_CORE.decision_audit "
                 "WHERE application_id = :a ORDER BY step_no",
                 a=application_id,
             )
@@ -216,7 +216,7 @@ def new_hitl_rows(db):
     """Capture the latest task_id at fixture-creation; return a callable that
     yields rows created since. Use to assert exactly-N rows per test."""
     with db.cursor() as cur:
-        cur.execute("SELECT NVL(MAX(task_id), 0) FROM APP.hitl_task")
+        cur.execute("SELECT NVL(MAX(task_id), 0) FROM BANK_CORE.hitl_task")
         before = cur.fetchone()[0]
 
     def _since() -> list[tuple[int, int, str, str]]:
@@ -224,7 +224,7 @@ def new_hitl_rows(db):
             cur.execute(
                 "SELECT task_id, application_id, agent_recommendation, "
                 "       agent_reasoning "
-                "FROM APP.hitl_task WHERE task_id > :id ORDER BY task_id",
+                "FROM BANK_CORE.hitl_task WHERE task_id > :id ORDER BY task_id",
                 id=before,
             )
             rows = []

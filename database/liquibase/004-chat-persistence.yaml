@@ -22,13 +22,13 @@ databaseChangeLog:
       changes:
         - sql:
             sql: |-
-              CREATE TABLE APP.chat_message (
+              CREATE TABLE BANK_CORE.chat_message (
                 message_id     NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
                 room_id        VARCHAR2(60) NOT NULL,
                 customer_id    NUMBER NOT NULL
-                  REFERENCES APP.customer(customer_id),
+                  REFERENCES BANK_CORE.customer(customer_id),
                 application_id NUMBER
-                  REFERENCES APP.loan_application(application_id),
+                  REFERENCES BANK_CORE.loan_application(application_id),
                 sender         VARCHAR2(20) NOT NULL
                   CHECK (sender IN ('CUSTOMER','AGENT','SYSTEM')),
                 body           CLOB,
@@ -38,13 +38,13 @@ databaseChangeLog:
               )
         - sql:
             sql: |-
-              CREATE INDEX APP.ix_chat_message_room
-                ON APP.chat_message(room_id, created_at)
+              CREATE INDEX BANK_CORE.ix_chat_message_room
+                ON BANK_CORE.chat_message(room_id, created_at)
         - sql:
             sql: |-
-              CREATE INDEX APP.ix_chat_message_application
-                ON APP.chat_message(application_id, created_at)
+              CREATE INDEX BANK_CORE.ix_chat_message_application
+                ON BANK_CORE.chat_message(application_id, created_at)
         - sql:
             sql: |-
-              CREATE INDEX APP.ix_chat_message_customer
-                ON APP.chat_message(customer_id, created_at)
+              CREATE INDEX BANK_CORE.ix_chat_message_customer
+                ON BANK_CORE.chat_message(customer_id, created_at)

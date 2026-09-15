@@ -1,5 +1,5 @@
 databaseChangeLog:
-  # Banking core schema under APP. Tables and FKs follow the sketch in
+  # Banking core schema under BANK_CORE. Tables and FKs follow the sketch in
   # docs/DECISIONING-ENGINE-USE-CASE.md. JSON columns use Oracle 21c+
   # native JSON (binary OSON); requires max_string_size=EXTENDED, which
   # Autonomous Database sets.
@@ -14,7 +14,7 @@ databaseChangeLog:
       changes:
         - sql:
             sql: |-
-              CREATE TABLE APP.customer (
+              CREATE TABLE BANK_CORE.customer (
                 customer_id    NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
                 full_name      VARCHAR2(200) NOT NULL,
                 date_of_birth  DATE,
@@ -33,9 +33,9 @@ databaseChangeLog:
       changes:
         - sql:
             sql: |-
-              CREATE TABLE APP.customer_protected_attrs (
+              CREATE TABLE BANK_CORE.customer_protected_attrs (
                 customer_id NUMBER PRIMARY KEY
-                  REFERENCES APP.customer(customer_id) ON DELETE CASCADE,
+                  REFERENCES BANK_CORE.customer(customer_id) ON DELETE CASCADE,
                 attrs       JSON
               )
 
@@ -45,7 +45,7 @@ databaseChangeLog:
       changes:
         - sql:
             sql: |-
-              CREATE TABLE APP.product_catalog (
+              CREATE TABLE BANK_CORE.product_catalog (
                 product_id      NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
                 name            VARCHAR2(200) NOT NULL,
                 product_type    VARCHAR2(20) NOT NULL,
@@ -63,10 +63,10 @@ databaseChangeLog:
       changes:
         - sql:
             sql: |-
-              CREATE TABLE APP.account (
+              CREATE TABLE BANK_CORE.account (
                 account_id    NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
                 customer_id   NUMBER NOT NULL
-                  REFERENCES APP.customer(customer_id),
+                  REFERENCES BANK_CORE.customer(customer_id),
                 account_type  VARCHAR2(20) NOT NULL
                   CHECK (account_type IN ('CURRENT','SAVINGS','CREDIT_CARD')),
                 currency      VARCHAR2(3) NOT NULL,
@@ -75,7 +75,7 @@ databaseChangeLog:
               )
         - sql:
             sql: |-
-              CREATE INDEX APP.ix_account_customer ON APP.account(customer_id)
+              CREATE INDEX BANK_CORE.ix_account_customer ON BANK_CORE.account(customer_id)
 
   - changeSet:
       id: 002-create-loan-application
@@ -83,12 +83,12 @@ databaseChangeLog:
       changes:
         - sql:
             sql: |-
-              CREATE TABLE APP.loan_application (
+              CREATE TABLE BANK_CORE.loan_application (
                 application_id   NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
                 customer_id      NUMBER NOT NULL
-                  REFERENCES APP.customer(customer_id),
+                  REFERENCES BANK_CORE.customer(customer_id),
                 product_id       NUMBER NOT NULL
-                  REFERENCES APP.product_catalog(product_id),
+                  REFERENCES BANK_CORE.product_catalog(product_id),
                 amount_requested NUMBER(14,2) NOT NULL,
                 term_months      NUMBER NOT NULL,
                 purpose          VARCHAR2(200),
@@ -101,13 +101,13 @@ databaseChangeLog:
               )
         - sql:
             sql: |-
-              CREATE INDEX APP.ix_loan_app_customer ON APP.loan_application(customer_id)
+              CREATE INDEX BANK_CORE.ix_loan_app_customer ON BANK_CORE.loan_application(customer_id)
         - sql:
             sql: |-
-              CREATE INDEX APP.ix_loan_app_status ON APP.loan_application(status)
+              CREATE INDEX BANK_CORE.ix_loan_app_status ON BANK_CORE.loan_application(status)
         - sql:
             sql: |-
-              CREATE INDEX APP.ix_loan_app_submitted ON APP.loan_application(submitted_at)
+              CREATE INDEX BANK_CORE.ix_loan_app_submitted ON BANK_CORE.loan_application(submitted_at)
 
   - changeSet:
       id: 002-create-loan-application-document
@@ -115,10 +115,10 @@ databaseChangeLog:
       changes:
         - sql:
             sql: |-
-              CREATE TABLE APP.loan_application_document (
+              CREATE TABLE BANK_CORE.loan_application_document (
                 doc_id         NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
                 application_id NUMBER NOT NULL
-                  REFERENCES APP.loan_application(application_id) ON DELETE CASCADE,
+                  REFERENCES BANK_CORE.loan_application(application_id) ON DELETE CASCADE,
                 doc_type       VARCHAR2(40),
                 requested_type VARCHAR2(40),
                 storage_uri    VARCHAR2(500) NOT NULL,
@@ -132,10 +132,10 @@ databaseChangeLog:
               )
         - sql:
             sql: |-
-              CREATE INDEX APP.ix_loan_doc_app ON APP.loan_application_document(application_id)
+              CREATE INDEX BANK_CORE.ix_loan_doc_app ON BANK_CORE.loan_application_document(application_id)
         - sql:
             sql: |-
-              CREATE INDEX APP.ix_loan_doc_ocr_status ON APP.loan_application_document(ocr_status)
+              CREATE INDEX BANK_CORE.ix_loan_doc_ocr_status ON BANK_CORE.loan_application_document(ocr_status)
 
   # Tiny smoke-test seed — one product, three customers, two applications,
   # one uploaded document. Enough to verify the FKs and to query from
@@ -146,7 +146,7 @@ databaseChangeLog:
       changes:
         - sql:
             sql: |-
-              INSERT INTO APP.product_catalog
+              INSERT INTO BANK_CORE.product_catalog
                 (name, product_type, pricing_model,
                  min_amount, max_amount, min_term_months, max_term_months, currency)
               VALUES
@@ -154,61 +154,61 @@ databaseChangeLog:
                  1000, 50000, 6, 60, 'USD')
         - sql:
             sql: |-
-              INSERT INTO APP.customer
+              INSERT INTO BANK_CORE.customer
                 (full_name, date_of_birth, residency, email, phone, kyc_status, kyc_updated_at)
               VALUES
                 ('Alice Salaried',  DATE '1988-04-12', 'RESIDENT', 'alice@example.com',  '+10000000001', 'PASSED', SYSTIMESTAMP)
         - sql:
             sql: |-
-              INSERT INTO APP.customer
+              INSERT INTO BANK_CORE.customer
                 (full_name, date_of_birth, residency, email, phone, kyc_status, kyc_updated_at)
               VALUES
                 ('Bob Selfemployed', DATE '1979-09-30', 'RESIDENT', 'bob@example.com',    '+10000000002', 'PASSED', SYSTIMESTAMP)
         - sql:
             sql: |-
-              INSERT INTO APP.customer
+              INSERT INTO BANK_CORE.customer
                 (full_name, date_of_birth, residency, email, phone, kyc_status, kyc_updated_at)
               VALUES
                 ('Carol Expat',     DATE '1992-01-21', 'EXPAT',    'carol@example.com',  '+10000000003', 'PENDING', NULL)
         - sql:
             sql: |-
-              INSERT INTO APP.customer_protected_attrs (customer_id, attrs)
+              INSERT INTO BANK_CORE.customer_protected_attrs (customer_id, attrs)
               SELECT customer_id, JSON('{"age_band":"30-39","gender":"F"}')
-                FROM APP.customer WHERE full_name='Alice Salaried'
+                FROM BANK_CORE.customer WHERE full_name='Alice Salaried'
         - sql:
             sql: |-
-              INSERT INTO APP.customer_protected_attrs (customer_id, attrs)
+              INSERT INTO BANK_CORE.customer_protected_attrs (customer_id, attrs)
               SELECT customer_id, JSON('{"age_band":"40-49","gender":"M"}')
-                FROM APP.customer WHERE full_name='Bob Selfemployed'
+                FROM BANK_CORE.customer WHERE full_name='Bob Selfemployed'
         - sql:
             sql: |-
-              INSERT INTO APP.customer_protected_attrs (customer_id, attrs)
+              INSERT INTO BANK_CORE.customer_protected_attrs (customer_id, attrs)
               SELECT customer_id, JSON('{"age_band":"30-39","gender":"F"}')
-                FROM APP.customer WHERE full_name='Carol Expat'
+                FROM BANK_CORE.customer WHERE full_name='Carol Expat'
         - sql:
             sql: |-
-              INSERT INTO APP.loan_application
+              INSERT INTO BANK_CORE.loan_application
                 (customer_id, product_id, amount_requested, term_months, purpose, channel, status, submitted_at)
               SELECT c.customer_id, p.product_id, 10000, 24, 'Home renovation', 'CHAT', 'SUBMITTED', SYSTIMESTAMP
-                FROM APP.customer c, APP.product_catalog p
+                FROM BANK_CORE.customer c, BANK_CORE.product_catalog p
                WHERE c.full_name='Alice Salaried' AND p.name='Personal Loan'
         - sql:
             sql: |-
-              INSERT INTO APP.loan_application
+              INSERT INTO BANK_CORE.loan_application
                 (customer_id, product_id, amount_requested, term_months, purpose, channel, status)
               SELECT c.customer_id, p.product_id, 25000, 48, 'Working capital', 'CHAT', 'DRAFT'
-                FROM APP.customer c, APP.product_catalog p
+                FROM BANK_CORE.customer c, BANK_CORE.product_catalog p
                WHERE c.full_name='Bob Selfemployed' AND p.name='Personal Loan'
         - sql:
             sql: |-
-              INSERT INTO APP.loan_application_document
+              INSERT INTO BANK_CORE.loan_application_document
                 (application_id, requested_type, storage_uri, ocr_status)
               SELECT la.application_id, 'PAYSLIP', 'oci://bucket/seed/alice-payslip.pdf', 'PENDING'
-                FROM APP.loan_application la
-                JOIN APP.customer c ON c.customer_id = la.customer_id
+                FROM BANK_CORE.loan_application la
+                JOIN BANK_CORE.customer c ON c.customer_id = la.customer_id
                WHERE c.full_name='Alice Salaried'
 
-  # Additional banking-core tables needed by the REPORTING views in
+  # Additional banking-core tables needed by the BANK_VIEWS views in
   # 006-reporting-views.yaml: employment (income), account_transaction
   # (cashflow), credit_bureau_snapshot (score + total debt elsewhere),
   # existing_facility (monthly outflows that feed DTI). Sanctions list,
@@ -221,10 +221,10 @@ databaseChangeLog:
       changes:
         - sql:
             sql: |-
-              CREATE TABLE APP.employment (
+              CREATE TABLE BANK_CORE.employment (
                 employment_id   NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
                 customer_id     NUMBER NOT NULL
-                  REFERENCES APP.customer(customer_id),
+                  REFERENCES BANK_CORE.customer(customer_id),
                 employer_name   VARCHAR2(200),
                 employment_type VARCHAR2(20) NOT NULL
                   CHECK (employment_type IN ('SALARIED','SELF_EMPLOYED','RETIRED','UNEMPLOYED','OTHER')),
@@ -236,11 +236,11 @@ databaseChangeLog:
               )
         - sql:
             sql: |-
-              CREATE INDEX APP.ix_employment_customer ON APP.employment(customer_id)
+              CREATE INDEX BANK_CORE.ix_employment_customer ON BANK_CORE.employment(customer_id)
         - sql:
             sql: |-
-              CREATE INDEX APP.ix_employment_current
-                ON APP.employment(customer_id, is_current)
+              CREATE INDEX BANK_CORE.ix_employment_current
+                ON BANK_CORE.employment(customer_id, is_current)
 
   - changeSet:
       id: 002-create-account-transaction
@@ -248,10 +248,10 @@ databaseChangeLog:
       changes:
         - sql:
             sql: |-
-              CREATE TABLE APP.account_transaction (
+              CREATE TABLE BANK_CORE.account_transaction (
                 txn_id        NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
                 account_id    NUMBER NOT NULL
-                  REFERENCES APP.account(account_id),
+                  REFERENCES BANK_CORE.account(account_id),
                 txn_date      DATE NOT NULL,
                 amount        NUMBER(14,2) NOT NULL,
                 currency      VARCHAR2(3) NOT NULL,
@@ -263,10 +263,10 @@ databaseChangeLog:
               )
         - sql:
             sql: |-
-              CREATE INDEX APP.ix_txn_account ON APP.account_transaction(account_id, txn_date)
+              CREATE INDEX BANK_CORE.ix_txn_account ON BANK_CORE.account_transaction(account_id, txn_date)
         - sql:
             sql: |-
-              CREATE INDEX APP.ix_txn_type ON APP.account_transaction(txn_type)
+              CREATE INDEX BANK_CORE.ix_txn_type ON BANK_CORE.account_transaction(txn_type)
 
   - changeSet:
       id: 002-create-credit-bureau-snapshot
@@ -274,10 +274,10 @@ databaseChangeLog:
       changes:
         - sql:
             sql: |-
-              CREATE TABLE APP.credit_bureau_snapshot (
+              CREATE TABLE BANK_CORE.credit_bureau_snapshot (
                 snapshot_id           NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
                 customer_id           NUMBER NOT NULL
-                  REFERENCES APP.customer(customer_id),
+                  REFERENCES BANK_CORE.customer(customer_id),
                 snapshot_date         DATE NOT NULL,
                 score                 NUMBER,
                 score_scale_min       NUMBER,
@@ -289,8 +289,8 @@ databaseChangeLog:
               )
         - sql:
             sql: |-
-              CREATE INDEX APP.ix_bureau_customer_date
-                ON APP.credit_bureau_snapshot(customer_id, snapshot_date)
+              CREATE INDEX BANK_CORE.ix_bureau_customer_date
+                ON BANK_CORE.credit_bureau_snapshot(customer_id, snapshot_date)
 
   - changeSet:
       id: 002-create-existing-facility
@@ -298,10 +298,10 @@ databaseChangeLog:
       changes:
         - sql:
             sql: |-
-              CREATE TABLE APP.existing_facility (
+              CREATE TABLE BANK_CORE.existing_facility (
                 facility_id     NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
                 customer_id     NUMBER NOT NULL
-                  REFERENCES APP.customer(customer_id),
+                  REFERENCES BANK_CORE.customer(customer_id),
                 lender_name     VARCHAR2(200),
                 facility_type   VARCHAR2(20) NOT NULL
                   CHECK (facility_type IN ('PERSONAL_LOAN','CREDIT_CARD','MORTGAGE','AUTO_LOAN','OTHER')),
@@ -312,8 +312,8 @@ databaseChangeLog:
               )
         - sql:
             sql: |-
-              CREATE INDEX APP.ix_existing_facility_customer
-                ON APP.existing_facility(customer_id)
+              CREATE INDEX BANK_CORE.ix_existing_facility_customer
+                ON BANK_CORE.existing_facility(customer_id)
 
   # Small seed for the three demo customers so views are queryable
   # immediately. Alice: clean salaried profile. Bob: mid-risk self-employed.
@@ -325,94 +325,94 @@ databaseChangeLog:
       changes:
         - sql:
             sql: |-
-              INSERT INTO APP.employment
+              INSERT INTO BANK_CORE.employment
                 (customer_id, employer_name, employment_type, monthly_salary, tenure_months)
               SELECT customer_id, 'Acme Tech Ltd', 'SALARIED', 5500, 36
-                FROM APP.customer WHERE full_name='Alice Salaried'
+                FROM BANK_CORE.customer WHERE full_name='Alice Salaried'
         - sql:
             sql: |-
-              INSERT INTO APP.employment
+              INSERT INTO BANK_CORE.employment
                 (customer_id, employer_name, employment_type, monthly_salary, tenure_months)
               SELECT customer_id, 'Bob Consulting LLC', 'SELF_EMPLOYED', 7200, 18
-                FROM APP.customer WHERE full_name='Bob Selfemployed'
+                FROM BANK_CORE.customer WHERE full_name='Bob Selfemployed'
         - sql:
             sql: |-
-              INSERT INTO APP.employment
+              INSERT INTO BANK_CORE.employment
                 (customer_id, employer_name, employment_type, monthly_salary, tenure_months)
               SELECT customer_id, 'Globex Inc', 'SALARIED', 4200, 12
-                FROM APP.customer WHERE full_name='Carol Expat'
+                FROM BANK_CORE.customer WHERE full_name='Carol Expat'
         - sql:
             sql: |-
-              INSERT INTO APP.credit_bureau_snapshot
+              INSERT INTO BANK_CORE.credit_bureau_snapshot
                 (customer_id, snapshot_date, score, score_scale_min, score_scale_max,
                  bureau_name, total_debt, num_open_facilities, num_late_payments_12m)
               SELECT customer_id, TRUNC(SYSDATE)-15, 742, 300, 850,
                      'Demo Bureau', 1500, 1, 0
-                FROM APP.customer WHERE full_name='Alice Salaried'
+                FROM BANK_CORE.customer WHERE full_name='Alice Salaried'
         - sql:
             sql: |-
-              INSERT INTO APP.credit_bureau_snapshot
+              INSERT INTO BANK_CORE.credit_bureau_snapshot
                 (customer_id, snapshot_date, score, score_scale_min, score_scale_max,
                  bureau_name, total_debt, num_open_facilities, num_late_payments_12m)
               SELECT customer_id, TRUNC(SYSDATE)-10, 641, 300, 850,
                      'Demo Bureau', 16500, 2, 2
-                FROM APP.customer WHERE full_name='Bob Selfemployed'
+                FROM BANK_CORE.customer WHERE full_name='Bob Selfemployed'
         - sql:
             sql: |-
-              INSERT INTO APP.credit_bureau_snapshot
+              INSERT INTO BANK_CORE.credit_bureau_snapshot
                 (customer_id, snapshot_date, score, score_scale_min, score_scale_max,
                  bureau_name, total_debt, num_open_facilities, num_late_payments_12m)
               SELECT customer_id, TRUNC(SYSDATE)-20, 580, 300, 850,
                      'Demo Bureau', 22000, 5, 4
-                FROM APP.customer WHERE full_name='Carol Expat'
+                FROM BANK_CORE.customer WHERE full_name='Carol Expat'
         - sql:
             sql: |-
-              INSERT INTO APP.existing_facility
+              INSERT INTO BANK_CORE.existing_facility
                 (customer_id, lender_name, facility_type, balance, monthly_payment, opened_at)
               SELECT customer_id, 'First Bank', 'CREDIT_CARD', 1500, 150, ADD_MONTHS(SYSDATE,-12)
-                FROM APP.customer WHERE full_name='Alice Salaried'
+                FROM BANK_CORE.customer WHERE full_name='Alice Salaried'
         - sql:
             sql: |-
-              INSERT INTO APP.existing_facility
+              INSERT INTO BANK_CORE.existing_facility
                 (customer_id, lender_name, facility_type, balance, monthly_payment, opened_at)
               SELECT customer_id, 'First Bank', 'CREDIT_CARD', 8500, 350, ADD_MONTHS(SYSDATE,-24)
-                FROM APP.customer WHERE full_name='Bob Selfemployed'
+                FROM BANK_CORE.customer WHERE full_name='Bob Selfemployed'
         - sql:
             sql: |-
-              INSERT INTO APP.existing_facility
+              INSERT INTO BANK_CORE.existing_facility
                 (customer_id, lender_name, facility_type, balance, monthly_payment, opened_at)
               SELECT customer_id, 'Other Bank', 'AUTO_LOAN', 8000, 250, ADD_MONTHS(SYSDATE,-18)
-                FROM APP.customer WHERE full_name='Bob Selfemployed'
+                FROM BANK_CORE.customer WHERE full_name='Bob Selfemployed'
         - sql:
             sql: |-
-              INSERT INTO APP.existing_facility
+              INSERT INTO BANK_CORE.existing_facility
                 (customer_id, lender_name, facility_type, balance, monthly_payment, opened_at)
               SELECT customer_id, 'Yet Another Bank', 'MORTGAGE', 195000, 1100, ADD_MONTHS(SYSDATE,-60)
-                FROM APP.customer WHERE full_name='Carol Expat'
+                FROM BANK_CORE.customer WHERE full_name='Carol Expat'
         - sql:
             sql: |-
-              INSERT INTO APP.account (customer_id, account_type, currency, opened_at)
+              INSERT INTO BANK_CORE.account (customer_id, account_type, currency, opened_at)
               SELECT customer_id, 'CURRENT', 'USD', ADD_MONTHS(SYSDATE,-36)
-                FROM APP.customer WHERE full_name='Alice Salaried'
-                  AND NOT EXISTS (SELECT 1 FROM APP.account a WHERE a.customer_id = APP.customer.customer_id)
+                FROM BANK_CORE.customer WHERE full_name='Alice Salaried'
+                  AND NOT EXISTS (SELECT 1 FROM BANK_CORE.account a WHERE a.customer_id = BANK_CORE.customer.customer_id)
         - sql:
             sql: |-
-              INSERT INTO APP.account_transaction
+              INSERT INTO BANK_CORE.account_transaction
                 (account_id, txn_date, amount, currency, txn_type, description, balance_after)
               SELECT a.account_id, TRUNC(SYSDATE)-30, 5500, 'USD', 'SALARY', 'Acme payroll', 8200
-                FROM APP.account a JOIN APP.customer c ON c.customer_id = a.customer_id
+                FROM BANK_CORE.account a JOIN BANK_CORE.customer c ON c.customer_id = a.customer_id
                WHERE c.full_name='Alice Salaried' AND a.account_type='CURRENT'
         - sql:
             sql: |-
-              INSERT INTO APP.account_transaction
+              INSERT INTO BANK_CORE.account_transaction
                 (account_id, txn_date, amount, currency, txn_type, description, balance_after)
               SELECT a.account_id, TRUNC(SYSDATE)-25, -1200, 'USD', 'RENT', 'Monthly rent', 7000
-                FROM APP.account a JOIN APP.customer c ON c.customer_id = a.customer_id
+                FROM BANK_CORE.account a JOIN BANK_CORE.customer c ON c.customer_id = a.customer_id
                WHERE c.full_name='Alice Salaried' AND a.account_type='CURRENT'
         - sql:
             sql: |-
-              INSERT INTO APP.account_transaction
+              INSERT INTO BANK_CORE.account_transaction
                 (account_id, txn_date, amount, currency, txn_type, description, balance_after)
               SELECT a.account_id, TRUNC(SYSDATE)-15, -150, 'USD', 'CARD_PURCHASE', 'Card payment', 6850
-                FROM APP.account a JOIN APP.customer c ON c.customer_id = a.customer_id
+                FROM BANK_CORE.account a JOIN BANK_CORE.customer c ON c.customer_id = a.customer_id
                WHERE c.full_name='Alice Salaried' AND a.account_type='CURRENT'

@@ -91,7 +91,12 @@
       --username={{ adb_admin_user }}
       --password={{ adb_admin_password }}
       update
-      -Ddb_password={{ adb_admin_password }}
+      -Ddb_owner_password={{ db_owner_password }}
+      -Ddb_paf_password={{ db_paf_password }}
+      -Ddb_backend_password={{ db_backend_password }}
+      -Ddb_customer_ro_password={{ db_customer_ro_password }}
+      -Ddb_customer_rw_password={{ db_customer_rw_password }}
+      -Ddb_backoffice_ro_password={{ db_backoffice_ro_password }}
     chdir: "{{ changelog_dir }}"
   environment:
     TNS_ADMIN: "{{ wallet_dir }}"

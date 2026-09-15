@@ -1,5 +1,5 @@
 databaseChangeLog:
-  # REPORTING.* — the NL2SQL surface for the two PAF agents.
+  # BANK_VIEWS.* — the NL2SQL surface for the two PAF agents.
   #
   # Design model (see DESIGN.md §6.2 / §10 / USE-CASE.md):
   # - chat_v_* (customer-safe): exposed to CHAT_AGENT via the
@@ -12,8 +12,8 @@ databaseChangeLog:
   #   history, hitl_task. Read-only by view definition (no INSTEAD OF
   #   triggers) and by RESEARCH_AGENT having no write tools.
   #
-  # Both view sets live in the REPORTING schema so the agent's
-  # NL2SQL object list pins to REPORTING.* and can never touch a base
+  # Both view sets live in the BANK_VIEWS schema so the agent's
+  # NL2SQL object list pins to BANK_VIEWS.* and can never touch a base
   # table directly.
   #
   # The customer scope is enforced by the Application Service threading
@@ -21,56 +21,56 @@ databaseChangeLog:
   # themselves are not row-filtered. Production would add VPD / RLS;
   # out of scope for this PoC.
 
-  # REPORTING owns the views; it needs SELECT on the underlying APP
+  # BANK_VIEWS owns the views; it needs SELECT on the underlying BANK_CORE
   # tables. Without these grants, the views compile but querying them
-  # as AGENT_FACTORY fails with ORA-01031 (Oracle resolves the view to
-  # base tables and checks the owner's — REPORTING's — privileges).
+  # as PAF_PLATFORM fails with ORA-01031 (Oracle resolves the view to
+  # base tables and checks the owner's — BANK_VIEWS's — privileges).
   - changeSet:
       id: 006-grant-app-to-reporting
       author: paf-poc
       changes:
         - sql:
             sql: |-
-              GRANT SELECT ON APP.customer TO REPORTING
+              GRANT SELECT ON BANK_CORE.customer TO BANK_VIEWS
         - sql:
             sql: |-
-              GRANT SELECT ON APP.employment TO REPORTING
+              GRANT SELECT ON BANK_CORE.employment TO BANK_VIEWS
         - sql:
             sql: |-
-              GRANT SELECT ON APP.account TO REPORTING
+              GRANT SELECT ON BANK_CORE.account TO BANK_VIEWS
         - sql:
             sql: |-
-              GRANT SELECT ON APP.account_transaction TO REPORTING
+              GRANT SELECT ON BANK_CORE.account_transaction TO BANK_VIEWS
         - sql:
             sql: |-
-              GRANT SELECT ON APP.credit_bureau_snapshot TO REPORTING
+              GRANT SELECT ON BANK_CORE.credit_bureau_snapshot TO BANK_VIEWS
         - sql:
             sql: |-
-              GRANT SELECT ON APP.existing_facility TO REPORTING
+              GRANT SELECT ON BANK_CORE.existing_facility TO BANK_VIEWS
         - sql:
             sql: |-
-              GRANT SELECT ON APP.loan_application TO REPORTING
+              GRANT SELECT ON BANK_CORE.loan_application TO BANK_VIEWS
         - sql:
             sql: |-
-              GRANT SELECT ON APP.product_catalog TO REPORTING
+              GRANT SELECT ON BANK_CORE.product_catalog TO BANK_VIEWS
         - sql:
             sql: |-
-              GRANT SELECT ON APP.loan_application_document TO REPORTING
+              GRANT SELECT ON BANK_CORE.loan_application_document TO BANK_VIEWS
         - sql:
             sql: |-
-              GRANT SELECT ON APP.decision TO REPORTING
+              GRANT SELECT ON BANK_CORE.decision TO BANK_VIEWS
         - sql:
             sql: |-
-              GRANT SELECT ON APP.decision_audit TO REPORTING
+              GRANT SELECT ON BANK_CORE.decision_audit TO BANK_VIEWS
         - sql:
             sql: |-
-              GRANT SELECT ON APP.research_audit TO REPORTING
+              GRANT SELECT ON BANK_CORE.research_audit TO BANK_VIEWS
         - sql:
             sql: |-
-              GRANT SELECT ON APP.policy_parameter_history TO REPORTING
+              GRANT SELECT ON BANK_CORE.policy_parameter_history TO BANK_VIEWS
         - sql:
             sql: |-
-              GRANT SELECT ON APP.hitl_task TO REPORTING
+              GRANT SELECT ON BANK_CORE.hitl_task TO BANK_VIEWS
 
   # Customer-safe views (CHAT_AGENT)
 
@@ -80,7 +80,7 @@ databaseChangeLog:
       changes:
         - sql:
             sql: |-
-              CREATE OR REPLACE VIEW REPORTING.chat_v_applicant_profile AS
+              CREATE OR REPLACE VIEW BANK_VIEWS.chat_v_applicant_profile AS
               SELECT
                 c.customer_id,
                 c.full_name,
@@ -92,8 +92,8 @@ databaseChangeLog:
                 e.employment_type,
                 e.monthly_salary,
                 e.tenure_months
-              FROM APP.customer c
-              LEFT JOIN APP.employment e
+              FROM BANK_CORE.customer c
+              LEFT JOIN BANK_CORE.employment e
                 ON e.customer_id = c.customer_id
                 AND e.is_current = 'Y'
 
@@ -103,7 +103,7 @@ databaseChangeLog:
       changes:
         - sql:
             sql: |-
-              CREATE OR REPLACE VIEW REPORTING.chat_v_transactions_summary AS
+              CREATE OR REPLACE VIEW BANK_VIEWS.chat_v_transactions_summary AS
               SELECT
                 a.customer_id,
                 TRUNC(t.txn_date, 'MM') AS month,
@@ -112,8 +112,8 @@ databaseChangeLog:
                 SUM(t.amount) AS net_amount,
                 SUM(CASE WHEN t.amount > 0 THEN t.amount ELSE 0 END) AS credits,
                 SUM(CASE WHEN t.amount < 0 THEN -t.amount ELSE 0 END) AS debits
-              FROM APP.account_transaction t
-              JOIN APP.account a ON a.account_id = t.account_id
+              FROM BANK_CORE.account_transaction t
+              JOIN BANK_CORE.account a ON a.account_id = t.account_id
               GROUP BY a.customer_id, TRUNC(t.txn_date, 'MM'), t.txn_type
 
   - changeSet:
@@ -122,7 +122,7 @@ databaseChangeLog:
       changes:
         - sql:
             sql: |-
-              CREATE OR REPLACE VIEW REPORTING.chat_v_credit_bureau AS
+              CREATE OR REPLACE VIEW BANK_VIEWS.chat_v_credit_bureau AS
               SELECT
                 s.customer_id,
                 s.snapshot_date,
@@ -133,10 +133,10 @@ databaseChangeLog:
                 s.total_debt,
                 s.num_open_facilities,
                 s.num_late_payments_12m
-              FROM APP.credit_bureau_snapshot s
+              FROM BANK_CORE.credit_bureau_snapshot s
               WHERE s.snapshot_date = (
                 SELECT MAX(s2.snapshot_date)
-                  FROM APP.credit_bureau_snapshot s2
+                  FROM BANK_CORE.credit_bureau_snapshot s2
                  WHERE s2.customer_id = s.customer_id
               )
 
@@ -146,7 +146,7 @@ databaseChangeLog:
       changes:
         - sql:
             sql: |-
-              CREATE OR REPLACE VIEW REPORTING.chat_v_existing_facilities AS
+              CREATE OR REPLACE VIEW BANK_VIEWS.chat_v_existing_facilities AS
               SELECT
                 f.customer_id,
                 f.lender_name,
@@ -154,7 +154,7 @@ databaseChangeLog:
                 f.balance,
                 f.monthly_payment,
                 f.opened_at
-              FROM APP.existing_facility f
+              FROM BANK_CORE.existing_facility f
               WHERE f.closed_at IS NULL
 
   - changeSet:
@@ -163,7 +163,7 @@ databaseChangeLog:
       changes:
         - sql:
             sql: |-
-              CREATE OR REPLACE VIEW REPORTING.chat_v_loan_application AS
+              CREATE OR REPLACE VIEW BANK_VIEWS.chat_v_loan_application AS
               SELECT
                 la.application_id,
                 la.customer_id,
@@ -175,8 +175,8 @@ databaseChangeLog:
                 la.purpose,
                 la.status,
                 la.submitted_at
-              FROM APP.loan_application la
-              JOIN APP.product_catalog p ON p.product_id = la.product_id
+              FROM BANK_CORE.loan_application la
+              JOIN BANK_CORE.product_catalog p ON p.product_id = la.product_id
 
   - changeSet:
       id: 006-create-chat-application-document
@@ -184,7 +184,7 @@ databaseChangeLog:
       changes:
         - sql:
             sql: |-
-              CREATE OR REPLACE VIEW REPORTING.chat_v_application_document AS
+              CREATE OR REPLACE VIEW BANK_VIEWS.chat_v_application_document AS
               SELECT
                 d.application_id,
                 d.doc_id,
@@ -194,7 +194,7 @@ databaseChangeLog:
                 d.ocr_confidence,
                 d.quality_tier,
                 d.uploaded_at
-              FROM APP.loan_application_document d
+              FROM BANK_CORE.loan_application_document d
 
   # Broader views (RESEARCH_AGENT — read-only, broader scope)
 
@@ -204,7 +204,7 @@ databaseChangeLog:
       changes:
         - sql:
             sql: |-
-              CREATE OR REPLACE VIEW REPORTING.research_v_full_transactions AS
+              CREATE OR REPLACE VIEW BANK_VIEWS.research_v_full_transactions AS
               SELECT
                 a.customer_id,
                 t.account_id,
@@ -215,8 +215,8 @@ databaseChangeLog:
                 t.txn_type,
                 t.description,
                 t.balance_after
-              FROM APP.account_transaction t
-              JOIN APP.account a ON a.account_id = t.account_id
+              FROM BANK_CORE.account_transaction t
+              JOIN BANK_CORE.account a ON a.account_id = t.account_id
 
   - changeSet:
       id: 006-create-research-decision-history
@@ -224,7 +224,7 @@ databaseChangeLog:
       changes:
         - sql:
             sql: |-
-              CREATE OR REPLACE VIEW REPORTING.research_v_decision_history AS
+              CREATE OR REPLACE VIEW BANK_VIEWS.research_v_decision_history AS
               SELECT
                 d.decision_id,
                 d.application_id,
@@ -235,7 +235,7 @@ databaseChangeLog:
                 d.agent_run_id,
                 d.computed_dti,
                 d.computed_pti
-              FROM APP.decision d
+              FROM BANK_CORE.decision d
 
   - changeSet:
       id: 006-create-research-decision-audit
@@ -243,7 +243,7 @@ databaseChangeLog:
       changes:
         - sql:
             sql: |-
-              CREATE OR REPLACE VIEW REPORTING.research_v_decision_audit AS
+              CREATE OR REPLACE VIEW BANK_VIEWS.research_v_decision_audit AS
               SELECT
                 a.audit_id,
                 a.agent_run_id,
@@ -253,7 +253,7 @@ databaseChangeLog:
                 a.started_at,
                 a.ended_at,
                 a.duration_ms
-              FROM APP.decision_audit a
+              FROM BANK_CORE.decision_audit a
 
   - changeSet:
       id: 006-create-research-research-audit
@@ -261,7 +261,7 @@ databaseChangeLog:
       changes:
         - sql:
             sql: |-
-              CREATE OR REPLACE VIEW REPORTING.research_v_research_audit AS
+              CREATE OR REPLACE VIEW BANK_VIEWS.research_v_research_audit AS
               SELECT
                 a.audit_id,
                 a.research_run_id,
@@ -273,7 +273,7 @@ databaseChangeLog:
                 a.started_at,
                 a.ended_at,
                 a.duration_ms
-              FROM APP.research_audit a
+              FROM BANK_CORE.research_audit a
 
   - changeSet:
       id: 006-create-research-policy-parameter-history
@@ -281,7 +281,7 @@ databaseChangeLog:
       changes:
         - sql:
             sql: |-
-              CREATE OR REPLACE VIEW REPORTING.research_v_policy_parameter_history AS
+              CREATE OR REPLACE VIEW BANK_VIEWS.research_v_policy_parameter_history AS
               SELECT
                 h.hist_id,
                 h.config_key,
@@ -290,7 +290,7 @@ databaseChangeLog:
                 h.changed_at,
                 h.changed_by,
                 h.change_reason
-              FROM APP.policy_parameter_history h
+              FROM BANK_CORE.policy_parameter_history h
 
   - changeSet:
       id: 006-create-research-hitl-task
@@ -298,7 +298,7 @@ databaseChangeLog:
       changes:
         - sql:
             sql: |-
-              CREATE OR REPLACE VIEW REPORTING.research_v_hitl_task AS
+              CREATE OR REPLACE VIEW BANK_VIEWS.research_v_hitl_task AS
               SELECT
                 t.task_id,
                 t.application_id,
@@ -310,11 +310,11 @@ databaseChangeLog:
                 t.human_user,
                 t.created_at,
                 t.closed_at
-              FROM APP.hitl_task t
+              FROM BANK_CORE.hitl_task t
 
-  # ORA-01720 fix: Oracle requires the view owner (REPORTING) to hold
+  # ORA-01720 fix: Oracle requires the view owner (BANK_VIEWS) to hold
   # WITH GRANT OPTION on the underlying base tables before a third
-  # party (AGENT_FACTORY) can be granted SELECT on the view. The
+  # party (PAF_PLATFORM) can be granted SELECT on the view. The
   # earlier `006-grant-app-to-reporting` granted plain SELECT — kept
   # for migration history. This changeset re-grants WITH GRANT OPTION;
   # the second grant is additive in Oracle (it upgrades the existing
@@ -325,93 +325,46 @@ databaseChangeLog:
       changes:
         - sql:
             sql: |-
-              GRANT SELECT ON APP.customer TO REPORTING WITH GRANT OPTION
+              GRANT SELECT ON BANK_CORE.customer TO BANK_VIEWS WITH GRANT OPTION
         - sql:
             sql: |-
-              GRANT SELECT ON APP.employment TO REPORTING WITH GRANT OPTION
+              GRANT SELECT ON BANK_CORE.employment TO BANK_VIEWS WITH GRANT OPTION
         - sql:
             sql: |-
-              GRANT SELECT ON APP.account TO REPORTING WITH GRANT OPTION
+              GRANT SELECT ON BANK_CORE.account TO BANK_VIEWS WITH GRANT OPTION
         - sql:
             sql: |-
-              GRANT SELECT ON APP.account_transaction TO REPORTING WITH GRANT OPTION
+              GRANT SELECT ON BANK_CORE.account_transaction TO BANK_VIEWS WITH GRANT OPTION
         - sql:
             sql: |-
-              GRANT SELECT ON APP.credit_bureau_snapshot TO REPORTING WITH GRANT OPTION
+              GRANT SELECT ON BANK_CORE.credit_bureau_snapshot TO BANK_VIEWS WITH GRANT OPTION
         - sql:
             sql: |-
-              GRANT SELECT ON APP.existing_facility TO REPORTING WITH GRANT OPTION
+              GRANT SELECT ON BANK_CORE.existing_facility TO BANK_VIEWS WITH GRANT OPTION
         - sql:
             sql: |-
-              GRANT SELECT ON APP.loan_application TO REPORTING WITH GRANT OPTION
+              GRANT SELECT ON BANK_CORE.loan_application TO BANK_VIEWS WITH GRANT OPTION
         - sql:
             sql: |-
-              GRANT SELECT ON APP.product_catalog TO REPORTING WITH GRANT OPTION
+              GRANT SELECT ON BANK_CORE.product_catalog TO BANK_VIEWS WITH GRANT OPTION
         - sql:
             sql: |-
-              GRANT SELECT ON APP.loan_application_document TO REPORTING WITH GRANT OPTION
+              GRANT SELECT ON BANK_CORE.loan_application_document TO BANK_VIEWS WITH GRANT OPTION
         - sql:
             sql: |-
-              GRANT SELECT ON APP.decision TO REPORTING WITH GRANT OPTION
+              GRANT SELECT ON BANK_CORE.decision TO BANK_VIEWS WITH GRANT OPTION
         - sql:
             sql: |-
-              GRANT SELECT ON APP.decision_audit TO REPORTING WITH GRANT OPTION
+              GRANT SELECT ON BANK_CORE.decision_audit TO BANK_VIEWS WITH GRANT OPTION
         - sql:
             sql: |-
-              GRANT SELECT ON APP.research_audit TO REPORTING WITH GRANT OPTION
+              GRANT SELECT ON BANK_CORE.research_audit TO BANK_VIEWS WITH GRANT OPTION
         - sql:
             sql: |-
-              GRANT SELECT ON APP.policy_parameter_history TO REPORTING WITH GRANT OPTION
+              GRANT SELECT ON BANK_CORE.policy_parameter_history TO BANK_VIEWS WITH GRANT OPTION
         - sql:
             sql: |-
-              GRANT SELECT ON APP.hitl_task TO REPORTING WITH GRANT OPTION
-
-  # Grant SELECT on the views to AGENT_FACTORY (PAF's owning user).
-  # If AAI_RO_AGENT_FACTORY (PAF's read-only worker, created by the
-  # installer wizard) is configured as the Select AI data source's
-  # connection user, add equivalent grants from `manage.py paf bootstrap`
-  # after PAF install finishes — those grants can't be in Liquibase
-  # because the user doesn't exist yet at provision time.
-  - changeSet:
-      id: 006-grant-reporting-to-agent-factory
-      author: paf-poc
-      changes:
-        - sql:
-            sql: |-
-              GRANT SELECT ON REPORTING.chat_v_applicant_profile TO AGENT_FACTORY
-        - sql:
-            sql: |-
-              GRANT SELECT ON REPORTING.chat_v_transactions_summary TO AGENT_FACTORY
-        - sql:
-            sql: |-
-              GRANT SELECT ON REPORTING.chat_v_credit_bureau TO AGENT_FACTORY
-        - sql:
-            sql: |-
-              GRANT SELECT ON REPORTING.chat_v_existing_facilities TO AGENT_FACTORY
-        - sql:
-            sql: |-
-              GRANT SELECT ON REPORTING.chat_v_loan_application TO AGENT_FACTORY
-        - sql:
-            sql: |-
-              GRANT SELECT ON REPORTING.chat_v_application_document TO AGENT_FACTORY
-        - sql:
-            sql: |-
-              GRANT SELECT ON REPORTING.research_v_full_transactions TO AGENT_FACTORY
-        - sql:
-            sql: |-
-              GRANT SELECT ON REPORTING.research_v_decision_history TO AGENT_FACTORY
-        - sql:
-            sql: |-
-              GRANT SELECT ON REPORTING.research_v_decision_audit TO AGENT_FACTORY
-        - sql:
-            sql: |-
-              GRANT SELECT ON REPORTING.research_v_research_audit TO AGENT_FACTORY
-        - sql:
-            sql: |-
-              GRANT SELECT ON REPORTING.research_v_policy_parameter_history TO AGENT_FACTORY
-        - sql:
-            sql: |-
-              GRANT SELECT ON REPORTING.research_v_hitl_task TO AGENT_FACTORY
+              GRANT SELECT ON BANK_CORE.hitl_task TO BANK_VIEWS WITH GRANT OPTION
 
   # Add kyc_updated_at to the customer-safe applicant profile view.
   - changeSet:
@@ -421,7 +374,7 @@ databaseChangeLog:
       changes:
         - sql:
             sql: |-
-              CREATE OR REPLACE VIEW REPORTING.chat_v_applicant_profile AS
+              CREATE OR REPLACE VIEW BANK_VIEWS.chat_v_applicant_profile AS
               SELECT
                 c.customer_id,
                 c.full_name,
@@ -434,7 +387,7 @@ databaseChangeLog:
                 e.employment_type,
                 e.monthly_salary,
                 e.tenure_months
-              FROM APP.customer c
-              LEFT JOIN APP.employment e
+              FROM BANK_CORE.customer c
+              LEFT JOIN BANK_CORE.employment e
                 ON e.customer_id = c.customer_id
                 AND e.is_current = 'Y'

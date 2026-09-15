@@ -10,7 +10,7 @@ import lombok.NoArgsConstructor;
 import java.math.BigDecimal;
 
 @Entity
-@Table(name = "LOAN_APPLICATION")
+@Table(name = "LOAN_APPLICATION", schema = "BANK_CORE")
 @Getter
 @NoArgsConstructor
 public class LoanApplication {

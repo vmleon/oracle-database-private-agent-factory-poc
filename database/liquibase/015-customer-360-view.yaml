@@ -1,5 +1,5 @@
 databaseChangeLog:
-  # REPORTING.cust_360 — one curated row per customer: demographics, current
+  # BANK_VIEWS.cust_360 — one curated row per customer: demographics, current
   # employment, latest bureau snapshot, account holdings + balances, last-90-day
   # transaction features, and internal existing-debt. It consolidates what the
   # chat_v_* views expose separately into a single feature surface.
@@ -8,7 +8,7 @@ databaseChangeLog:
   # product-recommendation workflow, and — primarily — the §3 XGBoost training,
   # which reads one row per customer as one training example.
   #
-  # Fair-lending by construction: protected attributes (APP.customer_protected_attrs)
+  # Fair-lending by construction: protected attributes (BANK_CORE.customer_protected_attrs)
   # are deliberately NOT joined, so the feature table can never carry them.
   #
   # Grain is one row per customer: every child table is aggregated to the
@@ -16,8 +16,8 @@ databaseChangeLog:
   # transactions / facilities still appears (count/sum features default to 0;
   # bureau and employment fields stay NULL = "unknown" rather than a fake 0).
   #
-  # REPORTING already holds SELECT on every base table here (changeset 006), so
-  # no new base-table grants are needed — only the view grant to AGENT_FACTORY.
+  # BANK_VIEWS already holds SELECT on every base table here (changeset 006), so
+  # no new base-table grants are needed — only the view grant to PAF_PLATFORM.
 
   - changeSet:
       id: 015-create-customer-360-view
@@ -25,7 +25,7 @@ databaseChangeLog:
       changes:
         - sql:
             sql: |-
-              CREATE OR REPLACE VIEW REPORTING.cust_360 AS
+              CREATE OR REPLACE VIEW BANK_VIEWS.cust_360 AS
               SELECT
                 c.customer_id,
                 c.full_name,
@@ -56,8 +56,8 @@ databaseChangeLog:
                 -- internal open facilities (the bank's own view of existing debt)
                 NVL(fac.existing_monthly_debt, 0)  AS existing_monthly_debt,
                 NVL(fac.num_open_facilities, 0)    AS num_open_facilities_internal
-              FROM APP.customer c
-              LEFT JOIN APP.employment e
+              FROM BANK_CORE.customer c
+              LEFT JOIN BANK_CORE.employment e
                 ON e.customer_id = c.customer_id
                 AND e.is_current = 'Y'
               LEFT JOIN (
@@ -66,10 +66,10 @@ databaseChangeLog:
                        s.total_debt,
                        s.num_open_facilities,
                        s.num_late_payments_12m
-                  FROM APP.credit_bureau_snapshot s
+                  FROM BANK_CORE.credit_bureau_snapshot s
                  WHERE s.snapshot_date = (
                    SELECT MAX(s2.snapshot_date)
-                     FROM APP.credit_bureau_snapshot s2
+                     FROM BANK_CORE.credit_bureau_snapshot s2
                     WHERE s2.customer_id = s.customer_id
                  )
               ) b ON b.customer_id = c.customer_id
@@ -79,7 +79,7 @@ databaseChangeLog:
                        COUNT(CASE WHEN account_type = 'CURRENT'     THEN 1 END) AS num_current,
                        COUNT(CASE WHEN account_type = 'SAVINGS'     THEN 1 END) AS num_savings,
                        COUNT(CASE WHEN account_type = 'CREDIT_CARD' THEN 1 END) AS num_credit_cards
-                  FROM APP.account
+                  FROM BANK_CORE.account
                  WHERE closed_at IS NULL
                  GROUP BY customer_id
               ) acc ON acc.customer_id = c.customer_id
@@ -91,8 +91,8 @@ databaseChangeLog:
                            t.balance_after,
                            ROW_NUMBER() OVER (PARTITION BY t.account_id
                                               ORDER BY t.txn_date DESC, t.txn_id DESC) AS rn
-                      FROM APP.account_transaction t
-                      JOIN APP.account a ON a.account_id = t.account_id
+                      FROM BANK_CORE.account_transaction t
+                      JOIN BANK_CORE.account a ON a.account_id = t.account_id
                      WHERE a.closed_at IS NULL
                   )
                  WHERE rn = 1
@@ -104,8 +104,8 @@ databaseChangeLog:
                        SUM(CASE WHEN t.amount > 0 THEN t.amount ELSE 0 END)        AS credits_90d,
                        SUM(CASE WHEN t.amount < 0 THEN -t.amount ELSE 0 END)       AS debits_90d,
                        SUM(CASE WHEN t.txn_type = 'SALARY' THEN t.amount ELSE 0 END) AS salary_credits_90d
-                  FROM APP.account_transaction t
-                  JOIN APP.account a ON a.account_id = t.account_id
+                  FROM BANK_CORE.account_transaction t
+                  JOIN BANK_CORE.account a ON a.account_id = t.account_id
                  WHERE t.txn_date >= SYSDATE - 90
                  GROUP BY a.customer_id
               ) tx ON tx.customer_id = c.customer_id
@@ -113,10 +113,7 @@ databaseChangeLog:
                 SELECT customer_id,
                        SUM(monthly_payment) AS existing_monthly_debt,
                        COUNT(*)             AS num_open_facilities
-                  FROM APP.existing_facility
+                  FROM BANK_CORE.existing_facility
                  WHERE closed_at IS NULL
                  GROUP BY customer_id
               ) fac ON fac.customer_id = c.customer_id
-        - sql:
-            sql: |-
-              GRANT SELECT ON REPORTING.cust_360 TO AGENT_FACTORY

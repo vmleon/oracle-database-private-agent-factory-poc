@@ -14,8 +14,8 @@ databaseChangeLog:
             expectedResult: "0"
             sql: >-
               SELECT COUNT(*) FROM all_tab_columns
-               WHERE owner='APP' AND table_name='CHAT_MESSAGE'
+               WHERE owner='BANK_CORE' AND table_name='CHAT_MESSAGE'
                  AND column_name='PAF_ROOM_ID'
       changes:
         - sql:
-            sql: ALTER TABLE APP.chat_message ADD (paf_room_id VARCHAR2(60))
+            sql: ALTER TABLE BANK_CORE.chat_message ADD (paf_room_id VARCHAR2(60))

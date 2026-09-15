@@ -65,7 +65,7 @@ sudo journalctl -u paf-poc-banking-mcp --since "10 min ago"
 
 ### Liquibase changeset fails with `ORA-00903: invalid table name` on a plain identifier
 
-The identifier is an Oracle reserved word. Common offenders: `SESSION`, `USER`, `DATE`, `LEVEL`, `SIZE`, `ORDER`, `GROUP`, `TYPE`, `NUMBER`, `ROWID`, `COMMENT`, `AUDIT`. Quoting (`CREATE TABLE APP."SESSION"`) works but forces case-sensitive references forever after. The clean fix is to rename the table to a non-reserved identifier (e.g. `SESSION` → `AUTH_SESSION`, `USER` → `APP_USER`). Full reserved-word list in Oracle's SQL Language Reference.
+The identifier is an Oracle reserved word. Common offenders: `SESSION`, `USER`, `DATE`, `LEVEL`, `SIZE`, `ORDER`, `GROUP`, `TYPE`, `NUMBER`, `ROWID`, `COMMENT`, `AUDIT`. Quoting (`CREATE TABLE BANK_CORE."SESSION"`) works but forces case-sensitive references forever after. The clean fix is to rename the table to a non-reserved identifier (e.g. `SESSION` → `AUTH_SESSION`, `USER` → `APP_USER`). Full reserved-word list in Oracle's SQL Language Reference.
 
 If the failing changeset was never applied (`Run: 0` in Liquibase's update summary), it's safe to edit the changeset in place. If it was applied and you need to rename, write a new changeset that drops + recreates rather than editing the original — Liquibase checksum validation rejects in-place edits of applied changesets.
 
@@ -84,7 +84,7 @@ Hibernate logs a harmless `HHH90006001 ... incubating setting` warning for this 
 
 ## PAF install
 
-### PAF installer says `AGENT_FACTORY` is missing privileges, or "Test connection" returns 400 with `Unable to determine database compatibility level`
+### PAF installer says `PAF_PLATFORM` is missing privileges, or "Test connection" returns 400 with `Unable to determine database compatibility level`
 
 The `ops` tier has not finished applying the changelog — the grants live in `database/liquibase/001-users-and-grants.yaml` and the two prerequisites PAF's wizard checks (`SYS.V_$PARAMETER`, the read-only worker user) in `019-paf-install-prerequisites.yaml`. Wait for `/var/lib/paf-poc/bootstrap.ok` on the bastion, then retry the connection test.
 

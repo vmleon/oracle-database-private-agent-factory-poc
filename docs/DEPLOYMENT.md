@@ -32,13 +32,13 @@ Single Click-based CLI in `manage.py` at the repository root.
 | `manage.py cloud iam`              | Applies the tenancy-level root: two dynamic groups and the Generative AI policy. Needs a tenancy-admin profile; runs once per compartment.                                                                                                                                                                 | OCI IAM                                     |
 | `manage.py cloud plan` / `up`      | Plans / applies the workload root: network, ADB, four tiers, both load balancers. `up` re-stages the copied payloads first so an edited changelog cannot ship stale.                                                                                                                                       | OCI                                         |
 | `manage.py cloud test`             | Copies `tests/` to the bastion and runs the end-to-end harness there — the only host that reaches both PAF and ADB.                                                                                                                                                                                        | bastion                                     |
-| `manage.py cloud reset`            | Empties the reviewer queue, both chat histories, the login sessions and the tool traces, so a run starts from the seeded state. Leaves the blockchain `decision` table.                                                                                                     | ADB (`APP` schema)                          |
+| `manage.py cloud reset`            | Empties the reviewer queue, both chat histories, the login sessions and the tool traces, so a run starts from the seeded state. Leaves the blockchain `decision` table.                                                                                                     | ADB (`BANK_CORE` schema)                          |
 | `manage.py cloud down`             | Destroys the workload stack, retrying the security-group race; leaves the IAM root for the next deployment.                                                                                                                                                                                                | OCI                                         |
 | `manage.py paf bootstrap`          | Prints the PAF install as one ordered sheet: installer URL, every value to paste, and the commands that sit between the browser steps.                                                                                                                                                                     | stdout                                      |
 | `manage.py paf admin`              | Records the admin credentials the install wizard created, when they differ from what `setup` stored.                                                                                                                                                                                                       | `.env`                                      |
 | `manage.py paf openapi`            | Fetches the Company Registry's OpenAPI document through the bastion and writes `paf/dist/company-registry-openapi.json`, the file PAF's data-source form uploads.                                                                                                          | `paf/dist/`                                 |
 | `manage.py paf trust-ca`           | Uploads the internal load balancer's certificate to PAF's administrator certificate store.                                                                                                                                                                                                                 | PAF                                         |
-| `manage.py paf allow-internal-mcp` | Sets `BLOCK_PRIVATE_OUTBOUND_URLS=false` in PAF's settings through the bastion, so private MCP addresses register.                                                                                                                                                                                         | ADB (`AGENT_FACTORY` schema)                |
+| `manage.py paf allow-internal-mcp` | Sets `BLOCK_PRIVATE_OUTBOUND_URLS=false` in PAF's settings through the bastion, so private MCP addresses register.                                                                                                                                                                                         | ADB (`PAF_PLATFORM` schema)                |
 | `manage.py paf link-flow`          | Rebinds every MCP node in `CHAT_FLOW` to this install's server ids, by server name.                                                                                                                                                                                                                        | PAF                                         |
 | `manage.py paf gen-model`          | Points PAF's `gen-model` configuration at `GENAI_MODEL` from `.env`.                                                                                                                                                                                                                                       | PAF                                         |
 | `manage.py paf api-key`            | Mints the integration API key for `CHAT_FLOW`.                                                                                                                                                                                                                                                             | `.env` (`PAF_AGENT_ID`, `PAF_API_KEY`)      |
@@ -59,7 +59,7 @@ flowchart TB
     ilb["internal Load Balancer (TLS)<br/>one listener per MCP wrapper"]
     paf["paf compute<br/>PAF container"]
     genai["OCI Generative AI"]
-    adb[("ADB 26ai<br/>APP · REPORTING · AGENT_TOOLS · AGENT_FACTORY")]
+    adb[("ADB 26ai<br/>BANK_CORE · BANK_VIEWS · BANK_TOOLS · PAF_PLATFORM")]
     ops["ops compute<br/>bastion · Liquibase · test harness"]
 
     lb -- "/  /backoffice" --> front
@@ -106,7 +106,7 @@ Each tier directory under `deploy/ansible/` holds one entry playbook, always nam
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `ops` / `opstools`      | JDK 21, Liquibase + the Oracle JDBC driver, python-oracledb, the ADB wallet fetched through its PAR, the test harness; applies the changelog with `--contexts=adb,seed`                                                                                                              |
 | `frontend` / `webstack` | nginx serving both UI bundles at `/` and `/backoffice/`                                                                                                                                                                                                                              |
-| `backend` / `appstack`  | JDK 21, the Spring Boot service unit (connects as `APP`), OPA + the Rego bundle, the Company Registry FastAPI unit (:8600), and the four MCP wrapper units (:8500 `opa-mcp`, :8502 `hitl-mcp`, :8503 `banking-mcp`, :8504 `application-mcp`), all reaching each other on `127.0.0.1` |
+| `backend` / `appstack`  | JDK 21, the Spring Boot service unit (connects as `BANK_CORE`), OPA + the Rego bundle, the Company Registry FastAPI unit (:8600), and the four MCP wrapper units (:8500 `opa-mcp`, :8502 `hitl-mcp`, :8503 `banking-mcp`, :8504 `application-mcp`), all reaching each other on `127.0.0.1` |
 | `paf` / `pafstack`      | Podman, the PAF kit tarball fetched through its own PAR, image build, and the PAF service unit                                                                                                                                                                                       |
 
 ### 3.3 First-run flow
@@ -130,8 +130,8 @@ database/liquibase/
 ├── 003-decisioning-audit-hitl.yaml       # decision (Blockchain), decision_audit, research_audit, hitl_task
 ├── 004-chat-persistence.yaml             # chat_message — replayable customer ↔ CHAT_FLOW conversation
 ├── 005-system-config.yaml                # system_config, policy_parameter_history, fair_lending_review
-├── 006-reporting-views.yaml              # REPORTING.chat_v_* (customer-safe) + REPORTING.research_v_*
-├── 007-agent-tools.yaml                  # AGENT_TOOLS.PKG_AGENT_TOOLS
+├── 006-reporting-views.yaml              # BANK_VIEWS.chat_v_* (customer-safe) + BANK_VIEWS.research_v_*
+├── 007-agent-tools.yaml                  # BANK_TOOLS.PKG_AGENT_TOOLS
 ├── 008-vector-rag.yaml                   # policy_corpus, case_history, vector indexes
 ├── 009-tx-event-queues.yaml              # TxEventQ queues + grants
 ├── 010-seed-synthetic.yaml               # synthetic dataset — context: seed
@@ -155,11 +155,11 @@ A context is a runtime filter and is **not** part of a changeset's checksum. Cha
 
 ### Select AI
 
-`DBMS_CLOUD`, `DBMS_CLOUD_AI`, `DBMS_CLOUD_AI_AGENT` and `DBMS_CLOUD_PIPELINE` ship with ADB, and PAF checks for all four before it treats the database as eligible. The changelog grants those packages but does **not** create the profiles or agent tools: `DBMS_CLOUD_AI.CREATE_PROFILE` and `DBMS_CLOUD_AI_AGENT.CREATE_TOOL` create objects owned by the invoking user, and Liquibase connects as `ADMIN`; anything it created would be invisible to PAF, which connects as `AGENT_FACTORY`. PAF creates both itself through its UI.
+`DBMS_CLOUD`, `DBMS_CLOUD_AI`, `DBMS_CLOUD_AI_AGENT` and `DBMS_CLOUD_PIPELINE` ship with ADB, and PAF checks for all four before it treats the database as eligible. The changelog grants those packages but does **not** create the profiles or agent tools: `DBMS_CLOUD_AI.CREATE_PROFILE` and `DBMS_CLOUD_AI_AGENT.CREATE_TOOL` create objects owned by the invoking user, and Liquibase connects as `ADMIN`; anything it created would be invisible to PAF, which connects as `PAF_PLATFORM`. PAF creates both itself through its UI.
 
 Notes:
 
-- Blockchain Table DDL (`CREATE BLOCKCHAIN TABLE ... NO DROP UNTIL 7 YEARS IDLE NO DELETE LOCKED HASHING USING "SHA2_512"`) lives in `003-decisioning-audit-hitl.yaml`. The row is written by the Application Service on HITL close; `AGENT_TOOLS` has no `INSERT` on `decision`.
+- Blockchain Table DDL (`CREATE BLOCKCHAIN TABLE ... NO DROP UNTIL 7 YEARS IDLE NO DELETE LOCKED HASHING USING "SHA2_512"`) lives in `003-decisioning-audit-hitl.yaml`. The row is written by the Application Service on HITL close; `BANK_TOOLS` has no `INSERT` on `decision`.
 - `hitl_task` carries the agent recommendation packet (`agent_recommendation`, `agent_reasoning`, `agent_explore_hints`, `agent_evidence`, `agent_run_id`) plus the reviewer's close-out fields (`human_outcome`, `human_note`, `human_user`, `closed_at`). `005-system-config.yaml` seeds defaults for the recommendation-tier weights.
 - `chat_message` (`004-chat-persistence.yaml`) persists the customer ↔ `CHAT_FLOW` conversation keyed by `roomId` + `customer_id` + `application_id`; the customer chat UI is stateless and replays from this table on every load.
 - `research_audit` (`003-decisioning-audit-hitl.yaml`) captures `RESEARCH_WORKFLOW` tool calls keyed by `hitl_task_id` + reviewer, so research conversations are auditable but kept distinct from the decisioning trail.
@@ -181,7 +181,7 @@ Notes:
 | `PAF_ADMIN_USER`, `PAF_ADMIN_PASS`                                                                      | The PAF administrator `manage.py paf …` signs in as                                                                                               |
 | `PAF_AGENT_ID`, `PAF_API_KEY`                                                                           | Written by `paf api-key`; the backend tier reads them at deploy time and `cloud test` passes them to the harness                                  |
 
-Policy values (DTI cap, score floor, fair-lending bucketing, recommendation-tier weights) do **not** live in `.env`. They live in `APP.system_config` and are edited from the Backoffice UI; every change is appended to `policy_parameter_history`. Every application produces a HITL task by design — mandatory human review is the compliance posture.
+Policy values (DTI cap, score floor, fair-lending bucketing, recommendation-tier weights) do **not** live in `.env`. They live in `BANK_CORE.system_config` and are edited from the Backoffice UI; every change is appended to `policy_parameter_history`. Every application produces a HITL task by design — mandatory human review is the compliance posture.
 
 ## 6. Operational notes
 

@@ -21,7 +21,7 @@ databaseChangeLog:
       changes:
         - sql:
             sql: |-
-              CREATE TABLE APP.system_config (
+              CREATE TABLE BANK_CORE.system_config (
                 config_key   VARCHAR2(80) PRIMARY KEY,
                 config_value VARCHAR2(4000),
                 value_type   VARCHAR2(20) NOT NULL
@@ -37,7 +37,7 @@ databaseChangeLog:
       changes:
         - sql:
             sql: |-
-              CREATE TABLE APP.policy_parameter_history (
+              CREATE TABLE BANK_CORE.policy_parameter_history (
                 hist_id       NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
                 config_key    VARCHAR2(80) NOT NULL,
                 old_value     VARCHAR2(4000),
@@ -48,8 +48,8 @@ databaseChangeLog:
               )
         - sql:
             sql: |-
-              CREATE INDEX APP.ix_param_history_key
-                ON APP.policy_parameter_history(config_key, changed_at)
+              CREATE INDEX BANK_CORE.ix_param_history_key
+                ON BANK_CORE.policy_parameter_history(config_key, changed_at)
 
   - changeSet:
       id: 005-create-fair-lending-review
@@ -57,7 +57,7 @@ databaseChangeLog:
       changes:
         - sql:
             sql: |-
-              CREATE TABLE APP.fair_lending_review (
+              CREATE TABLE BANK_CORE.fair_lending_review (
                 review_id         NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
                 period_from       DATE NOT NULL,
                 period_to         DATE NOT NULL,
@@ -70,8 +70,8 @@ databaseChangeLog:
               )
         - sql:
             sql: |-
-              CREATE INDEX APP.ix_fair_lending_period
-                ON APP.fair_lending_review(period_from, period_to)
+              CREATE INDEX BANK_CORE.ix_fair_lending_period
+                ON BANK_CORE.fair_lending_review(period_from, period_to)
 
   # Trigger: any INSERT / UPDATE / DELETE on system_config writes a row
   # to policy_parameter_history capturing the before/after. Initial seed
@@ -85,11 +85,11 @@ databaseChangeLog:
             endDelimiter: /
             splitStatements: false
             sql: |-
-              CREATE OR REPLACE TRIGGER APP.trg_system_config_history
-              AFTER INSERT OR UPDATE OR DELETE ON APP.system_config
+              CREATE OR REPLACE TRIGGER BANK_CORE.trg_system_config_history
+              AFTER INSERT OR UPDATE OR DELETE ON BANK_CORE.system_config
               FOR EACH ROW
               BEGIN
-                INSERT INTO APP.policy_parameter_history
+                INSERT INTO BANK_CORE.policy_parameter_history
                   (config_key, old_value, new_value, changed_by, change_reason)
                 VALUES
                   (COALESCE(:NEW.config_key, :OLD.config_key),
@@ -109,75 +109,75 @@ databaseChangeLog:
         # Eligibility thresholds
         - sql:
             sql: |-
-              INSERT INTO APP.system_config (config_key, config_value, value_type, description)
+              INSERT INTO BANK_CORE.system_config (config_key, config_value, value_type, description)
               VALUES ('min_age', '18', 'NUMBER', 'Minimum applicant age')
         - sql:
             sql: |-
-              INSERT INTO APP.system_config (config_key, config_value, value_type, description)
+              INSERT INTO BANK_CORE.system_config (config_key, config_value, value_type, description)
               VALUES ('dti_hard_cap', '0.45', 'NUMBER', 'Maximum debt-to-income ratio (deny signal above)')
         - sql:
             sql: |-
-              INSERT INTO APP.system_config (config_key, config_value, value_type, description)
+              INSERT INTO BANK_CORE.system_config (config_key, config_value, value_type, description)
               VALUES ('pti_hard_cap', '0.25', 'NUMBER', 'Maximum payment-to-income for the new loan in isolation')
         - sql:
             sql: |-
-              INSERT INTO APP.system_config (config_key, config_value, value_type, description)
+              INSERT INTO BANK_CORE.system_config (config_key, config_value, value_type, description)
               VALUES ('score_floor', '600', 'NUMBER', 'Minimum credit score (deny signal below)')
         - sql:
             sql: |-
-              INSERT INTO APP.system_config (config_key, config_value, value_type, description)
+              INSERT INTO BANK_CORE.system_config (config_key, config_value, value_type, description)
               VALUES ('score_caution_band_upper', '670', 'NUMBER', 'Top of caution band — drives REVIEW recommendation')
         # OCR thresholds
         - sql:
             sql: |-
-              INSERT INTO APP.system_config (config_key, config_value, value_type, description)
+              INSERT INTO BANK_CORE.system_config (config_key, config_value, value_type, description)
               VALUES ('ocr_usable_min_confidence', '0.85', 'NUMBER', 'OCR per-field confidence required to classify as USABLE')
         - sql:
             sql: |-
-              INSERT INTO APP.system_config (config_key, config_value, value_type, description)
+              INSERT INTO BANK_CORE.system_config (config_key, config_value, value_type, description)
               VALUES ('ocr_marginal_floor', '0.60', 'NUMBER', 'Below this composite OCR score, document is UNUSABLE')
         # Recommendation tier weights (sum to 1.0)
         - sql:
             sql: |-
-              INSERT INTO APP.system_config (config_key, config_value, value_type, description)
+              INSERT INTO BANK_CORE.system_config (config_key, config_value, value_type, description)
               VALUES ('tier_w_doc_quality', '0.15', 'NUMBER', 'Recommendation weight: min per-doc quality score')
         - sql:
             sql: |-
-              INSERT INTO APP.system_config (config_key, config_value, value_type, description)
+              INSERT INTO BANK_CORE.system_config (config_key, config_value, value_type, description)
               VALUES ('tier_w_data_completeness', '0.10', 'NUMBER', 'Recommendation weight: data completeness ratio')
         - sql:
             sql: |-
-              INSERT INTO APP.system_config (config_key, config_value, value_type, description)
+              INSERT INTO BANK_CORE.system_config (config_key, config_value, value_type, description)
               VALUES ('tier_w_policy_proximity', '0.10', 'NUMBER', 'Recommendation weight: RAG policy proximity score')
         - sql:
             sql: |-
-              INSERT INTO APP.system_config (config_key, config_value, value_type, description)
+              INSERT INTO BANK_CORE.system_config (config_key, config_value, value_type, description)
               VALUES ('tier_w_opa_signal', '0.40', 'NUMBER', 'Recommendation weight: OPA allow/deny/warn signal')
         - sql:
             sql: |-
-              INSERT INTO APP.system_config (config_key, config_value, value_type, description)
+              INSERT INTO BANK_CORE.system_config (config_key, config_value, value_type, description)
               VALUES ('tier_w_ocr_tier', '0.15', 'NUMBER', 'Recommendation weight: OCR quality tier (USABLE/MARGINAL/UNUSABLE)')
         - sql:
             sql: |-
-              INSERT INTO APP.system_config (config_key, config_value, value_type, description)
+              INSERT INTO BANK_CORE.system_config (config_key, config_value, value_type, description)
               VALUES ('tier_w_employer_signal', '0.10', 'NUMBER', 'Recommendation weight: Company Registry verification (active/dormant/not_registered)')
         # Tier cutoffs
         - sql:
             sql: |-
-              INSERT INTO APP.system_config (config_key, config_value, value_type, description)
+              INSERT INTO BANK_CORE.system_config (config_key, config_value, value_type, description)
               VALUES ('tier_approve_floor', '0.75', 'NUMBER', 'Composite score >= this → APPROVE recommendation tier')
         - sql:
             sql: |-
-              INSERT INTO APP.system_config (config_key, config_value, value_type, description)
+              INSERT INTO BANK_CORE.system_config (config_key, config_value, value_type, description)
               VALUES ('tier_decline_ceiling', '0.30', 'NUMBER', 'Composite score <= this → DECLINE recommendation tier')
         # Fair lending
         - sql:
             sql: |-
-              INSERT INTO APP.system_config (config_key, config_value, value_type, description)
+              INSERT INTO BANK_CORE.system_config (config_key, config_value, value_type, description)
               VALUES ('fair_lending_dpi_ratio', '0.80', 'NUMBER', 'Disparate-impact 4/5 rule threshold')
         - sql:
             sql: |-
-              INSERT INTO APP.system_config (config_key, config_value, value_type, description)
+              INSERT INTO BANK_CORE.system_config (config_key, config_value, value_type, description)
               VALUES ('fair_lending_bucketing',
                 '{"age_band":["18-25","26-35","36-45","46-55","56-65","66+"],"gender":["M","F","OTHER"],"nationality":["resident","expat"]}',
                 'JSON',
@@ -185,7 +185,7 @@ databaseChangeLog:
         # Document requirements matrix
         - sql:
             sql: |-
-              INSERT INTO APP.system_config (config_key, config_value, value_type, description)
+              INSERT INTO BANK_CORE.system_config (config_key, config_value, value_type, description)
               VALUES ('document_requirements_matrix',
                 '{"PERSONAL_LOAN":{"salaried":{"resident":{"small":["ID","PAYSLIP","STATEMENT"],"large":["ID","PAYSLIP","STATEMENT","ADDRESS_PROOF"]},"expat":{"small":["ID","PAYSLIP","STATEMENT","ADDRESS_PROOF"],"large":["ID","PAYSLIP","STATEMENT","ADDRESS_PROOF"]}},"self_employed":{"resident":{"small":["ID","TAX_RETURN","STATEMENT"],"large":["ID","TAX_RETURN","STATEMENT","ADDRESS_PROOF"]},"expat":{"small":["ID","TAX_RETURN","STATEMENT","ADDRESS_PROOF"],"large":["ID","TAX_RETURN","STATEMENT","ADDRESS_PROOF"]}}}}',
                 'JSON',
@@ -193,5 +193,5 @@ databaseChangeLog:
         # Amount band threshold (used by document_requirements_matrix lookup)
         - sql:
             sql: |-
-              INSERT INTO APP.system_config (config_key, config_value, value_type, description)
+              INSERT INTO BANK_CORE.system_config (config_key, config_value, value_type, description)
               VALUES ('amount_band_small_max', '15000', 'NUMBER', 'Loans at or below this amount fall in the "small" band')

@@ -11,8 +11,12 @@ Environment=PORT={{ item.port }}
 Environment=TNS_ADMIN={{ wallet_dir }}
 Environment=DB_DSN={{ adb_service }}
 Environment=DB_WALLET_PASSWORD={{ wallet_password }}
-Environment=DB_USER={{ item.db_user | default('AGENT_FACTORY') }}
-Environment=DB_PASSWORD={{ adb_admin_password }}
+{% if item.db_user is defined %}
+# Each wrapper connects as the client user for the audience it serves, so a
+# compromised wrapper reaches only what that audience is allowed to see.
+Environment=DB_USER={{ item.db_user }}
+Environment=DB_PASSWORD={{ lookup('vars', item.db_password_var) }}
+{% endif %}
 Environment=BACKEND_URL=http://{{ self_host }}:8090
 Environment=OPA_URL=http://127.0.0.1:8181
 Environment=REGISTRY_URL=http://{{ self_host }}:8600

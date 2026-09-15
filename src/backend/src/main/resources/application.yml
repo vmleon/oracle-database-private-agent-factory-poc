@@ -4,7 +4,7 @@ server:
 spring:
   datasource:
     url: jdbc:oracle:thin:@//${DB_HOST:localhost}:${DB_PORT:1521}/${DB_SERVICE:ORCLPDB1}
-    username: ${DB_USER:APP}
+    username: ${DB_USER:SVC_BACKEND}
     password: ${DB_PASSWORD}
     type: oracle.ucp.jdbc.PoolDataSource
     oracleucp:

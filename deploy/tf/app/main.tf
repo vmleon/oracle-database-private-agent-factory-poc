@@ -11,11 +11,17 @@ locals {
   }
 
   db_params = {
-    adb_service        = "${var.db_name}_high"
-    adb_admin_user     = "ADMIN"
-    adb_admin_password = var.db_admin_password
-    adb_wallet_par_url = "${local.object_storage_host}${oci_objectstorage_preauthrequest.wallet.access_uri}"
-    wallet_password    = var.wallet_password
+    adb_service               = "${var.db_name}_high"
+    adb_admin_user            = "ADMIN"
+    adb_admin_password        = var.db_admin_password
+    db_owner_password         = var.db_owner_password
+    db_paf_password           = var.db_paf_password
+    db_backend_password       = var.db_backend_password
+    db_customer_ro_password   = var.db_customer_ro_password
+    db_customer_rw_password   = var.db_customer_rw_password
+    db_backoffice_ro_password = var.db_backoffice_ro_password
+    adb_wallet_par_url        = "${local.object_storage_host}${oci_objectstorage_preauthrequest.wallet.access_uri}"
+    wallet_password           = var.wallet_password
   }
 }
 

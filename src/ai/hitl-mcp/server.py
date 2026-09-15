@@ -4,17 +4,17 @@ an MCP tool so PAF's CHAT_WORKFLOW can write its recommendation packet.
 Why an MCP server instead of a PAF SQL Query node:
 PAF's SQL Query node is read-only by design (only SELECT-like queries are
 allowed — see docs/PAF.md §10). Anything with side effects has to go
-through MCP/REST. `create_hitl_task` inserts a row into APP.hitl_task and
+through MCP/REST. `create_hitl_task` inserts a row into BANK_CORE.hitl_task and
 enqueues HITL_REQUEST in the same transaction, so it lives behind this
 wrapper.
 
 Security boundary:
-- This container connects to Oracle as AGENT_FACTORY (the schema PAF
-  itself uses). AGENT_FACTORY has EXECUTE on AGENT_TOOLS.PKG_AGENT_TOOLS
-  (granted in Liquibase changeset 007).
-- The package body runs with definer's rights as AGENT_TOOLS, which has
-  INSERT + SELECT on APP.hitl_task (granted in 007 + 009) and ENQUEUE on
-  APP.HITL_REQUEST (granted in 009).
+- This container connects to Oracle as CUSTOMER_AGENT_RW, the client user for
+  CHAT_FLOW's write path. It holds EXECUTE on BANK_TOOLS.PKG_AGENT_TOOLS and
+  no table privilege of any kind (Liquibase changeset 020).
+- The package body runs with definer's rights as BANK_TOOLS, which has
+  INSERT + SELECT on BANK_CORE.hitl_task (granted in 007 + 009) and ENQUEUE on
+  BANK_CORE.HITL_REQUEST (granted in 009).
 - This wrapper does NOT bypass any of those grants — it just gives PAF a
   side-effect-capable tool surface to call the function.
 
@@ -97,7 +97,7 @@ async def create_hitl_task(
     session_token: str,
     explore_hints: str | None = None,
 ) -> dict:
-    """Write the CHAT_WORKFLOW recommendation packet to APP.hitl_task and
+    """Write the CHAT_WORKFLOW recommendation packet to BANK_CORE.hitl_task and
     enqueue HITL_REQUEST in the same transaction. Returns the new task_id
     and the server-generated `agent_run_id`.
 
@@ -150,7 +150,7 @@ async def create_hitl_task(
         with _connect() as conn:
             with conn.cursor() as cur:
                 task_id = cur.callfunc(
-                    "AGENT_TOOLS.PKG_AGENT_TOOLS.create_hitl_task",
+                    "BANK_TOOLS.PKG_AGENT_TOOLS.create_hitl_task",
                     int,
                     [
                         session_token,
@@ -177,7 +177,7 @@ async def create_hitl_task(
         "reason_codes": reason_codes,
         "agent_run_id": agent_run_id,
         "state": "OPEN",
-        "queue": "APP.HITL_REQUEST",
+        "queue": "BANK_CORE.HITL_REQUEST",
         "message": (
             f"HITL task {task_id} recorded with tier {recommendation}; "
             f"enqueued on HITL_REQUEST. Write the customer's reply for tier "
