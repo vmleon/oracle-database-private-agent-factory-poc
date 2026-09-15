@@ -18,16 +18,12 @@ from pathlib import Path
 
 import click
 import requests
-import urllib3
 from dotenv import load_dotenv
 from InquirerPy import inquirer
 from rich.console import Console
 from rich.panel import Panel
 
 console = Console()
-
-# The public load balancer terminates TLS with a self-signed certificate.
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 PROJECT_ROOT = Path(__file__).parent
 ENV_FILE = PROJECT_ROOT / ".env"
@@ -103,6 +99,22 @@ def _ops_python(script: str) -> subprocess.CompletedProcess:
     )
 
 
+
+
+def _lb_ca() -> str:
+    """The public listener's certificate, as Terraform exported it.
+
+    Self-signed and issued for the load balancer's address, so it is both the
+    trust anchor and the only name on it — verification needs no DNS name.
+    """
+    pem = TF_DIR / "generated" / "lb-ca.pem"
+    if not pem.exists():
+        console.print(
+            f"[red]{pem} not found.[/red] It is written by "
+            "[cyan]python manage.py cloud up[/cyan]."
+        )
+        sys.exit(1)
+    return str(pem)
 
 
 def _paf_base_url() -> str:
@@ -244,7 +256,7 @@ def _paf_session() -> requests.Session:
         )
         sys.exit(1)
     session = requests.Session()
-    session.verify = False
+    session.verify = _lb_ca()
     try:
         r = session.get(
             f"{_paf_base_url()}/agentFactory/v1/loginValidation",
@@ -252,6 +264,13 @@ def _paf_session() -> requests.Session:
             headers={"Origin": _paf_base_url()},
             timeout=30,
         )
+    except requests.exceptions.SSLError as exc:
+        console.print(
+            f"[red]PAF's certificate at {_paf_base_url()} did not verify[/red] against "
+            f"{_lb_ca()} — re-export it with [cyan]python manage.py cloud up[/cyan]."
+        )
+        console.print(f"[dim]{exc}[/dim]")
+        sys.exit(1)
     except requests.RequestException as exc:
         console.print(f"[red]Cannot reach PAF at {_paf_base_url()}:[/red] {exc}")
         sys.exit(1)
@@ -840,6 +859,11 @@ def tf() -> None:
 
 TIERS = ("ops", "paf", "backend", "frontend")
 
+# PAF writes the certificate it serves into its mounted volume during the install
+# wizard, so it outlives container restarts and a `cloud redeploy paf`.
+PAF_CERT_ON_TIER = "/opt/paf/kit/applied-ai/volume/config/app/latest/certs/cert.pem"
+BACKEND_PAF_CERT = "/etc/paf-poc-paf.pem"
+
 
 def _tier_readiness(tier: str) -> tuple[str, str]:
     """Where a tier stands: its bootstrap sentinel, or why it cannot be read.
@@ -872,12 +896,18 @@ def _agent_readiness() -> list[tuple[bool, str, str]]:
     reached the wizard yet, the whole block reads as "not started".
     """
     checks: list[tuple[bool, str, str]] = []
+    import io, contextlib
+    reason = io.StringIO()
     try:
-        import io, contextlib
-        with contextlib.redirect_stdout(io.StringIO()):
+        with contextlib.redirect_stdout(reason):
             session = _paf_session()
     except SystemExit:
-        return [(False, "PAF sign-in", "no answer, or the admin does not match .env")]
+        # A certificate that does not verify and a wrong password both end here,
+        # and they send the reader to opposite ends of the runbook.
+        note = ("the listener certificate does not verify — cloud up re-exports it"
+                if "certificate" in reason.getvalue().lower()
+                else "no answer, or the admin does not match .env")
+        return [(False, "PAF sign-in", note)]
 
     checks.append((True, "PAF sign-in", "admin in .env accepted"))
 
@@ -921,18 +951,19 @@ def _agent_readiness() -> list[tuple[bool, str, str]]:
                    "minted into .env" if minted else "not minted — paf api-key"))
 
     if minted:
-        # The drop-in is 0600 and root-owned, so both halves need sudo, and the
+        # The env file is 0600 and root-owned, so reading it needs sudo, and the
         # agent id is interpolated here rather than read from the remote shell,
-        # where it does not exist.
+        # where it does not exist. The certificate is half of the same delivery.
         agent_id = os.environ["PAF_AGENT_ID"]
         result = _backend_ssh(
             f"sudo grep -q {shlex.quote(agent_id)} /etc/paf-poc-backend.env "
-            "2>/dev/null && echo delivered || echo stale"
+            f"2>/dev/null && test -s {BACKEND_PAF_CERT} "
+            "&& echo delivered || echo stale"
         )
         out = (result.stdout or "") + (result.stderr or "")
         delivered = "delivered" in out
         checks.append((delivered, "key delivered",
-                       "the backend holds this key" if delivered
+                       "the backend holds this key and PAF's certificate" if delivered
                        else "the backend does not have it — paf push-key"))
     return checks
 
@@ -1184,21 +1215,30 @@ def cloud_redeploy(tier: str) -> None:
     console.print(f"\n[green]\u2713[/green] {tier} re-converged from its current payload.")
 
 
+BASTION_LB_CA = "/home/opc/lb-ca.pem"
+
+
 def _ops_push_tests() -> None:
     """Copy the repository's tests/ to the bastion, so a run exercises the current
-    harness rather than the copy that shipped in the tier's artifact."""
+    harness rather than the copy that shipped in the tier's artifact. The
+    listener's certificate rides along: the harness verifies PAF against it."""
     ip = _tf_output("ops_public_ip")
     key_path = Path(os.getenv("OCI_SSH_KEY_PATH", "")).expanduser()
     private_key = key_path.with_suffix("") if key_path.suffix == ".pub" else key_path
-    result = subprocess.run(
-        ["scp", "-q", "-r", "-i", str(private_key), "-o", "StrictHostKeyChecking=no",
-         "-o", "UserKnownHostsFile=/dev/null", "-o", "LogLevel=ERROR",
-         str(PROJECT_ROOT / "tests"), f"opc@{ip}:/home/opc/artifact/roles/opstools/files/"],
-        capture_output=True, text=True, timeout=120,
-    )
-    if result.returncode != 0:
-        console.print(f"[red]Could not copy tests/ to the bastion.[/red]\n{result.stderr.strip()[:300]}")
-        sys.exit(1)
+    opts = ["-q", "-i", str(private_key), "-o", "StrictHostKeyChecking=no",
+            "-o", "UserKnownHostsFile=/dev/null", "-o", "LogLevel=ERROR"]
+    for source, dest, what in (
+        (str(PROJECT_ROOT / "tests"), "/home/opc/artifact/roles/opstools/files/", "tests/"),
+        (_lb_ca(), BASTION_LB_CA, "the listener certificate"),
+    ):
+        result = subprocess.run(
+            ["scp", *opts, "-r", source, f"opc@{ip}:{dest}"],
+            capture_output=True, text=True, timeout=120,
+        )
+        if result.returncode != 0:
+            console.print(f"[red]Could not copy {what} to the bastion.[/red]\n"
+                          f"{result.stderr.strip()[:300]}")
+            sys.exit(1)
 
 
 # Unknown options belong to pytest, not to click.
@@ -1232,17 +1272,10 @@ def cloud_test(pytest_args: tuple) -> None:
     remote_env = "/home/opc/.poc-test-env"
     # The unit tests import from src/, which stays on the host, so the bastion
     # runs the end-to-end suite only; extra arguments (-k, -x, -vv) pass through.
-    # The public load balancer terminates TLS with a self-signed certificate —
-    # there is no DNS name to issue against — so the harness calls PAF with
-    # verification off and urllib3 warns once per turn. The filter rides on the
-    # command rather than in conftest, because pytest resets the warning filters
-    # around every test item, and rather than in pytest.ini, because only
-    # `tests/` is copied to the bastion.
     # Quoted: a multi-word selector (-k "alice or frank") reaches the bastion as
     # one pytest argument instead of three shell words.
     args = " ".join([
         "tests/test_chat_workflow.py",
-        "-W", "ignore::urllib3.exceptions.InsecureRequestWarning",
         *(shlex.quote(a) for a in pytest_args),
     ])
     script = (
@@ -1250,6 +1283,7 @@ def cloud_test(pytest_args: tuple) -> None:
         f"cd /home/opc/artifact/roles/opstools/files && "
         f"POC_ENV_FILE={remote_env} "
         f"PAF_BASE={_paf_base_url()} "
+        f"PAF_CA={BASTION_LB_CA} "
         f"TNS_ADMIN=/opt/paf-poc/wallet "
         f"{'{{ tests_venv }}'} -m pytest {args} -q; rc=$?; rm -f {remote_env}; exit $rc"
     ).replace("{{ tests_venv }}", "/opt/paf-poc/tests-venv/bin/python")
@@ -1758,13 +1792,31 @@ def _print_run(command: str) -> None:
     console.print(f"\n  Run:\n\n      [bold cyan]{command}[/bold cyan]\n")
 
 
-def _deliver_key() -> bool:
-    """Hand CHAT_FLOW's integration key to the backend tier and restart it.
+def _paf_certificate() -> str | None:
+    """Read the certificate PAF serves, from the PAF tier's own disk.
 
-    The Spring backend calls the published flow with PAF_AGENT_ID and
-    PAF_API_KEY, and neither exists until the flow is published — long after the
-    tier built itself. The unit reads them from /etc/paf-poc-backend.env, which
-    the play creates empty, so delivering the key is writing that file.
+    Taken from the file rather than from the TLS handshake, so the trust anchor
+    the backend is given is the one PAF holds and not whatever answered the
+    connection.
+    """
+    result = _tier_ssh("paf", f"sudo cat {PAF_CERT_ON_TIER}", timeout=60)
+    pem = (result.stdout or "").strip()
+    if result.returncode != 0 or "BEGIN CERTIFICATE" not in pem:
+        console.print(
+            f"[red]Could not read PAF's certificate[/red] at {PAF_CERT_ON_TIER}. "
+            "It is written by the install wizard — finish that first."
+        )
+        return None
+    return pem + "\n"
+
+
+def _deliver_key() -> bool:
+    """Hand the backend tier what it needs to call CHAT_FLOW, and restart it.
+
+    Three values that do not exist until PAF is installed and the flow is
+    published, long after the tier built itself: PAF_AGENT_ID, PAF_API_KEY, and
+    the certificate PAF serves, which the backend verifies the hop against. The
+    unit reads them from /etc/paf-poc-backend.env, which the play creates empty.
     """
     for key in ("PAF_AGENT_ID", "PAF_API_KEY"):
         if not os.getenv(key):
@@ -1774,10 +1826,20 @@ def _deliver_key() -> bool:
             )
             return False
 
+    pem = _paf_certificate()
+    if pem is None:
+        return False
+
+    # The certificate lands before the variable that names it, so a failure here
+    # never leaves the unit pointing at a file that is not there.
     script = f"""set -e
+sudo tee {BACKEND_PAF_CERT} > /dev/null <<'PEM'
+{pem}PEM
+sudo chmod 0644 {BACKEND_PAF_CERT}
 sudo tee /etc/paf-poc-backend.env > /dev/null <<'ENVF'
 PAF_AGENT_ID={os.environ['PAF_AGENT_ID']}
 PAF_API_KEY={os.environ['PAF_API_KEY']}
+PAF_TRUST_CERT={BACKEND_PAF_CERT}
 ENVF
 sudo chmod 0600 /etc/paf-poc-backend.env
 sudo systemctl restart paf-poc-backend
@@ -1799,17 +1861,18 @@ systemctl is-active paf-poc-backend
         return False
 
     console.print(f"[green]\u2713[/green] Backend restarted with agent {os.environ['PAF_AGENT_ID']}")
+    console.print("[dim]  Verifying PAF's certificate on every turn.[/dim]")
     console.print("[dim]  The customer chat UI reaches CHAT_FLOW from here on.[/dim]")
     return True
 
 
 @paf.command("push-key")
 def paf_push_key() -> None:
-    """Re-deliver the integration key to the backend tier.
+    """Re-deliver the integration key and PAF's certificate to the backend tier.
 
     `paf api-key` already delivers what it mints. This repeats the delivery on
-    its own — after the backend tier is rebuilt, or when `api-key --no-push`
-    was used.
+    its own — after the backend tier is rebuilt or redeployed, or when
+    `api-key --no-push` was used.
     """
     _ensure_env()
     if not _deliver_key():

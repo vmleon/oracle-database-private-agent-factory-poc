@@ -19,6 +19,7 @@ Required env vars (`cloud test` writes them on the bastion for the run):
   - DB_SERVICE, DB_BACKEND_PASSWORD, DB_WALLET_PASSWORD, TNS_ADMIN — the ADB wallet
     connection as APP
   - PAF_BASE — PAF's address behind the public load balancer
+  - PAF_CA — the listener's certificate, which PAF's address is verified against
 
 The key is bound to one published workflow, so no agent lookup is needed.
 """
@@ -61,7 +62,8 @@ def env() -> dict[str, str]:
     load_dotenv(ENV_FILE)
     # Autonomous Database is reached through a wallet alias, so there is no
     # host or port to supply.
-    required = ("PAF_API_KEY", "PAF_AGENT_ID", "DB_SERVICE", "DB_BACKEND_PASSWORD", "TNS_ADMIN", "PAF_BASE")
+    required = ("PAF_API_KEY", "PAF_AGENT_ID", "DB_SERVICE", "DB_BACKEND_PASSWORD", "TNS_ADMIN",
+                "PAF_BASE", "PAF_CA")
     missing = [k for k in required if not os.getenv(k)]
     if missing:
         pytest.exit(
@@ -76,7 +78,9 @@ def env() -> dict[str, str]:
 def paf(env) -> requests.Session:
     """PAF session carrying the integration key. Reused across tests."""
     s = requests.Session()
-    s.verify = False
+    # The load balancer's certificate is self-signed and names its own address,
+    # so it is the trust anchor as well as the identity being checked.
+    s.verify = env["PAF_CA"]
     s.headers["Authorization"] = f"Bearer {env['PAF_API_KEY']}"
     return s
 

@@ -80,6 +80,15 @@ resource "oci_load_balancer_listener" "https" {
   }
 }
 
+# The listener's certificate is its own trust anchor: it is self-signed, and the
+# only name on it is the load balancer's address. Every client that speaks to
+# this deployment from outside the VCN — `manage.py`, the end-to-end harness —
+# verifies against this file rather than turning verification off.
+resource "local_file" "lb_ca" {
+  filename = "${path.module}/generated/lb-ca.pem"
+  content  = tls_self_signed_cert.lb.cert_pem
+}
+
 # Port 80 exists only to send callers to 443, so nothing is served in the clear.
 resource "oci_load_balancer_rule_set" "redirect_to_https" {
   load_balancer_id = oci_load_balancer_load_balancer.lb.id

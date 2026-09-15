@@ -183,9 +183,10 @@ Expect: `PAF_AGENT_ID` and `PAF_API_KEY` in `.env`, and a restarted
 
 The backend's unit reads the key from `/etc/paf-poc-backend.env`, which its
 play creates empty: the flow is published long after the tier builds itself, so
-the key cannot be rendered into the unit. Minting and delivering are therefore
-one command. `--no-push` mints without delivering, which only the harness can
-use.
+the key cannot be rendered into the unit. The same delivery carries the
+certificate PAF serves, which the backend verifies every turn against — until it
+arrives, PAF calls fail on TLS. Minting and delivering are therefore one
+command. `--no-push` mints without delivering, which only the harness can use.
 
 Check where the sequence stands at any point:
 

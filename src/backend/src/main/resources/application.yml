@@ -26,6 +26,7 @@ spring:
 
 paf:
   base-url: ${PAF_BASE_URL:https://paf:8080}
+  trust-cert: ${PAF_TRUST_CERT:}
   api-key: ${PAF_API_KEY:}
   agent-id: ${PAF_AGENT_ID:}
 

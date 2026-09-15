@@ -92,6 +92,16 @@ The `ops` tier has not finished applying the changelog — the grants live in `d
 
 Almost always the dynamic group or the policy: `manage.py cloud iam` was skipped, or the connection names a different compartment from the one the policy grants. Re-apply `deploy/tf/iam` with a tenancy-admin profile.
 
+### A PAF command reports that the listener certificate does not verify
+
+`manage.py` and the end-to-end harness check the public listener's certificate against `deploy/tf/app/generated/lb-ca.pem`, and `info` reports the sign-in as *the listener certificate does not verify*. The file is stale or missing — the listener's certificate renews 30 days before it expires, and the export is a Terraform `local_file`, so it only catches up on the next apply.
+
+```bash
+python manage.py cloud up
+```
+
+That rewrites the file from the certificate in state. A run from the bastion picks it up on the next `cloud test`, which copies it across.
+
 ### A scripted PAF command returns HTTP 401
 
 `prepare`, `link-flow`, `gen-model` and `api-key` all sign in with `PAF_ADMIN_USER` / `PAF_ADMIN_PASS`. `setup` generates those before PAF exists and `paf bootstrap` step 1 prints them, so the wizard is meant to be *given* them rather than asked for something new. A 401 means the admin that exists is not the one in `.env`.

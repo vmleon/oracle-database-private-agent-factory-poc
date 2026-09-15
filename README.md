@@ -172,17 +172,18 @@ What works today on OCI — `manage.py cloud test` passes 11/11 against the depl
 
 What's next, in order — the detail lives in [`BACKLOG.md`](BACKLOG.md):
 
-1. **Stand up `RESEARCH_WORKFLOW`**, the backoffice research agent. Its read-only view set and database identity exist; the flow, the `/research/*` surface and the reviewer's research panel do not. [`BACKLOG.md §1`](BACKLOG.md).
-2. **Verify PAF's certificate at the load balancer.** The public listener serves HTTPS, but the hop from the load balancer to PAF is encrypted and unverified — PAF issues its certificate during its own install, so it cannot be trusted in the same apply. [`BACKLOG.md §2`](BACKLOG.md).
-3. **Let a reviewer claim from the queue.** `HITL_REQUEST` is written and never read; the portal lists open rows instead, so two reviewers can open the same case. [`BACKLOG.md §4`](BACKLOG.md).
-4. **Complete the decision record** — four columns of the Blockchain row are left null, and the table is append-only. [`BACKLOG.md §5`](BACKLOG.md).
-5. **Tell the customer the outcome.** Closing a task writes the decision and appends nothing to the chat thread. [`BACKLOG.md §6`](BACKLOG.md).
-6. **Run the compliance checks that are already served** — AML, KYC and fair-lending are typed, live and uncalled. [`BACKLOG.md §7`](BACKLOG.md).
-7. **One source of truth for the thresholds**, so parameter history stops being a table that never receives a row. [`BACKLOG.md §8`](BACKLOG.md).
+1. **Complete the decision record** — four columns of the Blockchain row are left null. It leads because the table is append-only and still empty: the first closed task writes a record that can never be corrected. [`BACKLOG.md §1`](BACKLOG.md).
+2. **Stand up `RESEARCH_WORKFLOW`**, the backoffice research agent. Its read-only view set and database identity exist; the flow, the `/research/*` surface and the reviewer's research panel do not. [`BACKLOG.md §2`](BACKLOG.md).
+3. **Let a reviewer claim from the queue.** `HITL_REQUEST` is written and never read; the portal lists open rows instead, so two reviewers can open the same case. [`BACKLOG.md §3`](BACKLOG.md).
+4. **Tell the customer the outcome.** Closing a task writes the decision and appends nothing to the chat thread. [`BACKLOG.md §4`](BACKLOG.md).
+5. **Run the compliance checks that are already served** — AML, KYC and fair-lending are typed, live and uncalled. [`BACKLOG.md §5`](BACKLOG.md).
+6. **Narrow the customer read path's session lookup.** `CUSTOMER_AGENT_RO` can select every row of `auth_session`, so a prompt injection against the chat agent reaches more than the one token it was handed. [`BACKLOG.md §6`](BACKLOG.md).
+7. **One source of truth for the thresholds**, so parameter history stops being a table that never receives a row. [`BACKLOG.md §7`](BACKLOG.md).
 
-Then: policy retrieval and citations, document collection, the session-lookup narrowing, similar-case lookup, and the fair-lending producer — [`BACKLOG.md §9`–`§13`](BACKLOG.md).
+Then: policy retrieval and citations, document collection, similar-case lookup, and the fair-lending producer — [`BACKLOG.md §8`–`§11`](BACKLOG.md).
 
-Two known constraints not in the "next" list because they're decided:
+Two known constraints not in the "next" list because they're decided, and one hop waiting on a spike:
 
-- **Select AI is parked.** `CHAT_FLOW` reads through the `banking-mcp` wrappers; the database is registered as a data source and the grants are in place, but no flow node uses Select AI. Adopting it is a flow redesign, tracked in [`BACKLOG.md §3`](BACKLOG.md).
+- **Select AI is parked.** `CHAT_FLOW` reads through the `banking-mcp` wrappers; the database is registered as a data source and the grants are in place, but no flow node uses Select AI. Adopting it is a flow redesign, tracked in [`BACKLOG.md §13`](BACKLOG.md).
+- **The load balancer's hop to PAF is unverified.** Encrypted but unauthenticated, and it is the only backend set that speaks TLS at all — the rest of the VCN is plaintext by design. Closing it needs a second apply and a spike on OCI's certificate matching, tracked in [`BACKLOG.md §12`](BACKLOG.md).
 - **Auth is out of scope.** Both UIs use a mock login (customer dropdown / role dropdown). The audience system is assumed to provide SSO in production.
