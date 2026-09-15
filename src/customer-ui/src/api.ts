@@ -6,6 +6,12 @@ export interface Customer {
   amountRequested: number | null;
   termMonths: number | null;
   hasOpenApplication: boolean;
+  applicationStatus: string | null;
+  purpose: string | null;
+  /** Messages already on this customer's thread — non-zero means the chat resumes. */
+  messageCount: number;
+  /** State of the newest review task, or null if the agent has filed nothing yet. */
+  reviewState: string | null;
 }
 
 export interface LoginResponse {

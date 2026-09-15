@@ -13,7 +13,17 @@ public interface CustomerRepository extends JpaRepository<Customer, Long> {
                    la.application_id AS applicationId,
                    pc.product_type AS productType,
                    la.amount_requested AS amountRequested,
-                   la.term_months  AS termMonths
+                   la.term_months  AS termMonths,
+                   la.status       AS applicationStatus,
+                   la.purpose      AS purpose,
+                   (SELECT COUNT(*)
+                      FROM BANK_CORE.chat_message m
+                     WHERE m.customer_id = c.customer_id) AS messageCount,
+                   (SELECT t.state
+                      FROM BANK_CORE.hitl_task t
+                     WHERE t.application_id = la.application_id
+                     ORDER BY t.task_id DESC
+                     FETCH FIRST 1 ROW ONLY) AS reviewState
               FROM BANK_CORE.customer c
               LEFT JOIN BANK_CORE.loan_application la
                      ON la.customer_id = c.customer_id

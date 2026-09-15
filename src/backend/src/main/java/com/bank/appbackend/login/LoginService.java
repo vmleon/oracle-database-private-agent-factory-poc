@@ -33,7 +33,8 @@ public class LoginService {
         return customers.findCustomerOptions().stream()
                 .map(o -> new CustomerSummary(o.getCustomerId(), o.getName(), o.getApplicationId(),
                         o.getProductType(), o.getAmountRequested(), o.getTermMonths(),
-                        o.getApplicationId() != null))
+                        o.getApplicationId() != null, o.getApplicationStatus(), o.getPurpose(),
+                        o.getMessageCount(), o.getReviewState()))
                 .toList();
     }
 

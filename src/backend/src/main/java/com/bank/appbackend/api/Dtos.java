@@ -16,7 +16,9 @@ public final class Dtos {
 
     public record CustomerSummary(Long customerId, String name, Long applicationId,
                                   String productType, java.math.BigDecimal amountRequested,
-                                  Integer termMonths, boolean hasOpenApplication) {
+                                  Integer termMonths, boolean hasOpenApplication,
+                                  String applicationStatus, String purpose,
+                                  Long messageCount, String reviewState) {
     }
 
     public record ChatRequest(String message) {

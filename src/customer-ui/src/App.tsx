@@ -18,14 +18,12 @@ function CustomerApp() {
   if (!session) {
     return (
       <Login
-        onLoggedIn={(r) => {
-          // The customer name isn't in the login response; fetch-free: we only have ids here,
-          // so store a friendly fallback. (Name is shown on the picker; header uses room id label.)
+        onLoggedIn={(r, customer) => {
           const s: StoredSession = {
             token: r.sessionToken,
             customerId: r.customerId,
             roomId: r.roomId,
-            name: `Customer ${r.customerId}`,
+            name: customer.name,
           };
           sessionStorage.setItem("session", JSON.stringify(s));
           setSession(s);

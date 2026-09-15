@@ -10,4 +10,9 @@ public interface CustomerOption {
     String getProductType();
     BigDecimal getAmountRequested();
     Integer getTermMonths();
+    String getApplicationStatus();
+    String getPurpose();
+    Long getMessageCount();
+    /** State of the newest review task for this application, or null if none was ever filed. */
+    String getReviewState();
 }

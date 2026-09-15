@@ -61,6 +61,9 @@ class LoginServiceTest {
         assertThat(result.get(1).name()).isEqualTo("Liam");
         assertThat(result.get(1).hasOpenApplication()).isFalse();
         assertThat(result.get(1).applicationId()).isNull();
+        assertThat(result.get(0).applicationStatus()).isEqualTo("SUBMITTED");
+        assertThat(result.get(0).reviewState()).isNull();
+        assertThat(result.get(1).applicationStatus()).isNull();
     }
 
     private CustomerOption option(Long custId, String name, Long appId) {
@@ -71,6 +74,10 @@ class LoginServiceTest {
             public String getProductType() { return appId == null ? null : "PERSONAL_LOAN"; }
             public java.math.BigDecimal getAmountRequested() { return appId == null ? null : new java.math.BigDecimal("10000"); }
             public Integer getTermMonths() { return appId == null ? null : 24; }
+            public String getApplicationStatus() { return appId == null ? null : "SUBMITTED"; }
+            public String getPurpose() { return appId == null ? null : "Car"; }
+            public Long getMessageCount() { return 0L; }
+            public String getReviewState() { return null; }
         };
     }
 
