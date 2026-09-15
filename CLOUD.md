@@ -51,12 +51,17 @@ model whose width does not match the `VECTOR` width in the changelog.
 
 Expect: `.env` with `DEPLOYMENT_TARGET=cloud`, generated ADB passwords, and both model ids.
 
-To change the generation model on a running install, re-run `setup`, then
-push the new id to PAF's `gen-model` configuration:
-
-```bash
-python manage.py paf gen-model
-```
+> **Not part of a deployment from scratch** — skip it and continue at §3.
+>
+> To change the generation model on an **already running** install, re-run
+> `setup` to pick the new model, then push its id to PAF's `gen-model`
+> configuration:
+>
+> ```bash
+> python manage.py paf gen-model
+> ```
+>
+> PAF must already be installed for this to have anything to write to.
 
 ## 3. `build`
 
@@ -264,12 +269,12 @@ The install sheet ends at PAF's UI; §9 onward — import, `link-flow`, publish,
 
 ## When something does not come up
 
-| Symptom                                            | Look at                                                                                              |
-| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| A tier never writes `bootstrap.ok`                 | `manage.py info` names which one; then `/var/log/<label>-bootstrap.log` and `/home/opc/ansible-playbook.log` on that instance |
-| Model calls fail in PAF's LLM Management           | Step 5 was skipped or its IAM root was destroyed, or the connection names a different compartment from the one the policy grants |
-| The manager never delegates, or every turn is a JSON decode error | The generation model is a `cohere.*` or `meta.*` one — see [`docs/TROUBLESHOOT.md`](docs/TROUBLESHOOT.md) |
-| An MCP server will not connect                     | `paf trust-ca` and `paf allow-internal-mcp` (bootstrap steps 6 and 7) both have to run before the first registration |
-| The load balancer does not answer                  | Backend health in the OCI console; a tier listens only once its play has finished                       |
-| The chat UI answers but never reaches the agent    | `paf push-key` has not run since the flow was published                                                 |
-| `cloud down` fails on a security group             | Expected — it retries by itself; a manual re-run is equally safe                                        |
+| Symptom                                                           | Look at                                                                                                                          |
+| ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| A tier never writes `bootstrap.ok`                                | `manage.py info` names which one; then `/var/log/<label>-bootstrap.log` and `/home/opc/ansible-playbook.log` on that instance    |
+| Model calls fail in PAF's LLM Management                          | Step 5 was skipped or its IAM root was destroyed, or the connection names a different compartment from the one the policy grants |
+| The manager never delegates, or every turn is a JSON decode error | The generation model is a `cohere.*` or `meta.*` one — see [`docs/TROUBLESHOOT.md`](docs/TROUBLESHOOT.md)                        |
+| An MCP server will not connect                                    | `paf trust-ca` and `paf allow-internal-mcp` (bootstrap steps 6 and 7) both have to run before the first registration             |
+| The load balancer does not answer                                 | Backend health in the OCI console; a tier listens only once its play has finished                                                |
+| The chat UI answers but never reaches the agent                   | `paf push-key` has not run since the flow was published                                                                          |
+| `cloud down` fails on a security group                            | Expected — it retries by itself; a manual re-run is equally safe                                                                 |
