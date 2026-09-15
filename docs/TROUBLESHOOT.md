@@ -92,6 +92,18 @@ The `ops` tier has not finished applying the changelog — the grants live in `d
 
 Almost always the dynamic group or the policy: `manage.py cloud iam` was skipped, or the connection names a different compartment from the one the policy grants. Re-apply `deploy/tf/iam` with a tenancy-admin profile.
 
+### A scripted PAF command returns HTTP 401
+
+`trust-ca`, `allow-internal-mcp`, `link-flow`, `gen-model` and `api-key` all sign in with `PAF_ADMIN_USER` / `PAF_ADMIN_PASS`. `setup` generates those before PAF exists and `paf bootstrap` step 1 prints them, so the wizard is meant to be *given* them rather than asked for something new. A 401 means the admin that exists is not the one in `.env`.
+
+> **Only if the wizard was given different credentials** — otherwise the fix is to re-read step 1 and retype them. To record what actually exists:
+>
+> ```bash
+> python manage.py paf admin
+> ```
+>
+> It writes both values to `.env` and signs in once to prove they work.
+
 ## PAF runtime / MCP
 
 ### The manager never delegates — the reply is its thoughts plus `{"name": "send_message", …}`
