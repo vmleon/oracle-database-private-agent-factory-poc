@@ -5,16 +5,34 @@ then optional residuals.
 
 **Maintenance convention.** When an item is done and implemented successfully, **remove it from this backlog and delete the related `issues/` file(s)** — keep the repo describing the final state, not the history. If an issue is only **partially** improved (a workaround, not a real fix), **refresh that issue** so it stays accurate instead of deleting it.
 
-## 1. Cloud deployment on OCI — top priority
+## 1. Stand up `RESEARCH_WORKFLOW`, the backoffice research agent
 
-Branch: `dev/cloud-deployment`. Runbook: [`CLOUD.md`](CLOUD.md).
+The database layer is ready: seven `research_v_*` views (`006`, `008`), the
+`BACKOFFICE_AGENT_RO` identity holding `SELECT` on them and `EXECUTE` nowhere
+(`020`), and its password carried through Terraform. Nothing above that layer
+exists — no flow, no backend surface, no reviewer panel — so `research_audit` is
+a table with no writer and the `/research/*` endpoints of `docs/DESIGN.md §5`
+are unimplemented.
 
-The stack stands up and `manage.py cloud test` passes 11/11: four computes, ADB on a private endpoint, a public load balancer serving HTTPS with a port-80 redirect, and a private one fronting the four MCP wrappers that run as systemd services on the `backend` tier. `manage.py` owns the whole lifecycle — `setup`, `build`, `tf`, `cloud iam|plan|up|down|test`.
+`docs/DESIGN.md §6.3` shapes the flow as a Select AI Bridge over a
+`research_profile` profile plus RAG over `policy_corpus`. Both are backlog items
+in their own right — §4 and §10 — and the profile itself has never been created,
+so the flow as designed cannot be built before them. A read-only MCP wrapper
+over the `research_v_*` views, shaped like `banking-mcp`, carries the same read
+scope without either. Which of the two the flow uses gates everything else here.
 
-Remaining:
-
-- **A rebuild from an empty compartment** with every fix in place, to confirm the runbook is complete rather than coaxed. Fixes have been applied to live instances and written back into the templates without the templates ever producing a tier from scratch; the rebuild is what proves them. It also exercises `cloud iam`, the least-travelled step in the runbook, whose failure mode reads like a model problem rather than a missing policy.
-- **`RESEARCH_WORKFLOW`** — imported and linked the same way as `CHAT_FLOW`. Its database identity, `BACKOFFICE_AGENT_RO`, and its read-only view set already exist.
+- **Decision.** Select AI Bridge, which waits on §4 and §10, or a read-only MCP
+  wrapper over the view set. Record the choice in `docs/DESIGN.md §11`.
+- **Code.** The flow itself — Chat Input → Prompt → Agent → Chat Output, no
+  side-effect node — exported to `paf/flows/RESEARCH_WORKFLOW.paf` with its
+  blueprint beside it. A second flow in `manage.py`, which resolves one agent id
+  and mints one integration key (`_discover_chat_flow_id`, `paf
+  link-flow|api-key|push-key`, the `info` readiness check, the `paf bootstrap`
+  sheet). `/research/*` on the Application Service, writing `research_audit`.
+  The Case Research panel on the reviewer's task detail screen
+  (`docs/DESIGN.md §8` step 12).
+- **Guide steps.** A counterpart to `CLOUD.md §9` that imports, links and
+  publishes the second flow.
 
 ## 2. Converge a running tier instead of hot-patching it
 

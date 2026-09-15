@@ -172,7 +172,7 @@ What works today on OCI — `manage.py cloud test` passes 11/11 against the depl
 
 What's next, in order — the detail lives in [`BACKLOG.md`](BACKLOG.md):
 
-1. **Rebuild from an empty compartment**, and import `RESEARCH_WORKFLOW` — the backoffice research agent, whose read-only view set and database identity already exist. [`BACKLOG.md §1`](BACKLOG.md).
+1. **Stand up `RESEARCH_WORKFLOW`**, the backoffice research agent. Its read-only view set and database identity exist; the flow, the `/research/*` surface and the reviewer's research panel do not. [`BACKLOG.md §1`](BACKLOG.md).
 2. **Converge a running tier** with `cloud redeploy`, so a template change reaches a built instance instead of being hand-applied. [`BACKLOG.md §2`](BACKLOG.md).
 3. **Verify PAF's certificate at the load balancer.** The public listener serves HTTPS, but the hop from the load balancer to PAF is encrypted and unverified — PAF issues its certificate during its own install, so it cannot be trusted in the same apply. [`BACKLOG.md §3`](BACKLOG.md).
 4. **Let a reviewer claim from the queue.** `HITL_REQUEST` is written and never read; the portal lists open rows instead, so two reviewers can open the same case. [`BACKLOG.md §5`](BACKLOG.md).
