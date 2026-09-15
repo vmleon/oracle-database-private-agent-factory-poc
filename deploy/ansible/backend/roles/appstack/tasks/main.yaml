@@ -144,6 +144,13 @@
     mode: "0755"
     timeout: 120
 
+- name: Create the integration key file
+  ansible.builtin.copy:
+    content: ""
+    dest: /etc/paf-poc-backend.env
+    mode: "0600"
+    force: false
+
 - name: Render the service units
   ansible.builtin.template:
     src: "{{ item.src }}"

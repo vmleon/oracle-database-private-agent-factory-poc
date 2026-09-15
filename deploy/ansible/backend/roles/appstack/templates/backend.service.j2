@@ -12,6 +12,10 @@ Environment=SPRING_DATASOURCE_USERNAME=SVC_BACKEND
 Environment=SPRING_DATASOURCE_PASSWORD={{ db_backend_password }}
 Environment=PAF_BASE_URL=https://{{ paf_host }}:8080
 Environment=OPA_URL=http://127.0.0.1:8181
+# PAF_AGENT_ID and PAF_API_KEY come from here: the flow is published long after
+# the tier is built, so the key cannot be rendered into the unit. The leading
+# `-` lets the service start before `paf api-key` has written the file.
+EnvironmentFile=-/etc/paf-poc-backend.env
 ExecStart=/usr/bin/java -jar {{ app_dir }}/app.jar
 Restart=on-failure
 RestartSec=10

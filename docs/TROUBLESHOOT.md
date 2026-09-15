@@ -179,4 +179,4 @@ Two distinct meanings depending on the listed count:
 
 ### OPA returns `404` on `/v1/data/decisioning/...` rules
 
-A `.rego` file failed to load. On the `backend` compute, check `sudo journalctl -u paf-poc-opa` for a parse error (line number + message), fix the file under `opa/packages/`, and redeploy. The wrappers do not need a restart.
+A `.rego` file failed to load. On the `backend` compute, check `sudo journalctl -u paf-poc-opa` for a parse error (line number + message), fix the file under `opa/packages/`, then `manage.py build`, `manage.py cloud up` and `manage.py cloud redeploy backend`. The wrappers do not need a restart.

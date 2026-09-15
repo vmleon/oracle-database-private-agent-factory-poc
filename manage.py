@@ -1110,7 +1110,8 @@ def _backend_host() -> str:
     return _tier_host("backend")
 
 
-def _tier_ssh(tier: str, command: str, *, timeout: int = 300) -> subprocess.CompletedProcess:
+def _tier_ssh(tier: str, command: str, *, timeout: int = 300,
+              stream: bool = False) -> subprocess.CompletedProcess:
     """Run a shell command on a tier, jumping through the bastion.
 
     Only the bastion has a public address; the rest of the tiers are reachable
@@ -1135,6 +1136,8 @@ def _tier_ssh(tier: str, command: str, *, timeout: int = 300) -> subprocess.Comp
     else:
         argv += ["-o", f"ProxyCommand={jump}", f"opc@{_tier_host(tier)}", command]
     try:
+        if stream:
+            return subprocess.run(argv, timeout=timeout)
         return subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
     except subprocess.TimeoutExpired:
         return subprocess.CompletedProcess(argv, 255, "", "timed out")
@@ -1142,6 +1145,43 @@ def _tier_ssh(tier: str, command: str, *, timeout: int = 300) -> subprocess.Comp
 
 def _backend_ssh(command: str) -> subprocess.CompletedProcess:
     return _tier_ssh("backend", command)
+
+
+@cloud.command("redeploy")
+@click.argument("tier", type=click.Choice(TIERS))
+def cloud_redeploy(tier: str) -> None:
+    """Re-run a tier's play, so an edited payload reaches the running instance.
+
+    Terraform keys a payload object on its name, so `cloud up` uploads a new
+    archive and reports no instance change. This clears the tier's bootstrap
+    sentinel and runs its bootstrap script again: the payload is re-fetched
+    through the PAR and the playbook re-runs, which is what the play was written
+    to tolerate.
+
+    The playbook parameters are the ones the instance was created with, so a
+    changed Terraform variable still needs a rebuild.
+    """
+    _ensure_env()
+    label = os.getenv("OCI_LABEL", "paf-poc")
+    console.print(Panel.fit(f"[bold]Re-converging {tier}[/bold]"))
+    console.print(
+        "[dim]The payload comes from the bucket — run [cyan]cloud up[/cyan] first "
+        "if it changed.[/dim]\n"
+    )
+    result = _tier_ssh(
+        tier,
+        f"sudo rm -f /var/lib/{label}/bootstrap.ok && sudo /usr/local/sbin/{label}-bootstrap",
+        timeout=2400,
+        stream=True,
+    )
+    if result.returncode != 0:
+        console.print(
+            f"\n[red]{tier} did not converge.[/red] Its sentinel is gone until a run "
+            f"succeeds, so [cyan]info[/cyan] reports the tier as building. The play's "
+            f"own log is [cyan]/home/opc/ansible-playbook.log[/cyan] on {_tier_host(tier)}."
+        )
+        sys.exit(1)
+    console.print(f"\n[green]\u2713[/green] {tier} re-converged from its current payload.")
 
 
 def _ops_push_tests() -> None:
@@ -1722,9 +1762,9 @@ def _deliver_key() -> bool:
     """Hand CHAT_FLOW's integration key to the backend tier and restart it.
 
     The Spring backend calls the published flow with PAF_AGENT_ID and
-    PAF_API_KEY, and neither exists until the flow is published — long after
-    the tier built itself. They arrive as a systemd drop-in over the shipped
-    unit, so `api-key` is followed by this rather than by a rebuild.
+    PAF_API_KEY, and neither exists until the flow is published — long after the
+    tier built itself. The unit reads them from /etc/paf-poc-backend.env, which
+    the play creates empty, so delivering the key is writing that file.
     """
     for key in ("PAF_AGENT_ID", "PAF_API_KEY"):
         if not os.getenv(key):
@@ -1735,17 +1775,11 @@ def _deliver_key() -> bool:
             return False
 
     script = f"""set -e
-sudo install -d -m 0755 /etc/systemd/system/paf-poc-backend.service.d
-sudo tee /etc/systemd/system/paf-poc-backend.service.d/paf-key.conf > /dev/null <<'UNIT'
-[Service]
-EnvironmentFile=/etc/paf-poc-backend.env
-UNIT
 sudo tee /etc/paf-poc-backend.env > /dev/null <<'ENVF'
 PAF_AGENT_ID={os.environ['PAF_AGENT_ID']}
 PAF_API_KEY={os.environ['PAF_API_KEY']}
 ENVF
 sudo chmod 0600 /etc/paf-poc-backend.env
-sudo systemctl daemon-reload
 sudo systemctl restart paf-poc-backend
 sleep 4
 systemctl is-active paf-poc-backend

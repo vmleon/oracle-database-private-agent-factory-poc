@@ -173,17 +173,16 @@ What works today on OCI — `manage.py cloud test` passes 11/11 against the depl
 What's next, in order — the detail lives in [`BACKLOG.md`](BACKLOG.md):
 
 1. **Stand up `RESEARCH_WORKFLOW`**, the backoffice research agent. Its read-only view set and database identity exist; the flow, the `/research/*` surface and the reviewer's research panel do not. [`BACKLOG.md §1`](BACKLOG.md).
-2. **Converge a running tier** with `cloud redeploy`, so a template change reaches a built instance instead of being hand-applied. [`BACKLOG.md §2`](BACKLOG.md).
-3. **Verify PAF's certificate at the load balancer.** The public listener serves HTTPS, but the hop from the load balancer to PAF is encrypted and unverified — PAF issues its certificate during its own install, so it cannot be trusted in the same apply. [`BACKLOG.md §3`](BACKLOG.md).
-4. **Let a reviewer claim from the queue.** `HITL_REQUEST` is written and never read; the portal lists open rows instead, so two reviewers can open the same case. [`BACKLOG.md §5`](BACKLOG.md).
-5. **Complete the decision record** — four columns of the Blockchain row are left null, and the table is append-only. [`BACKLOG.md §6`](BACKLOG.md).
-6. **Tell the customer the outcome.** Closing a task writes the decision and appends nothing to the chat thread. [`BACKLOG.md §7`](BACKLOG.md).
-7. **Run the compliance checks that are already served** — AML, KYC and fair-lending are typed, live and uncalled. [`BACKLOG.md §8`](BACKLOG.md).
-8. **One source of truth for the thresholds**, so parameter history stops being a table that never receives a row. [`BACKLOG.md §9`](BACKLOG.md).
+2. **Verify PAF's certificate at the load balancer.** The public listener serves HTTPS, but the hop from the load balancer to PAF is encrypted and unverified — PAF issues its certificate during its own install, so it cannot be trusted in the same apply. [`BACKLOG.md §2`](BACKLOG.md).
+3. **Let a reviewer claim from the queue.** `HITL_REQUEST` is written and never read; the portal lists open rows instead, so two reviewers can open the same case. [`BACKLOG.md §4`](BACKLOG.md).
+4. **Complete the decision record** — four columns of the Blockchain row are left null, and the table is append-only. [`BACKLOG.md §5`](BACKLOG.md).
+5. **Tell the customer the outcome.** Closing a task writes the decision and appends nothing to the chat thread. [`BACKLOG.md §6`](BACKLOG.md).
+6. **Run the compliance checks that are already served** — AML, KYC and fair-lending are typed, live and uncalled. [`BACKLOG.md §7`](BACKLOG.md).
+7. **One source of truth for the thresholds**, so parameter history stops being a table that never receives a row. [`BACKLOG.md §8`](BACKLOG.md).
 
-Then: policy retrieval and citations, document collection, the session-lookup narrowing, similar-case lookup, and the fair-lending producer — [`BACKLOG.md §10`–`§14`](BACKLOG.md).
+Then: policy retrieval and citations, document collection, the session-lookup narrowing, similar-case lookup, and the fair-lending producer — [`BACKLOG.md §9`–`§13`](BACKLOG.md).
 
 Two known constraints not in the "next" list because they're decided:
 
-- **Select AI is parked.** `CHAT_FLOW` reads through the `banking-mcp` wrappers; the database is registered as a data source and the grants are in place, but no flow node uses Select AI. Adopting it is a flow redesign, tracked in [`BACKLOG.md §4`](BACKLOG.md).
+- **Select AI is parked.** `CHAT_FLOW` reads through the `banking-mcp` wrappers; the database is registered as a data source and the grants are in place, but no flow node uses Select AI. Adopting it is a flow redesign, tracked in [`BACKLOG.md §3`](BACKLOG.md).
 - **Auth is out of scope.** Both UIs use a mock login (customer dropdown / role dropdown). The audience system is assumed to provide SSO in production.

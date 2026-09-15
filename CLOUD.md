@@ -181,10 +181,11 @@ python manage.py paf api-key
 Expect: `PAF_AGENT_ID` and `PAF_API_KEY` in `.env`, and a restarted
 `paf-poc-backend` holding them.
 
-The key reaches the backend through a systemd drop-in rather than the tier's
-payload, because the flow is published long after the tier built itself — so
-minting and delivering are one command. `--no-push` mints without delivering,
-which only the harness can use.
+The backend's unit reads the key from `/etc/paf-poc-backend.env`, which its
+play creates empty: the flow is published long after the tier builds itself, so
+the key cannot be rendered into the unit. Minting and delivering are therefore
+one command. `--no-push` mints without delivering, which only the harness can
+use.
 
 Check where the sequence stands at any point:
 
