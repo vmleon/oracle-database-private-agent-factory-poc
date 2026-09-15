@@ -5,34 +5,69 @@ then the items waiting on a decision or a spike, then optional residuals.
 
 **Maintenance convention.** When an item is done and implemented successfully, **remove it from this backlog and delete the related `issues/` file(s)** — keep the repo describing the final state, not the history. If an issue is only **partially** improved (a workaround, not a real fix), **refresh that issue** so it stays accurate instead of deleting it.
 
-## 1. Stand up `RESEARCH_WORKFLOW`, the backoffice research agent
+## 1. Harden the conversation with an adversarial test bench
 
-The database layer is ready: seven `research_v_*` views (`006`, `008`), the
-`BACKOFFICE_AGENT_RO` identity holding `SELECT` on them and `EXECUTE` nowhere
-(`020`), and its password carried through Terraform. Nothing above that layer
-exists — no flow, no backend surface, no reviewer panel — so `research_audit` is
-a table with no writer and the `/research/*` endpoints of `docs/DESIGN.md §5`
-are unimplemented.
+`tests/test_chat_workflow.py` posts one scripted turn straight at PAF's
+integration endpoint. Everything the Spring backend does to a turn is therefore
+untested — `Envelope.sanitize`, `Envelope.stripMarkers`, session resolution, the
+apology retry and what lands in `chat_message` — and the sharpest attacks need
+more than one turn anyway.
 
-`docs/DESIGN.md §6.3` shapes the flow as a Select AI Bridge over a
-`research_profile` profile plus RAG over `policy_corpus`. Both are backlog items
-in their own right — §7 and §12 — and the profile itself has never been created,
-so the flow as designed cannot be built before them. A read-only MCP wrapper
-over the `research_v_*` views, shaped like `banking-mcp`, carries the same read
-scope without either. Which of the two the flow uses gates everything else here.
+The bench drives the product the way a customer does: `POST /v1/login`, then
+`POST /v1/chat` and poll `GET /v1/chat/history`, so a case crosses the whole path
+and can assert the database row at the end of it. Four suites: the identity
+boundary, instruction override and disclosure, what gets written, and whether an
+ordinary conversation is worth the customer's time.
 
-- **Decision.** Select AI Bridge, which waits on §7 and §12, or a read-only MCP
-  wrapper over the view set. Record the choice in `docs/DESIGN.md §11`.
-- **Code.** The flow itself — Chat Input → Prompt → Agent → Chat Output, no
-  side-effect node — exported to `paf/flows/RESEARCH_WORKFLOW.paf` with its
-  blueprint beside it. A second flow in `manage.py`, which resolves one agent id
-  and mints one integration key (`_discover_chat_flow_id`, `paf
-  link-flow|api-key|push-key`, the `info` readiness check, the `paf bootstrap`
-  sheet). `/research/*` on the Application Service, writing `research_audit`.
-  The Case Research panel on the reviewer's task detail screen
-  (`docs/DESIGN.md §8` step 12).
-- **Guide steps.** A counterpart to `CLOUD.md §9` that imports, links and
-  publishes the second flow.
+**It is not a load test.** The target is a single-instance dev deployment
+sharing one Generative AI endpoint, and breaking it by volume proves nothing.
+The bench is strictly serial with a deliberate pause between turns — around 45
+turns and 25–45 minutes for a full run. Volume is not an attack it runs.
+
+Reading the code first turned up four defects, so the bench starts with a case
+for each rather than waiting for a demo to find them:
+
+- **The loan product has limits and nothing enforces them.** `product_catalog`
+  seeds Personal Loan at 1,000–50,000 over 6–60 months;
+  `upsert_draft_application` reads the product only for its `product_id` and
+  writes whatever amount and term it is given. A conversation can hold an
+  application for 5,000,000 over 2 months and have a recommendation filed
+  against it.
+- **`term_months = 0` is an unhandled divide-by-zero on the read path.**
+  `_get_context_impl` guards on `is None`, so a zero term passes and
+  `amount / term_months` raises inside the deterministic node every read path
+  starts with. The defect above is what makes it reachable by asking.
+- **Two greedy regexes in `Envelope` can delete reply text.**
+  `LEADING_MARKERS` matches to the last `]]` on the first line and `THINKING` to
+  the last `</think>` anywhere; a customer can induce both.
+- **The raw customer message is persisted.** `startTurn` saves it before
+  `runTurn` sanitizes, so `chat_message.body` keeps the injected text — which
+  matters the moment §3 starts appending to that thread.
+
+One question the bench exists to answer: `Envelope.sanitize`
+(`\[\[SESSION[^\]]*\]\]`) and the flow's token extractor
+(`(?<=\[\[SESSION )[^\]]+`) were written separately and disagree.
+`[[SESSION a]b]]` survives the sanitizer *and* matches the extractor, so whether
+that is identity confusion turns on whether PAF's `Regex extractor` returns the
+first match or the last. Nothing in the repo settles it.
+
+Quality is held to the same bar. A greeting answered with "could you please
+confirm you would like to proceed with the loan application?" is a stall, and
+the turn after it repeated nearly the same sentence; both were observed against
+the deployed stack and both go in as failing cases. A failing case is kept as
+`xfail(strict=False)` with its reason in full prose, never deleted or loosened,
+so the run reports `XPASS` on the day the agent improves.
+
+The full plan — driver contract, file layout, personas, every case with its
+input and its assertion, and how quality is scored — is
+[`docs/TEST-BENCH.md`](docs/TEST-BENCH.md).
+
+- **Code.** `tests/conversation/` with the turn driver, the four suites and the
+  deterministic quality signals; pure helpers mirrored into `tests/unit/` so the
+  regex work is checkable on the host. `manage.py cloud bench` runs it —
+  separate from `cloud test`, which stays the fast gate.
+- **Decision.** Which recorded failures are defects to fix and which are
+  accepted PoC behaviour, taken once the first run has produced the list.
 
 ## 2. Let a reviewer claim from the queue
 
@@ -55,20 +90,49 @@ scope without either. Which of the two the flow uses gates everything else here.
 - **Code.** Call `evaluate_kyc` and `evaluate_fair_lending_flags` inside `recommend_tier_for_session` and put their output in the evidence packet, so the reviewer sees them before they influence anything. `evaluate_aml` needs a `sanctions_list` table and seed rows first — `opa/packages/aml.rego` reads one and it was never created.
 - **Decision.** Which of them may move the tier and which stay as evidence only is a policy choice, made once and recorded in `docs/DESIGN.md §11`.
 
-## 5. Narrow the customer read path's session lookup
+## 5. Stand up `RESEARCH_WORKFLOW`, the backoffice research agent
+
+The database layer is ready: seven `research_v_*` views (`006`, `008`), the
+`BACKOFFICE_AGENT_RO` identity holding `SELECT` on them and `EXECUTE` nowhere
+(`020`), and its password carried through Terraform. Nothing above that layer
+exists — no flow, no backend surface, no reviewer panel — so `research_audit` is
+a table with no writer and the `/research/*` endpoints of `docs/DESIGN.md §5`
+are unimplemented.
+
+`docs/DESIGN.md §6.3` shapes the flow as a Select AI Bridge over a
+`research_profile` profile plus RAG over `policy_corpus`. Both are backlog items
+in their own right — §8 and §13 — and the profile itself has never been created,
+so the flow as designed cannot be built before them. A read-only MCP wrapper
+over the `research_v_*` views, shaped like `banking-mcp`, carries the same read
+scope without either. Which of the two the flow uses gates everything else here.
+
+- **Decision.** Select AI Bridge, which waits on §8 and §13, or a read-only MCP
+  wrapper over the view set. Record the choice in `docs/DESIGN.md §11`.
+- **Code.** The flow itself — Chat Input → Prompt → Agent → Chat Output, no
+  side-effect node — exported to `paf/flows/RESEARCH_WORKFLOW.paf` with its
+  blueprint beside it. A second flow in `manage.py`, which resolves one agent id
+  and mints one integration key (`_discover_chat_flow_id`, `paf
+  link-flow|api-key|push-key`, the `info` readiness check, the `paf bootstrap`
+  sheet). `/research/*` on the Application Service, writing `research_audit`.
+  The Case Research panel on the reviewer's task detail screen
+  (`docs/DESIGN.md §8` step 12).
+- **Guide steps.** A counterpart to `CLOUD.md §9` that imports, links and
+  publishes the second flow.
+
+## 6. Narrow the customer read path's session lookup
 
 `CUSTOMER_AGENT_RO` holds `SELECT` on `BANK_CORE.auth_session` because the session-scoped tools resolve an opaque token to a customer, and on `BANK_CORE.hitl_task` because the decision gate asks whether a task exists. Both are table grants, so that identity can in principle read every live session token rather than only resolve the one it was given.
 
 - **Code.** Replace the two lookups with definer's-rights functions in `BANK_TOOLS` and grant `EXECUTE` instead of `SELECT`. It changes `banking-mcp`'s SQL on every path that resolves a token, so it wants its own change with its own test run.
 
-## 6. One source of truth for the policy thresholds
+## 7. One source of truth for the policy thresholds
 
 `BANK_CORE.system_config` holds the thresholds, the seeds and a trigger that writes every change to `policy_parameter_history`. `opa/packages/config.rego` hardcodes the same numbers, and nothing syncs them — so the database copy is documentation and the Rego copy is what decides. No surface edits a parameter, which means the history table stays empty for the life of the deployment and the parameter-history layer in `docs/DESIGN.md §9` is a table that never receives a row.
 
 - **Code.** An admin endpoint and a backoffice screen that write `system_config` — the trigger then fills the history table for free — and push the new values to OPA with `PUT /v1/data/decisioning/config`. Every Rego package already reads `data.decisioning.config.<key>` rather than a literal, so the policy side is a one-place change. This also retires the "restart OPA to apply parameter changes" note in `docs/DESIGN.md §11`.
 - **Guide steps.** The bank administrator persona (`docs/DESIGN.md §3`) becomes real at this point; it is the only backoffice role beyond the reviewer.
 
-## 7. Policy retrieval and the citations it would produce
+## 8. Policy retrieval and the citations it would produce
 
 `docs/DESIGN.md §8` step 8 has the agent citing lending policy, and §6.3 registers a File data source for the corpus. `BANK_CORE.policy_corpus` exists and is empty: nothing seeds it, nothing embeds into it, and no server, flow node or backend class reads it.
 
@@ -76,27 +140,27 @@ Three pieces, in order: a policy document chunked and loaded with real `source_d
 
 PAF's own knowledge-search capability may cover the second and third pieces — worth evaluating before building a retrieval tool by hand. The corpus still has to be chunked and loaded either way.
 
-## 8. Collect and check the required documents
+## 9. Collect and check the required documents
 
 The required document set is computed correctly from product, employment type, residency and amount band, and it reaches the evidence packet. Nothing compares it against what the applicant actually filed: `loan_application_document` holds seed rows only, there is no upload endpoint, and the customer chat has no file control. A case can reach `REVIEW` with its document set never looked at, which leaves `docs/DESIGN.md §8` steps 3 and 4 and §6.1's "document upload to Object Storage" unimplemented.
 
 - **Code.** An upload endpoint that stores the file against the application and writes a `loan_application_document` row, then the completeness comparison — required minus filed equals missing — feeding both the manager's "still collecting" decision and the evidence packet.
 
-## 9. Similar-case lookup for the reviewer
+## 10. Similar-case lookup for the reviewer
 
 `case_history` holds seeded cases with their real structured fields — amount, term, DTI, PTI, credit score, outcome and reason. No code queries the table, so the anchor cases the README story promises a reviewer have data behind them and no way to reach them.
 
 Match on structure rather than vectors: same outcome, comparable reason codes, and similar amount, DTI and score bands. That answers "how did we handle cases like this" with plain SQL and no embedding pass; `case_embedding` stays unused.
 
-It lands as a read-only tool on `RESEARCH_WORKFLOW`, so it follows §1.
+It lands as a read-only tool on `RESEARCH_WORKFLOW`, so it follows §5.
 
-## 10. Fair-lending review producer
+## 11. Fair-lending review producer
 
 `BANK_CORE.fair_lending_review` was created with the config schema and is never written or read, and the per-decision fair-lending flag is uncalled (§4), so neither the pre-flight check nor the periodic review runs.
 
 - **Code.** A job — `DBMS_SCHEDULER`, or a query run on demand for the demo — that groups closed decisions from the blockchain table by the protected attributes in `customer_protected_attrs`, computes approval rates and the four-fifths ratio, and writes one row per review period. Then a backoffice page that reads it, which is what makes the control visible rather than theoretical.
 
-## 11. Verify the load balancer's hop to PAF
+## 12. Verify the load balancer's hop to PAF
 
 `verify_peer_certificate = false` on the `paf` backend set in
 `deploy/tf/app/lb.tf`: the hop is encrypted, but anything already inside the VCN
@@ -127,7 +191,7 @@ The front certificate is self-signed because the deployment has no DNS name, so
 browsers warn on first visit. Giving it a hostname and issuing against that
 replaces the certificate and nothing else.
 
-## 12. Select AI as the cloud tool transport — on standby
+## 13. Select AI as the cloud tool transport — on standby
 
 `docs/DESIGN.md §11` describes Select AI Tools reached through the Select AI Bridge node as the cloud-side equivalent of the MCP wrappers. The database is ready for it — `018` grants `PAF_PLATFORM` the four packages PAF checks for, and the resource principal is enabled — but `CHAT_FLOW` does not use it: the flow reads context through `banking-mcp.get_context` and calls `create_hitl_task` through `hitl-mcp`.
 
@@ -135,15 +199,15 @@ Adopting it is a flow redesign rather than a port. It reopens `issues/02` (SQL Q
 
 Treat it call by call rather than as a migration: a tool-shaped call such as `create_hitl_task` maps across directly, while the session-token reads are the ones that carry the bind-variable hazard. The Select AI package grants follow the audience — they go to the client user whose flow owns the profile, never to `PAF_PLATFORM`.
 
-## 13. Residual follow-ups
+## 14. Residual follow-ups
 
 Optional or alternative — none are blocking.
 
-### 13.1 Deterministic `upsert` via marker — only if needed
+### 14.1 Deterministic `upsert` via marker — only if needed
 
 The deterministic **read** path is shipped; `upsert_application` is **agentic on purpose** — its token corruption is fail-closed and idempotent. Only if write-path corruption appears in testing: the intake worker emits an `[[UPSERT …]]` marker → RegexExtractor + Type Convert build the JSON → a Deterministic MCP node calls `upsert_application` with the token wired. Cost: reopens the fail-open string-interpolation hazard (`issues/02`), a write-or-skip Condition (`issues/05`), and structured marker emission (`issues/09`).
 
-### 13.2 PL/SQL Executor node — safe in-DB calls (alternative for `issues/02`)
+### 14.2 PL/SQL Executor node — safe in-DB calls (alternative for `issues/02`)
 
 The **Oracle PL/SQL Executor node** runs only routines visible in the connected schema metadata, with bound named/positional args, overloads, `OUT`/`IN OUT`, and an optional auto-commit toggle — a first-class, fail-secure DB path. It does not fix the unsafe SQL Query node (`issues/02` stays open as a platform caveat), but the flow can stop depending on MCP shims for DB access.
 
@@ -151,7 +215,7 @@ The **Oracle PL/SQL Executor node** runs only routines visible in the connected 
 - **Docs.** If adopted: trim the `banking-mcp` / `application-mcp` registrations from the `paf bootstrap` sheet, update the tool-channel description in `docs/DESIGN.md`, and note in `issues/02` that the flow does not touch the SQL Query node.
 - **Guide steps.** Register a Database datasource for the node as the audience's client user, select the approved routines, map the bound arguments; document the auto-commit setting for the `upsert` write.
 
-### 13.3 Agent observability / OTel tracing — mitigates `issues/04` and `issues/08`
+### 14.3 Agent observability / OTel tracing — mitigates `issues/04` and `issues/08`
 
 PAF's OTel tracing (Arize Phoenix / Comet Opik / Langfuse) captures spans for flow steps, LLM calls, and tool executions, plus a Collect-Diagnostics ZIP. This is the missing diagnostic surface for the `max_iterations=5` cliff and the ID-only validator errors — neither root cause is fixed in code.
 
@@ -159,7 +223,7 @@ PAF's OTel tracing (Arize Phoenix / Comet Opik / Langfuse) captures spans for fl
 - **Docs.** Add an "enable tracing" recipe to `docs/TROUBLESHOOT.md` and an optional step in `CLOUD.md`. Note in `issues/04` / `issues/08` that tracing makes the conditions observable even though the messages/cap are unchanged.
 - **Guide steps.** PAF Settings → tracing provider → point at the collector, enable masking; show where a `CHAT_FLOW` run's per-tool spans land.
 
-### 13.4 Make the decision gate run on every turn — workaround for `issues/15`
+### 14.4 Make the decision gate run on every turn — workaround for `issues/15`
 
 G3 — `hitl_status_for_session` and the Condition reading it — sits after the Agent node, and PAF only executes nodes downstream of an agent on the turns where the manager's LLM answers and calls a tool in the same step: measured at one turn in five. So the property it encodes, _never tell a customer their application is progressing unless the HITL task exists_, holds intermittently, and nothing distinguishes "the gate passed" from "the gate never ran".
 
