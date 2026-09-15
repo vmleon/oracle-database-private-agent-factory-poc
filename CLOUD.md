@@ -129,16 +129,18 @@ The stack is ready. Next: python manage.py paf bootstrap
 ```
 
 Re-run it until all four are ready — cloud-init retries every 60 seconds, so a
-dependency that settles late costs one cycle rather than the tier. A tier still
-building after a few minutes is diagnosed on the instance itself:
+dependency that settles late costs one cycle rather than the tier.
 
-```bash
-ssh opc@$(terraform -chdir=deploy/tf/app output -raw ops_public_ip)
-```
-
-```bash
-sudo tail -f /var/log/paf-poc-bootstrap.log
-```
+> **Only if a tier is still building after a few minutes** — otherwise keep
+> re-running `info`. Diagnose it on the instance itself:
+>
+> ```bash
+> ssh opc@$(terraform -chdir=deploy/tf/app output -raw ops_public_ip)
+> ```
+>
+> ```bash
+> sudo tail -f /var/log/paf-poc-bootstrap.log
+> ```
 
 The `ops` tier applies the changelog with `--contexts=adb,seed` as part of its
 play, so the schema and the demo dataset are in place when it finishes.
@@ -186,9 +188,12 @@ itself:
 python manage.py paf push-key
 ```
 
-Expect a restarted `paf-poc-backend`. Skip it and the customer chat UI reaches
-PAF with no agent id: the harness still passes, because it calls the integration
-endpoint directly.
+Expect a restarted `paf-poc-backend`.
+
+> **Easy to miss.** `cloud test` passes without this — the harness calls the
+> integration endpoint directly. Only the customer chat UI needs the agent id,
+> so skipping `push-key` leaves a green test run and a browser demo that never
+> reaches the agent.
 
 ## 10. `cloud test`
 
@@ -227,30 +232,34 @@ after the database is gone. The IAM root is left alone for the next deployment.
 
 ### Removing the tenancy IAM as well
 
-Only when you are finished with the compartment for good. There is no
-`manage.py` command for it, because it is not part of a deployment's lifecycle —
-run Terraform against that root directly, with the tenancy-admin profile:
-
-```bash
-terraform -chdir=deploy/tf/iam destroy
-```
-
-Run it **before** `clean`, which deletes the rendered `terraform.tfvars` this
-root reads its profile and home region from. If you have already cleaned,
-`python manage.py tf` renders it again.
-
-It is a hard delete, and it reaches past this deployment:
-
-- Every stack in the same compartment loses Generative AI the moment the policy
-  goes — the `paf` compute's instance principal and the database's resource
-  principal are both granted through it, and neither holds an API key to fall
-  back on.
-- Putting it back needs tenancy-admin rights again. Without them the next
-  deployment stands up normally and then fails at PAF's model test call with a
-  permission error, which reads like a model problem rather than a missing
-  policy.
-- So the next deployment into this compartment starts at
-  [§5](#5-cloud-iam) again, before `cloud up`.
+> **Only when you are finished with the compartment for good** — not between
+> test runs. `cloud down` already leaves this root alone so the next deployment
+> can reuse it.
+>
+> There is no `manage.py` command for it, because it is not part of a
+> deployment's lifecycle — run Terraform against that root directly, with the
+> tenancy-admin profile:
+>
+> ```bash
+> terraform -chdir=deploy/tf/iam destroy
+> ```
+>
+> Run it **before** `clean`, which deletes the rendered `terraform.tfvars` this
+> root reads its profile and home region from. If you have already cleaned,
+> `python manage.py tf` renders it again.
+>
+> It is a hard delete, and it reaches past this deployment:
+>
+> - Every stack in the same compartment loses Generative AI the moment the
+>   policy goes — the `paf` compute's instance principal and the database's
+>   resource principal are both granted through it, and neither holds an API key
+>   to fall back on.
+> - Putting it back needs tenancy-admin rights again. Without them the next
+>   deployment stands up normally and then fails at PAF's model test call with a
+>   permission error, which reads like a model problem rather than a missing
+>   policy.
+> - So the next deployment into this compartment starts at
+>   [§5](#5-cloud-iam) again, before `cloud up`.
 
 ## Full rebuild in one paste
 
