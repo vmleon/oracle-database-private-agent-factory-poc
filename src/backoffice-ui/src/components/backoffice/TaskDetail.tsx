@@ -11,10 +11,10 @@ const REVIEWER = "Backoffice Reviewer";
 
 export function TaskDetail({
   taskId,
-  onBack,
+  onDecided,
 }: {
   taskId: number;
-  onBack: () => void;
+  onDecided: () => void;
 }) {
   const [task, setTask] = useState<HitlTaskView | null>(null);
   // Preselected from the agent recommendation: APPROVE→Approve, DECLINE→Decline,
@@ -42,7 +42,7 @@ export function TaskDetail({
     setError(null);
     try {
       await decideHitlTask(taskId, { outcome, note, reviewer: REVIEWER });
-      onBack();
+      onDecided();
     } catch (e) {
       setError(
         e instanceof Error && e.message.includes("409")
@@ -55,24 +55,18 @@ export function TaskDetail({
 
   if (!task) {
     return (
-      <div className="mx-auto max-w-3xl p-8">
+      <div className="mx-auto max-w-3xl px-6 py-6">
         {error ? (
-          <p className="text-sm text-red-700">{error}</p>
+          <p className="text-sm text-decline">{error}</p>
         ) : (
-          <p className="text-sm text-slate-500">Loading…</p>
+          <p className="text-sm text-ink-mute">Loading…</p>
         )}
       </div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-3xl p-8">
-      <button
-        onClick={onBack}
-        className="mb-4 text-sm text-slate-500 hover:underline"
-      >
-        ← Back to queue
-      </button>
+    <div className="mx-auto max-w-3xl px-6 py-6">
       <RequestSummary
         customerName={task.customerName}
         amountRequested={task.amountRequested}
@@ -81,16 +75,16 @@ export function TaskDetail({
         applicationId={task.applicationId}
       />
 
-      <div className="mb-6 rounded-lg border border-slate-200 bg-white p-4">
+      <div className="mb-6 rounded-card border border-ink-hair bg-ink-raised p-4">
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium">Agent recommendation</span>
           <Badge tone={recommendationTone(task.agentRecommendation)}>
             {task.agentRecommendation}
           </Badge>
         </div>
-        <p className="mt-2 text-sm text-slate-700">{task.agentReasoning}</p>
+        <p className="mt-2 text-sm text-paper">{task.agentReasoning}</p>
         {task.agentExploreHints && (
-          <pre className="mt-3 overflow-x-auto rounded bg-slate-50 p-2 text-xs">
+          <pre className="mt-3 overflow-x-auto rounded bg-ink p-2 text-xs">
             {task.agentExploreHints}
           </pre>
         )}
@@ -98,77 +92,72 @@ export function TaskDetail({
 
       {task.agentEvidence && (
         <div className="mb-6">
-          <h2 className="mb-2 text-sm font-semibold text-slate-700">Evidence</h2>
+          <h2 className="mb-2 text-sm font-semibold text-paper">Evidence</h2>
           <EvidencePanel raw={task.agentEvidence} />
         </div>
       )}
 
-      <div className="mb-6">
-        <h2 className="mb-2 text-sm font-semibold text-slate-700">
-          Tools called
-        </h2>
-        <ToolTrace calls={task.toolCalls} runId={task.agentRunId} />
-      </div>
-
       {error && (
-        <p className="mb-4 rounded bg-red-100 p-3 text-sm text-red-700">
+        <p className="mb-4 rounded bg-decline/10 p-3 text-sm text-decline">
           {error}
         </p>
       )}
 
-      <div className="space-y-3">
-        <div className="flex gap-2">
+      <div className="mb-6 rounded-card border border-ink-hair bg-ink-raised p-4">
+        <div className="mb-3 flex gap-2">
           <button
             onClick={() => setOutcome("APPROVE")}
+            aria-pressed={outcome === "APPROVE"}
             className={cn(
-              "inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium transition-colors",
+              "inline-flex flex-1 items-center justify-center rounded-card px-4 py-2.5 text-sm font-semibold transition-colors",
               outcome === "APPROVE"
-                ? "bg-emerald-600 text-white"
-                : "border border-emerald-300 bg-white text-emerald-700 hover:bg-emerald-50",
+                ? "bg-approve text-paper"
+                : "border border-approve/40 text-approve hover:bg-approve/10",
             )}
           >
             Approve
           </button>
           <button
             onClick={() => setOutcome("DECLINE")}
+            aria-pressed={outcome === "DECLINE"}
             className={cn(
-              "inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium transition-colors",
+              "inline-flex flex-1 items-center justify-center rounded-card px-4 py-2.5 text-sm font-semibold transition-colors",
               outcome === "DECLINE"
-                ? "bg-rose-600 text-white"
-                : "border border-rose-300 bg-white text-rose-700 hover:bg-rose-50",
+                ? "bg-decline text-paper"
+                : "border border-decline/40 text-decline hover:bg-decline/10",
             )}
           >
             Decline
           </button>
         </div>
-        <label className="block">
-          <span className="mb-1 block text-sm font-medium text-slate-700">
-            Comments (mandatory)
-          </span>
-          <textarea
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            onKeyDown={(e) => {
-              // Enter submits; Shift+Enter inserts a newline.
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                submit();
-              }
-            }}
-            placeholder="Why you reached this decision…"
-            rows={3}
-            className="w-full rounded-md border border-slate-200 p-2 text-sm"
-          />
-        </label>
-        {noteMissing && (
-          <p className="text-xs text-slate-500">
-            Comments are required before submitting a decision.
-          </p>
-        )}
-        <Button onClick={submit} disabled={busy || noteMissing || !outcome}>
-          {busy ? "Submitting…" : "Submit decision"}
+        <textarea
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          onKeyDown={(e) => {
+            // Enter submits; Shift+Enter inserts a newline.
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              submit();
+            }
+          }}
+          placeholder="Say why. This is recorded with the decision and cannot be changed later."
+          rows={2}
+          className="w-full rounded-card border border-ink-hair bg-ink-raised p-3 text-sm text-paper placeholder:text-ink-mute"
+        />
+        <Button
+          onClick={submit}
+          disabled={busy || noteMissing || !outcome}
+          className="mt-3 w-full py-2.5"
+        >
+          {busy
+            ? "Recording"
+            : outcome
+              ? `Record ${outcome.toLowerCase()} decision`
+              : "Choose approve or decline"}
         </Button>
       </div>
+
+      <ToolTrace calls={task.toolCalls} runId={task.agentRunId} />
     </div>
   );
 }

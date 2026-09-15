@@ -18,19 +18,24 @@ export function Chat({
   );
 
   return (
-    <div className="mx-auto flex h-full w-full max-w-md flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
-      <header className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3">
-        <div>
-          <div className="font-medium">{name}</div>
-          <div className="text-xs text-slate-400">
-            {connected ? "connected" : "connecting…"}
+    <div className="mx-auto flex h-full w-full max-w-xl flex-col">
+      <header className="flex items-center justify-between border-b border-paper-hair px-5 py-3">
+        <div className="min-w-0">
+          <div className="truncate font-medium text-ink">{name}</div>
+          <div className="flex items-center gap-1.5 text-xs text-graphite">
+            <span
+              className={`h-1.5 w-1.5 rounded-full ${
+                connected ? "bg-approve" : "bg-review"
+              }`}
+            />
+            {connected ? "Connected" : "Connecting"}
           </div>
         </div>
         <Button variant="ghost" onClick={logout}>
           Log out
         </Button>
       </header>
-      <MessageList messages={messages} />
+      <MessageList messages={messages} name={name} />
       <Composer disabled={sending} onSend={send} />
     </div>
   );

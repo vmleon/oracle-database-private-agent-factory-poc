@@ -20,14 +20,14 @@ export function Composer({
   return (
     <form
       onSubmit={submit}
-      className="flex gap-2 border-t border-slate-200 bg-white p-3"
+      className="flex gap-2 border-t border-paper-hair px-5 py-4"
     >
       <input
         value={text}
         onChange={(e) => setText(e.target.value)}
         disabled={disabled}
-        placeholder={disabled ? "Waiting for the agent…" : "Type a message…"}
-        className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500 disabled:bg-slate-100"
+        placeholder={disabled ? "Waiting for a reply" : "Write a message"}
+        className="flex-1 rounded-card border border-paper-hair bg-paper-raised px-4 py-2.5 text-sm text-ink placeholder:text-graphite/70 focus:border-graphite disabled:opacity-60"
       />
       <Button type="submit" disabled={disabled || !text.trim()}>
         Send

@@ -7,6 +7,21 @@ body,
 #root {
   height: 100%;
 }
+
 body {
-  @apply bg-slate-100 text-slate-900;
+  @apply bg-ink text-paper antialiased;
+  font-variant-numeric: tabular-nums;
+}
+
+:focus-visible {
+  @apply outline-none ring-2 ring-paper/60 ring-offset-2 ring-offset-ink;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

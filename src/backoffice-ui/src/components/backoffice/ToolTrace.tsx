@@ -14,16 +14,16 @@ const fmtScalar = (v: unknown) =>
  *  and arrays instead of dumping them as raw JSON text. */
 function ValueTree({ value }: { value: unknown }) {
   if (Array.isArray(value)) {
-    if (!value.length) return <span className="text-slate-400">empty</span>;
+    if (!value.length) return <span className="text-ink-mute">empty</span>;
     return (
       <div className="space-y-1">
         {value.map((item, i) =>
           item && typeof item === "object" ? (
-            <div key={i} className="rounded border border-slate-100 p-1">
+            <div key={i} className="rounded border border-ink-hair p-1">
               <ValueTree value={item} />
             </div>
           ) : (
-            <div key={i} className="text-slate-800">
+            <div key={i} className="text-paper">
               • {fmtScalar(item)}
             </div>
           ),
@@ -33,21 +33,21 @@ function ValueTree({ value }: { value: unknown }) {
   }
   if (value && typeof value === "object") {
     return (
-      <dl className="divide-y divide-slate-100">
+      <dl className="divide-y divide-ink-hair">
         {Object.entries(value as Record<string, unknown>).map(([k, v]) => {
           const nested = v != null && typeof v === "object";
           return (
             <div key={k} className="px-2 py-1 text-xs">
               <div className="flex justify-between gap-3">
-                <dt className="text-slate-500">{k}</dt>
+                <dt className="text-ink-mute">{k}</dt>
                 {!nested && (
-                  <dd className="break-all text-right font-medium text-slate-800">
+                  <dd className="break-all text-right font-medium text-paper">
                     {fmtScalar(v)}
                   </dd>
                 )}
               </div>
               {nested && (
-                <div className="mt-1 border-l border-slate-100 pl-2">
+                <div className="mt-1 border-l border-ink-hair pl-2">
                   <ValueTree value={v} />
                 </div>
               )}
@@ -57,7 +57,7 @@ function ValueTree({ value }: { value: unknown }) {
       </dl>
     );
   }
-  return <span className="font-medium text-slate-800">{fmtScalar(value)}</span>;
+  return <span className="font-medium text-paper">{fmtScalar(value)}</span>;
 }
 
 /** A tool input/output payload: rendered as a value tree when it's JSON, or
@@ -74,15 +74,15 @@ function Payload({ label, raw }: { label: string; raw: string | null }) {
 
   return (
     <div className="mt-2">
-      <div className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
+      <div className="text-[11px] font-medium text-ink-mute">
         {label}
       </div>
       {parsed != null && typeof parsed === "object" ? (
-        <div className="mt-1 rounded border border-slate-100">
+        <div className="mt-1 rounded border border-ink-hair">
           <ValueTree value={parsed} />
         </div>
       ) : (
-        <pre className="mt-1 overflow-x-auto rounded bg-slate-50 p-2 text-xs">
+        <pre className="mt-1 overflow-x-auto rounded bg-ink p-2 text-xs">
           {raw}
         </pre>
       )}
@@ -90,7 +90,39 @@ function Payload({ label, raw }: { label: string; raw: string | null }) {
   );
 }
 
+/** The trace is how a reviewer checks the agent's working, not how they reach a
+ *  decision — so it sits closed until someone asks for it. */
 export function ToolTrace({
+  calls,
+  runId,
+}: {
+  calls: DecisionToolCall[];
+  runId?: string;
+}) {
+  return (
+    <details className="rounded-card border border-ink-hair [&[open]_.chevron-outer]:rotate-90">
+      <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm [&::-webkit-details-marker]:hidden">
+        <svg
+          className="chevron-outer h-3.5 w-3.5 shrink-0 text-ink-mute transition-transform"
+          viewBox="0 0 20 20"
+          fill="currentColor"
+          aria-hidden="true"
+        >
+          <path d="M7 5l6 5-6 5V5z" />
+        </svg>
+        <span className="font-medium text-paper">Tools called</span>
+        <span className="ml-auto text-xs text-ink-mute">
+          {calls.length || "none"}
+        </span>
+      </summary>
+      <div className="border-t border-ink-hair p-3">
+        <ToolCalls calls={calls} runId={runId} />
+      </div>
+    </details>
+  );
+}
+
+function ToolCalls({
   calls,
   runId,
 }: {
@@ -99,11 +131,11 @@ export function ToolTrace({
 }) {
   if (!calls.length) {
     return (
-      <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-400">
+      <p className="text-sm text-ink-mute">
         {runId
-          ? `No tool trace recorded for run ${runId}.`
-          : "No tool trace recorded yet."}
-      </div>
+          ? `Nothing recorded for run ${runId}.`
+          : "Nothing recorded yet."}
+      </p>
     );
   }
   return (
@@ -111,26 +143,26 @@ export function ToolTrace({
       {calls.map((c) => (
         <details
           key={c.auditId}
-          className="rounded-lg border border-slate-200 bg-white [&[open]_.chevron]:rotate-90"
+          className="rounded-card border border-ink-hair bg-ink-raised [&[open]_.chevron]:rotate-90"
         >
           <summary className="flex cursor-pointer list-none items-center gap-2 p-3 text-sm [&::-webkit-details-marker]:hidden">
             <svg
-              className="chevron h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform"
+              className="chevron h-3.5 w-3.5 shrink-0 text-ink-mute transition-transform"
               viewBox="0 0 20 20"
               fill="currentColor"
               aria-hidden="true"
             >
               <path d="M7 5l6 5-6 5V5z" />
             </svg>
-            <span className="text-slate-400">#{c.stepNo}</span>
+            <span className="text-ink-mute">#{c.stepNo}</span>
             <span className="font-medium">{c.toolName}</span>
             <Badge tone={statusTone(c.status)}>{c.status}</Badge>
-            <span className="ml-auto text-xs text-slate-500">
-              {c.durationMs != null ? `${c.durationMs} ms` : "—"} ·{" "}
+            <span className="ml-auto text-xs text-ink-mute">
+              {c.durationMs != null ? `${c.durationMs} ms` : "—"}{" at "}
               {fmtDate(c.startedAt)}
             </span>
           </summary>
-          <div className="border-t border-slate-100 p-3 pt-2">
+          <div className="border-t border-ink-hair p-3 pt-2">
             <Payload label="Input" raw={c.toolInput} />
             <Payload label="Output" raw={c.toolOutput} />
           </div>

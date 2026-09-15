@@ -18,11 +18,20 @@ interface Evidence {
 type Tone = "good" | "warn" | "bad" | "neutral";
 
 const badgeTone: Record<Tone, string> = {
-  good: "bg-emerald-100 text-emerald-700",
-  warn: "bg-amber-100 text-amber-700",
-  bad: "bg-rose-100 text-rose-700",
-  neutral: "bg-slate-100 text-slate-600",
+  good: "bg-approve/15 text-approve",
+  warn: "bg-review/15 text-review",
+  bad: "bg-decline/15 text-decline",
+  neutral: "bg-paper/10 text-ink-mute",
 };
+
+/** The queue rail carries the recommendation as a dot rather than a badge —
+ *  a list of badges competes with itself. */
+export const outcomeDot = (rec: string) =>
+  rec === "APPROVE"
+    ? "bg-approve"
+    : rec === "DECLINE"
+      ? "bg-decline"
+      : "bg-review";
 
 export const money = (n: number) =>
   n.toLocaleString("en-US", {
@@ -60,16 +69,16 @@ function Field({ label, value }: { label: string; value?: ReactNode }) {
   if (value === null || value === undefined || value === "") return null;
   return (
     <div className="flex justify-between gap-3 py-1 text-sm">
-      <span className="text-slate-500">{label}</span>
-      <span className="text-right font-medium text-slate-800">{value}</span>
+      <span className="text-ink-mute">{label}</span>
+      <span className="text-right font-medium text-paper">{value}</span>
     </div>
   );
 }
 
 function Card({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4">
-      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+    <div className="rounded-card border border-ink-hair bg-ink-raised p-4">
+      <h3 className="mb-2 text-xs font-semibold text-ink-mute">
         {title}
       </h3>
       {children}
@@ -79,7 +88,7 @@ function Card({ title, children }: { title: string; children: ReactNode }) {
 
 function Chip({ children }: { children: ReactNode }) {
   return (
-    <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+    <span className="inline-flex items-center rounded-md bg-ink px-2 py-0.5 text-xs font-medium text-ink-mute">
       {children}
     </span>
   );
@@ -97,7 +106,7 @@ export function EvidencePanel({ raw }: { raw: string | null }) {
   // Unparseable evidence: fall back to the raw text rather than hiding it.
   if (!e || typeof e !== "object") {
     return (
-      <pre className="overflow-x-auto rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs">
+      <pre className="overflow-x-auto rounded-card border border-ink-hair bg-ink p-3 text-xs">
         {raw}
       </pre>
     );
@@ -125,7 +134,7 @@ export function EvidencePanel({ raw }: { raw: string | null }) {
             <Field label="Last filed" value={employer.last_filed_year} />
           </>
         ) : (
-          <p className="text-sm text-slate-400">Not checked.</p>
+          <p className="text-sm text-ink-mute">Not checked.</p>
         )}
       </Card>
 
@@ -137,7 +146,7 @@ export function EvidencePanel({ raw }: { raw: string | null }) {
             ))}
           </div>
         ) : (
-          <p className="text-sm text-slate-400">None.</p>
+          <p className="text-sm text-ink-mute">None.</p>
         )}
       </Card>
 
@@ -149,7 +158,7 @@ export function EvidencePanel({ raw }: { raw: string | null }) {
             ))}
           </div>
         ) : (
-          <p className="text-sm text-slate-400">None.</p>
+          <p className="text-sm text-ink-mute">None.</p>
         )}
       </Card>
     </div>

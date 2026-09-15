@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { listDecisions, type DecisionListItem } from "@/api";
-import { Badge, money, recommendationTone } from "./EvidencePanel";
+import { Badge, money } from "./EvidencePanel";
 import { DecisionDetail } from "./DecisionDetail";
 
 const outcomeTone = (o: string) => (o === "APPROVE" ? "good" : "bad");
@@ -48,7 +48,7 @@ export function History() {
   return (
     <div className="mx-auto max-w-2xl p-8">
       <h1 className="mb-1 text-2xl font-semibold">Decision history</h1>
-      <p className="mb-6 text-sm text-slate-500">
+      <p className="mb-6 text-sm text-ink-mute">
         Closed loan decisions — the defensible record behind each call.
       </p>
 
@@ -59,69 +59,70 @@ export function History() {
         }}
         className="mb-6 flex flex-wrap items-end gap-3"
       >
-        <label className="text-xs font-medium text-slate-500">
+        <label className="text-xs font-medium text-ink-mute">
           Customer ID
           <input
             value={customerId}
             onChange={(e) => setCustomerId(e.target.value)}
             inputMode="numeric"
-            className="mt-1 block w-32 rounded-md border border-slate-200 p-2 text-sm text-slate-900"
+            className="mt-1 block w-32 rounded-card border border-ink-hair bg-ink-raised p-2 text-sm text-paper placeholder:text-ink-mute"
             placeholder="any"
           />
         </label>
-        <label className="text-xs font-medium text-slate-500">
+        <label className="text-xs font-medium text-ink-mute">
           Application ID
           <input
             value={applicationId}
             onChange={(e) => setApplicationId(e.target.value)}
             inputMode="numeric"
-            className="mt-1 block w-32 rounded-md border border-slate-200 p-2 text-sm text-slate-900"
+            className="mt-1 block w-32 rounded-card border border-ink-hair bg-ink-raised p-2 text-sm text-paper placeholder:text-ink-mute"
             placeholder="any"
           />
         </label>
         <button
           type="submit"
-          className="rounded-md bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
+          className="rounded-card bg-paper px-4 py-2 text-sm font-medium text-ink hover:bg-paper/90"
         >
           Apply
         </button>
       </form>
 
       {error && (
-        <p className="mb-4 rounded bg-red-100 p-3 text-sm text-red-700">
+        <p className="mb-4 rounded bg-decline/10 p-3 text-sm text-decline">
           {error}
         </p>
       )}
       {decisions.length === 0 && !error && (
-        <p className="text-sm text-slate-500">No decisions found.</p>
+        <p className="text-sm text-ink-mute">No decisions found.</p>
       )}
       <ul className="space-y-2">
         {decisions.map((d) => (
           <li key={d.decisionId}>
             <button
               onClick={() => setSelected(d.decisionId)}
-              className="flex w-full items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-4 text-left hover:border-slate-400"
+              className="flex w-full items-center justify-between gap-3 rounded-card border border-ink-hair bg-ink-raised p-4 text-left hover:border-ink-mute"
             >
-              <span>
-                <span className="font-medium">{d.customerName}</span>
-                <span className="ml-2 text-xs text-slate-500">
-                  <span className="font-medium text-slate-700">
+              <span className="min-w-0">
+                <span className="flex items-baseline gap-2">
+                  <span className="truncate font-medium text-paper">
+                    {d.customerName}
+                  </span>
+                  <span className="text-sm text-paper">
                     {d.amountRequested != null ? money(d.amountRequested) : "—"}
-                  </span>{" "}
-                  · {d.termMonths ?? "—"} months · {fmtDate(d.decidedAt)}
+                  </span>
+                </span>
+                <span className="mt-0.5 block text-xs text-ink-mute">
+                  over {d.termMonths ?? "—"} months, decided{" "}
+                  {fmtDate(d.decidedAt)}
                 </span>
               </span>
-              <span className="flex items-center gap-3">
+              <span className="flex shrink-0 items-center gap-2">
                 <Badge tone={outcomeTone(d.humanOutcome)}>
-                  {d.humanOutcome}
+                  {d.humanOutcome.toLowerCase()}
                 </Badge>
-                <span className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
-                  Agent:
-                  <Badge tone={recommendationTone(d.agentRecommendation)}>
-                    {d.agentRecommendation}
-                  </Badge>
+                <span className="text-xs text-ink-mute">
+                  agent said {d.agentRecommendation.toLowerCase()}
                 </span>
-                <span className="text-sm text-slate-400">→</span>
               </span>
             </button>
           </li>

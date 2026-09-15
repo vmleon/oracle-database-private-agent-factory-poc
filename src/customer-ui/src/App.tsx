@@ -36,20 +36,26 @@ function CustomerApp() {
     <Chat
       session={session}
       name={session.name}
-      onLoggedOut={() => setSession(null)}
+      onLoggedOut={() => {
+        sessionStorage.removeItem("session");
+        setSession(null);
+      }}
     />
   );
 }
 
 export default function App() {
   return (
-    <div className="flex h-full flex-col bg-slate-100">
-      <header className="bg-blue-600">
-        <div className="mx-auto max-w-2xl px-8 py-4 text-lg font-semibold tracking-tight text-white">
-          Loan Assistant
+    <div className="flex h-full flex-col bg-paper">
+      <header className="border-b border-paper-hair bg-ink">
+        <div className="mx-auto flex max-w-2xl flex-wrap items-baseline gap-x-3 gap-y-1 px-6 py-5">
+          <span className="text-2xl font-semibold tracking-tight text-paper">
+            Loan Assistant
+          </span>
+          <span className="text-base text-ink-mute">Northbank</span>
         </div>
       </header>
-      <main className="min-h-0 flex-1 p-4">
+      <main className="min-h-0 flex-1">
         <CustomerApp />
       </main>
     </div>

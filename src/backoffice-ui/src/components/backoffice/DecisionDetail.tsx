@@ -31,8 +31,8 @@ interface PricingOffer {
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex justify-between gap-3 py-1 text-sm">
-      <span className="text-slate-500">{label}</span>
-      <span className="text-right font-medium text-slate-800">{value}</span>
+      <span className="text-ink-mute">{label}</span>
+      <span className="text-right font-medium text-paper">{value}</span>
     </div>
   );
 }
@@ -57,9 +57,9 @@ export function DecisionDetail({
     return (
       <div className="mx-auto max-w-3xl p-8">
         {error ? (
-          <p className="text-sm text-red-700">{error}</p>
+          <p className="text-sm text-decline">{error}</p>
         ) : (
-          <p className="text-sm text-slate-500">Loading…</p>
+          <p className="text-sm text-ink-mute">Loading…</p>
         )}
       </div>
     );
@@ -69,7 +69,7 @@ export function DecisionDetail({
     <div className="mx-auto max-w-3xl p-8">
       <button
         onClick={onBack}
-        className="mb-4 text-sm text-slate-500 hover:underline"
+        className="mb-4 text-sm text-ink-mute hover:underline"
       >
         ← Back to history
       </button>
@@ -83,30 +83,30 @@ export function DecisionDetail({
       />
 
       {/* Human decision — the bank's tamper-evident call */}
-      <div className="mb-6 rounded-lg border border-slate-200 bg-white p-4">
+      <div className="mb-6 rounded-card border border-ink-hair bg-ink-raised p-4">
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium">Decision</span>
           <Badge tone={outcomeTone(d.humanOutcome)}>{d.humanOutcome}</Badge>
         </div>
-        <p className="mt-2 text-sm text-slate-700">
-          {d.humanNote || <span className="text-slate-400">No note.</span>}
+        <p className="mt-2 text-sm text-paper">
+          {d.humanNote || <span className="text-ink-mute">No note.</span>}
         </p>
-        <p className="mt-2 text-xs text-slate-500">
-          {d.humanUser} · {fmtDate(d.decidedAt)}
+        <p className="mt-2 text-xs text-ink-mute">
+          {d.humanUser} on {fmtDate(d.decidedAt)}
         </p>
       </div>
 
       {/* Agent recommendation packet that informed the decision */}
-      <div className="mb-6 rounded-lg border border-slate-200 bg-white p-4">
+      <div className="mb-6 rounded-card border border-ink-hair bg-ink-raised p-4">
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium">Agent recommendation</span>
           <Badge tone={recommendationTone(d.agentRecommendation)}>
             {d.agentRecommendation}
           </Badge>
         </div>
-        <p className="mt-2 text-sm text-slate-700">{d.agentReasoning}</p>
+        <p className="mt-2 text-sm text-paper">{d.agentReasoning}</p>
         {d.agentExploreHints && (
-          <pre className="mt-3 overflow-x-auto rounded bg-slate-50 p-2 text-xs">
+          <pre className="mt-3 overflow-x-auto rounded bg-ink p-2 text-xs">
             {d.agentExploreHints}
           </pre>
         )}
@@ -114,8 +114,8 @@ export function DecisionDetail({
 
       {/* The typed columns of the blockchain row. The table is append-only, so
           these are the figures as they stood when the decision was recorded. */}
-      <div className="mb-6 rounded-lg border border-slate-200 bg-white p-4">
-        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+      <div className="mb-6 rounded-card border border-ink-hair bg-ink-raised p-4">
+        <h3 className="mb-2 text-xs font-semibold text-ink-mute">
           Recorded figures
         </h3>
         <Row label="Debt-to-income" value={pct(d.computedDti)} />
@@ -149,7 +149,7 @@ export function DecisionDetail({
           {(parse<string[]>(d.reasonCodes) ?? []).map((code) => (
             <span
               key={code}
-              className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600"
+              className="inline-flex items-center rounded-md bg-ink px-2 py-0.5 text-xs font-medium text-ink-mute"
             >
               {code}
             </span>
@@ -159,17 +159,12 @@ export function DecisionDetail({
 
       {d.agentEvidence && (
         <div className="mb-6">
-          <h2 className="mb-2 text-sm font-semibold text-slate-700">Evidence</h2>
+          <h2 className="mb-2 text-sm font-semibold text-paper">Evidence</h2>
           <EvidencePanel raw={d.agentEvidence} />
         </div>
       )}
 
-      <div className="mb-6">
-        <h2 className="mb-2 text-sm font-semibold text-slate-700">
-          Tools called
-        </h2>
-        <ToolTrace calls={d.toolCalls} runId={d.agentRunId} />
-      </div>
+      <ToolTrace calls={d.toolCalls} runId={d.agentRunId} />
     </div>
   );
 }

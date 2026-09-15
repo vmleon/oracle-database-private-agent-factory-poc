@@ -19,22 +19,17 @@ export function RequestSummary({
 }) {
   return (
     <div className="mb-6">
-      <h1 className="text-2xl font-semibold tracking-tight">{customerName}</h1>
-      <div className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
-        <span className="text-2xl font-bold text-slate-900">
-          {amountRequested != null ? money(amountRequested) : "—"}
-        </span>
-        <span className="text-slate-300">·</span>
-        <span className="text-base font-medium text-slate-700">
-          {purpose ?? "—"}
-        </span>
-        <span className="text-slate-300">·</span>
-        <span className="text-sm text-slate-500">{termMonths ?? "—"} months</span>
+      <h1 className="text-sm font-medium text-ink-mute">{customerName}</h1>
+      <div className="mt-3 text-[2.5rem] font-semibold leading-none tracking-tight text-paper">
+        {amountRequested != null ? money(amountRequested) : "—"}
       </div>
-      <div className="mt-1 text-xs text-slate-400">
-        {decisionId != null ? `Decision ${decisionId} · ` : ""}
+      <p className="mt-2 text-sm text-ink-mute">
+        {purpose ?? "No purpose given"}, over {termMonths ?? "—"} months
+      </p>
+      <p className="mt-1 text-xs text-ink-mute">
         Application {applicationId}
-      </div>
+        {decisionId != null ? `, decision ${decisionId}` : ""}
+      </p>
     </div>
   );
 }

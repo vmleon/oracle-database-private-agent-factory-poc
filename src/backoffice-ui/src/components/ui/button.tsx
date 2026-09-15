@@ -11,10 +11,9 @@ export function Button({
   return (
     <button
       className={cn(
-        "inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 disabled:pointer-events-none",
-        variant === "primary" && "bg-slate-900 text-white hover:bg-slate-700",
-        variant === "ghost" &&
-          "bg-transparent text-slate-700 hover:bg-slate-200",
+        "inline-flex items-center justify-center rounded-card px-4 py-2 text-sm font-medium transition-colors disabled:pointer-events-none disabled:opacity-40",
+        variant === "primary" && "bg-paper text-ink hover:bg-paper/90",
+        variant === "ghost" && "text-ink-mute hover:bg-ink-raised",
         className,
       )}
       {...props}

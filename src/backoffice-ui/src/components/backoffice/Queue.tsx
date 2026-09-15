@@ -1,57 +1,73 @@
 import { useEffect, useState } from "react";
 import { listHitlTasks, type HitlQueueItem } from "@/api";
-import { Badge, money, recommendationTone } from "./EvidencePanel";
+import { money, outcomeDot } from "./EvidencePanel";
+import { cn } from "@/lib/utils";
 
-export function Queue({ onOpen }: { onOpen: (taskId: number) => void }) {
+export function Queue({
+  selected,
+  onOpen,
+}: {
+  selected: number | null;
+  onOpen: (taskId: number) => void;
+}) {
   const [tasks, setTasks] = useState<HitlQueueItem[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     listHitlTasks()
       .then(setTasks)
-      .catch(() =>
-        setError("Could not load the queue. Is the backend running?"),
-      );
-  }, []);
+      .catch(() => setError("The queue did not load. Check the backend is up."));
+  }, [selected]);
 
   return (
-    <div className="mx-auto max-w-2xl p-8">
-      <h1 className="mb-1 text-2xl font-semibold">Review queue</h1>
-      <p className="mb-6 text-sm text-slate-500">
-        Open HITL tasks awaiting a decision.
-      </p>
+    <div className="flex h-full flex-col">
+      <div className="flex items-baseline justify-between px-5 py-4">
+        <h1 className="text-sm font-semibold text-paper">Awaiting a decision</h1>
+        <span className="text-xs text-ink-mute">{tasks.length}</span>
+      </div>
+
       {error && (
-        <p className="mb-4 rounded bg-red-100 p-3 text-sm text-red-700">
+        <p className="mx-5 mb-3 rounded-card border border-decline/30 bg-decline/10 px-3 py-2 text-sm text-decline">
           {error}
         </p>
       )}
+
       {tasks.length === 0 && !error && (
-        <p className="text-sm text-slate-500">No open tasks.</p>
+        <p className="px-5 pb-5 text-sm leading-relaxed text-ink-mute">
+          Nothing waiting. Cases arrive here when the assistant files a
+          recommendation for a customer.
+        </p>
       )}
-      <ul className="space-y-2">
+
+      <ul className="min-h-0 flex-1 overflow-y-auto">
         {tasks.map((t) => (
           <li key={t.taskId}>
             <button
               onClick={() => onOpen(t.taskId)}
-              className="flex w-full items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-4 text-left hover:border-slate-400"
+              className={cn(
+                "w-full border-l-2 px-5 py-3 text-left transition-colors",
+                t.taskId === selected
+                  ? "border-paper bg-ink-raised"
+                  : "border-transparent hover:bg-ink-raised/60",
+              )}
             >
-              <span>
-                <span className="font-medium">{t.customerName}</span>
-                <span className="ml-2 text-xs text-slate-500">
-                  <span className="font-medium text-slate-700">
-                    {t.amountRequested != null ? money(t.amountRequested) : "—"}
-                  </span>{" "}
-                  · {t.termMonths ?? "—"} months
+              <span className="flex items-baseline justify-between gap-2">
+                <span className="truncate text-sm font-medium text-paper">
+                  {t.customerName}
+                </span>
+                <span className="shrink-0 text-sm text-paper">
+                  {t.amountRequested != null ? money(t.amountRequested) : "—"}
                 </span>
               </span>
-              <span className="flex items-center gap-3">
-                <span className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
-                  Agent Recommendation:
-                  <Badge tone={recommendationTone(t.agentRecommendation)}>
-                    {t.agentRecommendation}
-                  </Badge>
-                </span>
-                <span className="text-sm text-slate-400">→</span>
+              <span className="mt-1 flex items-center gap-2 text-xs text-ink-mute">
+                <span
+                  className={cn(
+                    "h-1.5 w-1.5 shrink-0 rounded-full",
+                    outcomeDot(t.agentRecommendation),
+                  )}
+                />
+                {t.agentRecommendation.toLowerCase()} suggested
+                <span className="ml-auto">{t.termMonths ?? "—"} months</span>
               </span>
             </button>
           </li>

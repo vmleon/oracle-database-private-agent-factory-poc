@@ -7,6 +7,26 @@ body,
 #root {
   height: 100%;
 }
+
 body {
-  @apply bg-slate-100 text-slate-900;
+  @apply bg-paper text-ink antialiased;
+}
+
+/* Every figure in this product is money, a ratio or a count, and they are read
+   in columns — so figures are tabular everywhere rather than per-component. */
+body {
+  font-variant-numeric: tabular-nums;
+}
+
+:focus-visible {
+  @apply outline-none ring-2 ring-ink ring-offset-2 ring-offset-paper;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
