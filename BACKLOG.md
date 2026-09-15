@@ -25,12 +25,13 @@ uploads a new `ansible_backend.zip` and changes nothing on the instance — the
 plan reports four object replacements and no instance change, which reads like a
 successful deployment.
 
-Everything that has to reach a built tier therefore arrives by hand: MCP wrapper
-code copied over the bastion and the units restarted, and the integration key
-written as a systemd drop-in by `paf push-key` because `PAF_AGENT_ID` /
-`PAF_API_KEY` do not exist until the flow is published, long after the tier is
-built. Both work, and both leave the instance's disk describing something the
-repository does not.
+Everything that has to reach a built tier therefore arrives over the bastion:
+MCP wrapper code copied across and the units restarted, and the integration key
+written as a systemd drop-in because `PAF_AGENT_ID` / `PAF_API_KEY` do not exist
+until the flow is published, long after the tier is built. The key delivery is at
+least no longer a step someone can forget — `paf api-key` performs it — but it is
+still a drop-in laid over the shipped unit, so both paths leave the instance's
+disk describing something the repository does not.
 
 The fix is one command that re-converges a tier: re-fetch its payload through the
 PAR and re-run its playbook, ignoring the sentinel. The play is already idempotent

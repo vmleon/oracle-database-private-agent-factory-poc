@@ -863,6 +863,80 @@ def _tier_readiness(tier: str) -> tuple[str, str]:
     return "red", "unreachable"
 
 
+def _agent_readiness() -> list[tuple[bool, str, str]]:
+    """Where the post-wizard sequence stands, as one list of checks.
+
+    Everything after `cloud up` happens in PAF and leaves no sentinel on a tier,
+    so without this the only way to know whether a step ran is to run it again.
+    Each check degrades to a miss rather than raising: on a stack that has not
+    reached the wizard yet, the whole block reads as "not started".
+    """
+    checks: list[tuple[bool, str, str]] = []
+    try:
+        import io, contextlib
+        with contextlib.redirect_stdout(io.StringIO()):
+            session = _paf_session()
+    except SystemExit:
+        return [(False, "PAF sign-in", "no answer, or the admin does not match .env")]
+
+    checks.append((True, "PAF sign-in", "admin in .env accepted"))
+
+    base = _paf_base_url()
+    try:
+        r = session.get(f"{base}/agentFactory/v1/agents", timeout=30)
+        body = r.json()
+        data = body.get("data") if isinstance(body, dict) else body
+        agents = data.get("items", []) if isinstance(data, dict) else data
+        entry = next((a for a in agents or [] if a.get("name") == "CHAT_FLOW"), None)
+    except Exception:  # noqa: BLE001 — info must never fail on a half-built stack
+        return checks + [(False, "CHAT_FLOW", "could not list agents")]
+
+    if entry is None:
+        return checks + [(False, "CHAT_FLOW", "not imported — CLOUD.md §9")]
+    checks.append((True, "CHAT_FLOW", "imported"))
+
+    agent_id = str(entry.get("agentId") or "")
+    published = bool(entry.get("published"))
+    checks.append((published, "published",
+                   "serving through the integration endpoint" if published
+                   else "imported flows arrive unpublished — publish it in Agent Builder"))
+
+    # Linked means every MCP node points at a server id this install issued.
+    try:
+        rec = session.get(f"{base}/agentFactory/v1/agents/{agent_id}", timeout=30).json()
+        graph = (rec.get("data", rec) or {}).get("data")
+        live = set(_live_mcp_source_ids(session).values())
+        fields = list(_iter_server_source_fields(graph)) if isinstance(graph, dict) else []
+        bound = [f for f in fields if f.get("value") in live]
+        checks.append((bool(fields) and len(bound) == len(fields), "MCP nodes linked",
+                       f"{len(bound)}/{len(fields)} bound to this install"
+                       if fields else "no MCP nodes found in the graph"))
+    except SystemExit:
+        checks.append((False, "MCP nodes linked", "could not list MCP servers"))
+    except Exception:  # noqa: BLE001
+        checks.append((False, "MCP nodes linked", "could not read the flow graph"))
+
+    minted = bool(os.getenv("PAF_AGENT_ID")) and bool(os.getenv("PAF_API_KEY"))
+    checks.append((minted, "integration key",
+                   "minted into .env" if minted else "not minted — paf api-key"))
+
+    if minted:
+        # The drop-in is 0600 and root-owned, so both halves need sudo, and the
+        # agent id is interpolated here rather than read from the remote shell,
+        # where it does not exist.
+        agent_id = os.environ["PAF_AGENT_ID"]
+        result = _backend_ssh(
+            f"sudo grep -q {shlex.quote(agent_id)} /etc/paf-poc-backend.env "
+            "2>/dev/null && echo delivered || echo stale"
+        )
+        out = (result.stdout or "") + (result.stderr or "")
+        delivered = "delivered" in out
+        checks.append((delivered, "key delivered",
+                       "the backend holds this key" if delivered
+                       else "the backend does not have it — paf push-key"))
+    return checks
+
+
 @cli.command("info")
 def info() -> None:
     """Print URLs, connection strings, and whether every tier has finished building."""
@@ -900,8 +974,17 @@ def info() -> None:
         console.print(f"  [{colour}]{mark}[/{colour}] [cyan]{tier:<9}[/cyan] {note}")
 
     if all(colour == "green" for colour, _ in states.values()):
-        console.print("\n[green]The stack is ready.[/green] Next: "
-                      "[cyan]python manage.py paf bootstrap[/cyan]")
+        console.print("\n[bold]Agent[/bold]")
+        checks = _agent_readiness()
+        for ok, label, note in checks:
+            mark, colour = ("\u2713", "green") if ok else ("\u00b7", "yellow")
+            console.print(f"  [{colour}]{mark}[/{colour}] [cyan]{label:<18}[/cyan] {note}")
+        if all(ok for ok, _, _ in checks):
+            console.print("\n[green]The stack is ready.[/green] Next: "
+                          "[cyan]python manage.py cloud test[/cyan]")
+        else:
+            console.print("\n[yellow]The tiers are up; the agent is not wired yet.[/yellow] "
+                          "Follow [cyan]python manage.py paf bootstrap[/cyan] and CLOUD.md §9.")
     else:
         console.print(
             "\n[yellow]Not ready yet.[/yellow] Cloud-init retries every 60s; re-run "
@@ -1278,8 +1361,7 @@ def paf() -> None:
     """Private Agent Factory operations."""
 
 
-@paf.command("allow-internal-mcp")
-def paf_allow_internal_mcp() -> None:
+def _allow_internal_mcp() -> bool:
     """Relax PAF's outbound-URL guard so the internal load balancer can be
     registered: sets BLOCK_PRIVATE_OUTBOUND_URLS=false in PAF's app settings.
 
@@ -1287,7 +1369,6 @@ def paf_allow_internal_mcp() -> None:
     over https. ALLOW_INSECURE_HTTP_URLS stays false. Applied to Autonomous
     Database through the bastion; run once after the install wizard completes.
     """
-    _ensure_env()
     script = """
 import json, oracledb
 p = json.load(open("/home/opc/ansible_params.json"))
@@ -1309,19 +1390,17 @@ for (row,) in cur:
     result = _ops_python(script)
     out = (result.stdout or "") + (result.stderr or "")
     if "BLOCK_PRIVATE_OUTBOUND_URLS=false" in out:
-        console.print("[green]\u2713[/green] BLOCK_PRIVATE_OUTBOUND_URLS=false")
-        for line in out.splitlines():
-            if "ALLOW_INSECURE_HTTP_URLS" in line:
-                console.print(f"[dim]  {line.strip()}[/dim]")
-        return
+        console.print("  [green]\u2713[/green] private outbound URLs allowed "
+                      "[dim](ALLOW_INSECURE_HTTP_URLS stays false)[/dim]")
+        return True
     if "SETTINGS_TABLE_MISSING" in out:
         console.print(
             "[red]PAF's settings table does not exist yet.[/red] "
             "Finish the install wizard first — it creates the table."
         )
-        sys.exit(1)
+        return False
     console.print(f"[red]Could not apply the setting.[/red]\n{out.strip()[:400]}")
-    sys.exit(1)
+    return False
 
 
 
@@ -1352,19 +1431,17 @@ def paf_admin() -> None:
         console.print(f"[green]\u2713[/green] Signed in to PAF at {_paf_base_url()}")
 
 
-@paf.command("trust-ca")
-def paf_trust_ca() -> None:
+def _trust_ca() -> bool:
     """Register the MCP gateway CA in PAF's administrator certificate store.
 
     PAF's outbound HTTP clients read this store when they dial MCP servers, so
     the internal load balancer's https URLs verify. The store lives on PAF's
     mounted volume. Run once per install, after the wizard.
     """
-    _ensure_env()
     crt = TF_DIR / "generated" / "mcp-ca.pem"
     if not crt.exists():
         console.print(f"[red]{crt} not found.[/red] Run `python manage.py cloud up` first.")
-        sys.exit(1)
+        return False
     session = _paf_session()
     with crt.open("rb") as handle:
         r = session.post(
@@ -1373,18 +1450,32 @@ def paf_trust_ca() -> None:
             files={"certificate": (crt.name, handle, "application/x-pem-file")},
             timeout=30,
         )
-    if r.status_code == 201:
-        console.print("[green]✓[/green] MCP gateway CA registered in PAF's trust store.")
-    elif r.status_code == 200:
-        console.print("[green]✓[/green] MCP gateway CA already registered.")
-    else:
-        console.print(
-            f"[red]Certificate upload failed: HTTP {r.status_code}[/red]\n{r.text[:500]}"
-        )
-        sys.exit(1)
+    if r.status_code in (200, 201):
+        console.print("  [green]✓[/green] MCP gateway CA in PAF's trust store")
+        return True
     console.print(
-        "[dim]MCP connection tests pick up the new trust store on the next test.[/dim]"
+        f"[red]Certificate upload failed: HTTP {r.status_code}[/red]\n{r.text[:500]}"
     )
+    return False
+
+
+@paf.command("prepare")
+def paf_prepare() -> None:
+    """Configure PAF for this deployment's MCP servers — run once after the wizard.
+
+    Two settings that are only reachable after PAF exists, and that every MCP
+    registration depends on: the internal load balancer's CA has to be in PAF's
+    own trust store, and PAF's outbound guard has to stop rejecting the private
+    address the load balancer answers on. Both are idempotent.
+    """
+    _ensure_env()
+    console.print("Preparing PAF for the MCP gateway")
+    ok = _trust_ca()
+    ok = _allow_internal_mcp() and ok
+    if not ok:
+        sys.exit(1)
+    console.print("\n[green]✓[/green] PAF is ready for the MCP registrations "
+                  "([cyan]paf bootstrap[/cyan] step 6).")
 
 
 def _live_mcp_source_ids(session: requests.Session) -> dict:
@@ -1532,12 +1623,18 @@ def paf_gen_model() -> None:
 
 
 @paf.command("api-key")
-def paf_api_key() -> None:
-    """Mint an integration API key for CHAT_FLOW and store it in .env.
+@click.option("--no-push", is_flag=True,
+              help="Mint into .env without delivering it to the backend tier.")
+def paf_api_key(no_push: bool) -> None:
+    """Mint CHAT_FLOW's integration key and hand it to the backend.
 
-    Writes PAF_AGENT_ID and PAF_API_KEY. The flow must be published first — PAF
-    refuses to run an unpublished workflow through an integration key. Keys last
-    at most 90 days; re-run this to mint a replacement.
+    Writes PAF_AGENT_ID and PAF_API_KEY, then delivers both to the backend tier
+    and restarts it — a key that is minted but not delivered leaves the customer
+    chat UI unable to reach the agent while `cloud test` still passes, because
+    the harness calls the integration endpoint directly.
+
+    The flow must be published first: PAF refuses to run an unpublished workflow
+    through an integration key. Keys last at most 90 days; re-run to replace one.
     """
     _ensure_env()
     session = _paf_session()
@@ -1565,12 +1662,17 @@ def paf_api_key() -> None:
         f"(prefix [cyan]{body.get('keyPrefix', '')}[/cyan]), expires "
         f"[cyan]{body.get('expiresAt', 'in 90 days')}[/cyan]."
     )
-    console.print(
-        "[dim]PAF_AGENT_ID and PAF_API_KEY written to .env. The backend tier reads "
-        "them at deploy time, so re-run [cyan]python manage.py cloud up[/cyan] to "
-        "hand them over — or [cyan]python manage.py cloud test[/cyan], which passes "
-        "them to the harness directly.[/dim]"
-    )
+    console.print("[dim]  PAF_AGENT_ID and PAF_API_KEY written to .env.[/dim]")
+
+    # The backend never learns the key from a deploy: its unit template does not
+    # reference either value and Terraform does not pass them, because neither
+    # exists until the flow is published. Delivery is this hop, or nothing.
+    if no_push:
+        console.print("[dim]  Not delivered (--no-push). The harness reads .env directly; "
+                      "the chat UI needs [cyan]paf push-key[/cyan].[/dim]")
+        return
+    if not _deliver_key():
+        sys.exit(1)
 
 
 
@@ -1616,8 +1718,7 @@ def _print_run(command: str) -> None:
     console.print(f"\n  Run:\n\n      [bold cyan]{command}[/bold cyan]\n")
 
 
-@paf.command("push-key")
-def paf_push_key() -> None:
+def _deliver_key() -> bool:
     """Hand CHAT_FLOW's integration key to the backend tier and restart it.
 
     The Spring backend calls the published flow with PAF_AGENT_ID and
@@ -1625,14 +1726,13 @@ def paf_push_key() -> None:
     the tier built itself. They arrive as a systemd drop-in over the shipped
     unit, so `api-key` is followed by this rather than by a rebuild.
     """
-    _ensure_env()
     for key in ("PAF_AGENT_ID", "PAF_API_KEY"):
         if not os.getenv(key):
             console.print(
                 f"[red]{key} is not set.[/red] Publish CHAT_FLOW, then run "
                 "[cyan]python manage.py paf api-key[/cyan]."
             )
-            sys.exit(1)
+            return False
 
     script = f"""set -e
 sudo install -d -m 0755 /etc/systemd/system/paf-poc-backend.service.d
@@ -1657,15 +1757,29 @@ systemctl is-active paf-poc-backend
         console.print(
             "[red]The backend tier is still building.[/red] Its service unit does not "
             "exist yet — wait for [cyan]/var/lib/paf-poc/bootstrap.ok[/cyan] on the "
-            "backend, then re-run."
+            "backend, then run [cyan]python manage.py paf push-key[/cyan]."
         )
-        sys.exit(1)
+        return False
     if result.returncode != 0 or "active" not in (result.stdout or ""):
         console.print(f"[red]Could not hand over the key.[/red]\n{out[:400]}")
-        sys.exit(1)
+        return False
 
     console.print(f"[green]\u2713[/green] Backend restarted with agent {os.environ['PAF_AGENT_ID']}")
     console.print("[dim]  The customer chat UI reaches CHAT_FLOW from here on.[/dim]")
+    return True
+
+
+@paf.command("push-key")
+def paf_push_key() -> None:
+    """Re-deliver the integration key to the backend tier.
+
+    `paf api-key` already delivers what it mints. This repeats the delivery on
+    its own — after the backend tier is rebuilt, or when `api-key --no-push`
+    was used.
+    """
+    _ensure_env()
+    if not _deliver_key():
+        sys.exit(1)
 
 
 @paf.command("bootstrap")
@@ -1773,19 +1887,16 @@ def paf_bootstrap() -> None:
     console.print("    below fetches the spec through the bastion. Upload the file it writes.")
     _print_run("python manage.py paf openapi")
 
-    console.print("[bold]Step 6 — trust the gateway[/bold]")
-    console.print("  Registers the internal load balancer's certificate in PAF's trust store.")
-    console.print("  [dim]Skip it and every MCP server fails its connection test with \"could not[/dim]")
-    console.print("  [dim]connect\" — a TLS failure, not a reachability one.[/dim]")
-    _print_run("python manage.py paf trust-ca")
+    console.print("[bold]Step 6 — prepare PAF for the gateway[/bold]")
+    console.print("  Two settings the MCP registrations depend on, both only reachable once")
+    console.print("  PAF exists: the internal load balancer's certificate goes into PAF's own")
+    console.print("  trust store, and PAF stops refusing the private address it answers on.")
+    console.print("  [dim]Skip it and every registration fails — the first on the private[/dim]")
+    console.print("  [dim]address outright, the rest with \"could not connect\", which is a TLS[/dim]")
+    console.print("  [dim]failure rather than a reachability one.[/dim]")
+    _print_run("python manage.py paf prepare")
 
-    console.print("[bold]Step 7 — allow private addresses[/bold]")
-    console.print("  The MCP servers sit on a private address (10.0.x.x), which PAF refuses")
-    console.print("  by default.")
-    console.print("  [dim]Skip it and the first registration is rejected outright.[/dim]")
-    _print_run("python manage.py paf allow-internal-mcp")
-
-    console.print("[bold]Step 8 — MCP servers[/bold]   (Admin → MCP Servers → Add MCP server)")
+    console.print("[bold]Step 7 — MCP servers[/bold]   (Admin → MCP Servers → Add MCP server)")
     console.print("  Four registrations, [cyan]Direct[/cyan] authentication (no auth — they are reachable")
     console.print("  only inside the VCN). The flow references them by these names, so they")
     console.print("  must match.")

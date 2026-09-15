@@ -178,22 +178,22 @@ calls it with:
 python manage.py paf api-key
 ```
 
-Expect: `PAF_AGENT_ID` and `PAF_API_KEY` in `.env`.
+Expect: `PAF_AGENT_ID` and `PAF_API_KEY` in `.env`, and a restarted
+`paf-poc-backend` holding them.
 
-Those two values reach the application backend through a systemd drop-in, not
-through the tier's payload — the flow is published long after the tier built
-itself:
+The key reaches the backend through a systemd drop-in rather than the tier's
+payload, because the flow is published long after the tier built itself — so
+minting and delivering are one command. `--no-push` mints without delivering,
+which only the harness can use.
+
+Check where the sequence stands at any point:
 
 ```bash
-python manage.py paf push-key
+python manage.py info
 ```
 
-Expect a restarted `paf-poc-backend`.
-
-> **Easy to miss.** `cloud test` passes without this — the harness calls the
-> integration endpoint directly. Only the customer chat UI needs the agent id,
-> so skipping `push-key` leaves a green test run and a browser demo that never
-> reaches the agent.
+It reports the four tiers and then the agent: imported, published, MCP nodes
+linked, key minted, key delivered.
 
 ## 10. `cloud test`
 
@@ -274,7 +274,7 @@ python manage.py paf bootstrap
 ```
 
 The install sheet ends at PAF's UI; §9 onward — import, `link-flow`, publish,
-`api-key`, `push-key` — closes the loop.
+`api-key` — closes the loop. `manage.py info` says how far it has got.
 
 ## When something does not come up
 
@@ -283,7 +283,7 @@ The install sheet ends at PAF's UI; §9 onward — import, `link-flow`, publish,
 | A tier never writes `bootstrap.ok`                                | `manage.py info` names which one; then `/var/log/<label>-bootstrap.log` and `/home/opc/ansible-playbook.log` on that instance    |
 | Model calls fail in PAF's LLM Management                          | Step 5 was skipped or its IAM root was destroyed, or the connection names a different compartment from the one the policy grants |
 | The manager never delegates, or every turn is a JSON decode error | The generation model is a `cohere.*` or `meta.*` one — see [`docs/TROUBLESHOOT.md`](docs/TROUBLESHOOT.md)                        |
-| An MCP server will not connect                                    | `paf trust-ca` and `paf allow-internal-mcp` (bootstrap steps 6 and 7) both have to run before the first registration             |
+| An MCP server will not connect                                    | `paf prepare` (bootstrap step 6) has to run before the first registration                                                        |
 | The load balancer does not answer                                 | Backend health in the OCI console; a tier listens only once its play has finished                                                |
-| The chat UI answers but never reaches the agent                   | `paf push-key` has not run since the flow was published                                                                          |
+| The chat UI answers but never reaches the agent                   | The backend has no key: `manage.py info` shows it under Agent; `paf api-key` mints and delivers, `paf push-key` re-delivers      |
 | `cloud down` fails on a security group                            | Expected — it retries by itself; a manual re-run is equally safe                                                                 |

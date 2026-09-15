@@ -32,12 +32,14 @@ python manage.py cloud sql "SELECT 'db ok' FROM dual"
 ```
 
 The customer chat reaches the flow through the application backend, which needs
-CHAT_FLOW's integration key. It is handed over once per deployment, after the
-flow is published:
+CHAT_FLOW's integration key. `paf api-key` delivers it when it mints it, so this
+is only needed if the backend was rebuilt since:
 
 ```bash
 python manage.py paf push-key
 ```
+
+`manage.py info` reports whether the backend already holds the current key.
 
 Good to know:
 

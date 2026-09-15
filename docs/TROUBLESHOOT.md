@@ -53,7 +53,7 @@ On the `paf` compute — does PAF complete the TLS handshake with the internal l
 sudo podman exec paf curl -s -o /dev/null -w "%{http_code}\n" --cacert /mount/config/app/latest/certs/.agent-factory-ca/agent-factory-ca-bundle.pem https://<mcp_lb_ip>:8500/mcp -X POST -d '{}' -H 'content-type: application/json'
 ```
 
-Expect a 4xx. `SSL certificate problem: self signed certificate` means the CA is not in the store — run `manage.py paf trust-ca`.
+Expect a 4xx. `SSL certificate problem: self signed certificate` means the CA is not in the store — run `manage.py paf prepare`.
 
 Logs on the `backend` compute:
 
@@ -94,7 +94,7 @@ Almost always the dynamic group or the policy: `manage.py cloud iam` was skipped
 
 ### A scripted PAF command returns HTTP 401
 
-`trust-ca`, `allow-internal-mcp`, `link-flow`, `gen-model` and `api-key` all sign in with `PAF_ADMIN_USER` / `PAF_ADMIN_PASS`. `setup` generates those before PAF exists and `paf bootstrap` step 1 prints them, so the wizard is meant to be *given* them rather than asked for something new. A 401 means the admin that exists is not the one in `.env`.
+`prepare`, `link-flow`, `gen-model` and `api-key` all sign in with `PAF_ADMIN_USER` / `PAF_ADMIN_PASS`. `setup` generates those before PAF exists and `paf bootstrap` step 1 prints them, so the wizard is meant to be *given* them rather than asked for something new. A 401 means the admin that exists is not the one in `.env`.
 
 > **Only if the wizard was given different credentials** — otherwise the fix is to re-read step 1 and retype them. To record what actually exists:
 >
@@ -133,7 +133,7 @@ python manage.py paf gen-model
 The wording points at reachability, but the failure is TLS verification. PAF's outbound HTTP client verifies against its **administrator certificate store**, not the container's OS trust store or `SSL_CERT_FILE`, so the internal load balancer's self-signed certificate has to be uploaded there once per install:
 
 ```bash
-python manage.py paf trust-ca
+python manage.py paf prepare
 ```
 
 Then re-run **Test connection** in the UI — the store is re-read per test, so no restart is needed. It applies to all four MCP servers at once, since they share the one listener certificate.
@@ -142,10 +142,10 @@ The tell that it's trust and not reachability: the curl in [Sanity-check curls](
 
 ### The first MCP server registration is rejected with "URL resolves to a private or non-routable network address"
 
-PAF's outbound-URL guard, which the internal load balancer's 10.0.x.x address trips. Relax it once per install:
+PAF's outbound-URL guard, which the internal load balancer's 10.0.x.x address trips. The same command relaxes it — `prepare` does both halves of the post-wizard configuration, so running it for either symptom fixes the other too:
 
 ```bash
-python manage.py paf allow-internal-mcp
+python manage.py paf prepare
 ```
 
 ### Flow runs to a "Sorry — we couldn't load..." reply but no errors in any wrapper logs
