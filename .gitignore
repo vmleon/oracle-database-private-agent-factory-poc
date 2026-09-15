@@ -70,3 +70,6 @@ deploy/tf/app/generated/
 !paf/dist/
 paf/dist/*
 !paf/dist/README.md
+
+# Local agent guidance — not shared yet
+CLAUDE.md
