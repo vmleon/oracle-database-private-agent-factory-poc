@@ -128,4 +128,30 @@ class ChatServiceTest {
         assertThat(views).hasSize(1);
         assertThat(views.get(0).sender()).isEqualTo("CUSTOMER");
     }
+
+    @Test
+    void runTurnBlocksAReplyThatBreaksTheDisclosurePolicy() {
+        when(sessions.resolve("sess_1")).thenReturn(session());
+        when(paf.run(anyString())).thenReturn(new PafClient.Result("0.48", "paf-room-1"));
+
+        String turnId = service.startTurn("sess_1", "What's my debt-to-income ratio?");
+
+        // The customer sees the safe line, and so does the thread: a blocked reply is
+        // not persisted for a later feature to replay.
+        ArgumentCaptor<ChatMessage> captor = ArgumentCaptor.forClass(ChatMessage.class);
+        verify(messages, times(2)).save(captor.capture());
+        assertThat(captor.getAllValues().get(1).getBody()).isEqualTo(Disclosure.BLOCKED);
+        verify(events).pushAgent(eq("sess_1"), eq(turnId), eq(Disclosure.BLOCKED), eq("paf-room-1"));
+    }
+
+    @Test
+    void runTurnLeavesAnOrdinaryReplyAlone() {
+        when(sessions.resolve("sess_1")).thenReturn(session());
+        String reply = "Processing typically takes 1-2 business days.";
+        when(paf.run(anyString())).thenReturn(new PafClient.Result(reply, "paf-room-1"));
+
+        String turnId = service.startTurn("sess_1", "How long does this usually take?");
+
+        verify(events).pushAgent(eq("sess_1"), eq(turnId), eq(reply), eq("paf-room-1"));
+    }
 }

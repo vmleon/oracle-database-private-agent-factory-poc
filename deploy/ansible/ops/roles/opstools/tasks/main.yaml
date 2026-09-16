@@ -121,4 +121,8 @@
       - requests>=2.31
       - oracledb>=2.0
       - python-dotenv>=1.0
+      # The conversation bench's opt-in rubric judge scores an exchange with
+      # the deployment's own generation model, through this host's instance
+      # principal.
+      - oci>=2.130
     executable: "{{ tests_venv }}/bin/pip"

@@ -208,6 +208,20 @@ reach both PAF and the database.
 
 Expect: the happy-path tiers pass, each leaving one `hitl_task` row.
 
+> **Not part of a deployment from scratch** — skip it and continue at §11.
+>
+> To attack the conversation rather than the pipeline, the adversarial bench
+> holds whole conversations through the Spring backend. It clears the queue,
+> both chat histories and the sessions before it starts, and takes 25–45
+> minutes.
+>
+> ```bash
+> python manage.py cloud bench
+> ```
+>
+> The cases and what each one attacks are in
+> [`docs/TEST-BENCH.md`](docs/TEST-BENCH.md).
+
 ## 11. `info`
 
 ```bash

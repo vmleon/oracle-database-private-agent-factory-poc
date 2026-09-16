@@ -43,12 +43,17 @@ PAF_BASE = os.getenv("PAF_BASE", "")
 ENV_FILE = Path(os.getenv("POC_ENV_FILE") or (PROJECT_ROOT / ".env"))
 
 _SENTINEL_RE = re.compile(r"\[\[SESSION[^\]]*\]\]")
+_BRACKETS_RE = re.compile(r"[\[\]]")
 
 
 def _sanitize(message: str) -> str:
-    """Strip any [[SESSION ...]] sentinel a customer might inject. MANDATORY
-    before enveloping — the security boundary depends on it."""
-    return _SENTINEL_RE.sub("", message)
+    """Remove anything bracket-shaped from a customer message. MANDATORY before
+    enveloping — the security boundary depends on it.
+
+    Mirrors `Envelope.sanitize` in the backend, which is what a real turn goes
+    through. The flow splits the in-band envelope on the last `[[SESSION ` and
+    `]]` it finds, so leaving the customer a bracket leaves them a delimiter."""
+    return _BRACKETS_RE.sub("", _SENTINEL_RE.sub("", message))
 
 
 def _envelope(token: str, message: str, *, sanitize: bool = True) -> str:

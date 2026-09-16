@@ -5,69 +5,33 @@ then the items waiting on a decision or a spike, then optional residuals.
 
 **Maintenance convention.** When an item is done and implemented successfully, **remove it from this backlog and delete the related `issues/` file(s)** — keep the repo describing the final state, not the history. If an issue is only **partially** improved (a workaround, not a real fix), **refresh that issue** so it stays accurate instead of deleting it.
 
-## 1. Harden the conversation with an adversarial test bench
+## 1. Triage what the conversation bench records
 
-`tests/test_chat_workflow.py` posts one scripted turn straight at PAF's
-integration endpoint. Everything the Spring backend does to a turn is therefore
-untested — `Envelope.sanitize`, `Envelope.stripMarkers`, session resolution, the
-apology retry and what lands in `chat_message` — and the sharpest attacks need
-more than one turn anyway.
+`tests/conversation/` drives the product the way a customer does — `POST
+/v1/login`, then `POST /v1/chat` and poll `GET /v1/chat/history` — so a case
+crosses the whole path and asserts the database row at the end of it. Four
+suites of 40 cases, run by `python manage.py cloud bench` in about 21 minutes.
+The cases, the personas and how quality is scored are in
+[`docs/TEST-BENCH.md`](docs/TEST-BENCH.md); the defects it records are
+[§"The defects the bench records"](docs/TEST-BENCH.md) there, each behind an
+`xfail(strict=False)` with its assertion at full strength.
 
-The bench drives the product the way a customer does: `POST /v1/login`, then
-`POST /v1/chat` and poll `GET /v1/chat/history`, so a case crosses the whole path
-and can assert the database row at the end of it. Four suites: the identity
-boundary, instruction override and disclosure, what gets written, and whether an
-ordinary conversation is worth the customer's time.
+Two runs of the same build disagreed on half of them, so a fix wants the case run
+several times before it is called done — one green run verifies nothing here.
 
-**It is not a load test.** The target is a single-instance dev deployment
-sharing one Generative AI endpoint, and breaking it by volume proves nothing.
-The bench is strictly serial with a deliberate pause between turns — around 45
-turns and 25–45 minutes for a full run. Volume is not an attack it runs.
+Two of them are worth naming here because they are not about wording:
 
-Reading the code first turned up four defects, so the bench starts with a case
-for each rather than waiting for a demo to find them:
+- **Turns sometimes produce no reply at all** — about one in forty, 300 seconds of
+  silence, and the message content is not the cause. Nothing durable is written, so
+  a PAF timeout and a backend exception look identical afterwards.
+- **`create_hitl_task` is not idempotent**, so three confirmations file three
+  tasks, and an application can be rewritten under a task already filed.
 
-- **The loan product has limits and nothing enforces them.** `product_catalog`
-  seeds Personal Loan at 1,000–50,000 over 6–60 months;
-  `upsert_draft_application` reads the product only for its `product_id` and
-  writes whatever amount and term it is given. A conversation can hold an
-  application for 5,000,000 over 2 months and have a recommendation filed
-  against it.
-- **`term_months = 0` is an unhandled divide-by-zero on the read path.**
-  `_get_context_impl` guards on `is None`, so a zero term passes and
-  `amount / term_months` raises inside the deterministic node every read path
-  starts with. The defect above is what makes it reachable by asking.
-- **Two greedy regexes in `Envelope` can delete reply text.**
-  `LEADING_MARKERS` matches to the last `]]` on the first line and `THINKING` to
-  the last `</think>` anywhere; a customer can induce both.
-- **The raw customer message is persisted.** `startTurn` saves it before
-  `runTurn` sanitizes, so `chat_message.body` keeps the injected text — which
-  matters the moment §3 starts appending to that thread.
+What is left is the triage.
 
-One question the bench exists to answer: `Envelope.sanitize`
-(`\[\[SESSION[^\]]*\]\]`) and the flow's token extractor
-(`(?<=\[\[SESSION )[^\]]+`) were written separately and disagree.
-`[[SESSION a]b]]` survives the sanitizer *and* matches the extractor, so whether
-that is identity confusion turns on whether PAF's `Regex extractor` returns the
-first match or the last. Nothing in the repo settles it.
-
-Quality is held to the same bar. A greeting answered with "could you please
-confirm you would like to proceed with the loan application?" is a stall, and
-the turn after it repeated nearly the same sentence; both were observed against
-the deployed stack and both go in as failing cases. A failing case is kept as
-`xfail(strict=False)` with its reason in full prose, never deleted or loosened,
-so the run reports `XPASS` on the day the agent improves.
-
-The full plan — driver contract, file layout, personas, every case with its
-input and its assertion, and how quality is scored — is
-[`docs/TEST-BENCH.md`](docs/TEST-BENCH.md).
-
-- **Code.** `tests/conversation/` with the turn driver, the four suites and the
-  deterministic quality signals; pure helpers mirrored into `tests/unit/` so the
-  regex work is checkable on the host. `manage.py cloud bench` runs it —
-  separate from `cloud test`, which stays the fast gate.
-- **Decision.** Which recorded failures are defects to fix and which are
-  accepted PoC behaviour, taken once the first run has produced the list.
+- **Decision.** Which are defects to fix and which are accepted PoC behaviour.
+  Each one fixed is an `xfail` marker removed, so the list shrinks on its own as
+  the work lands.
 
 ## 2. Let a reviewer claim from the queue
 

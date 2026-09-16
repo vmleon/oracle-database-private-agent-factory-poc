@@ -9,6 +9,11 @@ import java.util.regex.Pattern;
 public final class Envelope {
 
     private static final Pattern SENTINEL = Pattern.compile("\\[\\[SESSION[^\\]]*\\]\\]");
+    // Every remaining square bracket. The envelope is in-band and the flow splits it
+    // on the LAST `[[SESSION ` and `]]` it finds, so any bracket the customer types
+    // competes with the server's own delimiter. Single characters, not pairs:
+    // removing pairs alone would turn `][[]` into `]]`.
+    private static final Pattern BRACKETS = Pattern.compile("[\\[\\]]");
     // Greedy `.*` (single-line) so a marker whose body contains `]` — e.g.
     // `[[DECISION tier=APPROVE reasons=["DTI_TOO_HIGH"]]]` — is matched up to its
     // final `]]`, not truncated at the first inner `]`.
@@ -36,15 +41,28 @@ public final class Envelope {
         return LEADING_MARKERS.matcher(withoutThinking).replaceFirst("").strip();
     }
 
-    /** Strip any [[SESSION ...]] sentinel a customer might inject. MANDATORY before enveloping. */
+    /**
+     * Remove anything bracket-shaped from a customer message. MANDATORY before enveloping.
+     *
+     * <p>Well-formed sentinels go first so the whole construct disappears rather than
+     * leaving its words behind; whatever brackets remain are then dropped outright. The
+     * result is that {@link #build} always yields exactly one {@code [[} and one
+     * {@code ]]} — the server's own — so which match the flow's extractors return stops
+     * being something this class has to know.
+     */
     public static String sanitize(String message) {
         if (message == null) {
             return "";
         }
-        return SENTINEL.matcher(message).replaceAll("");
+        String withoutSentinels = SENTINEL.matcher(message).replaceAll("");
+        return BRACKETS.matcher(withoutSentinels).replaceAll("");
     }
 
-    /** Wrap the server-issued token + sanitized message in the envelope the flow's RegexExtractor splits. */
+    /**
+     * Wrap the server-issued token + sanitized message in the envelope the flow's
+     * RegexExtractor splits. The message is sanitized here rather than by the caller,
+     * so there is no path that builds an envelope around unsanitized text.
+     */
     public static String build(String token, String message) {
         return "[[SESSION " + token + "]]\n" + sanitize(message);
     }

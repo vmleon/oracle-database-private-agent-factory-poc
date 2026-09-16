@@ -71,8 +71,18 @@ public class ChatService {
             for (int attempt = 2; attempt <= MAX_PAF_ATTEMPTS && PAF_APOLOGY.equals(result.reply()); attempt++) {
                 result = paf.run(enveloped);
             }
-            save(session, roomId, "AGENT", result.reply(), result.pafRoomId());
-            events.pushAgent(token, turnId, result.reply(), result.pafRoomId());
+            // The disclosure policy is a rule here, not a request in a prompt: every
+            // reply passes through this line on its way to both the thread and the
+            // customer's screen, so a reply that breaks it reaches neither.
+            String shown = Disclosure.screen(message, result.reply());
+            if (!shown.equals(result.reply())) {
+                // The rule names only, never the text that broke them — a log line
+                // is the last place the protected value should end up.
+                log.warn("turn {} blocked by the disclosure policy: {}", turnId,
+                        Disclosure.violations(result.reply(), Disclosure.asksForAValue(message)));
+            }
+            save(session, roomId, "AGENT", shown, result.pafRoomId());
+            events.pushAgent(token, turnId, shown, result.pafRoomId());
         } catch (RuntimeException e) {
             log.warn("chat turn {} failed", turnId, e);
             events.pushError(token, turnId, "We couldn't get a response. Please try again.");

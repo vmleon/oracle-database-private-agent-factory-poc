@@ -56,7 +56,7 @@ The line is the **value, not the factor**: "affordability is the sticking point"
 
 The flow's only runtime input is the **chat message** posted to PAF's Chat input. The per-request **session token travels in-band, prepended in a `[[SESSION <token>]]` envelope** and split back out at flow start by a deterministic `Regex extractor`. Per-invocation `customer_id` / `application_id` are **never** received from the user — they are resolved server-side from the token by every tool that needs them.
 
-- **Session token** — opaque, server-issued, unguessable. Looked up in `BANK_CORE.auth_session` (Liquibase changeset 011) to resolve the customer. In production minted at login by the Spring backend (`/v1/login`), which also strips any `[[SESSION …]]` the customer typed before enveloping. The token binds to the **customer**; the application is resolved as that customer's open one.
+- **Session token** — opaque, server-issued, unguessable. Looked up in `BANK_CORE.auth_session` (Liquibase changeset 011) to resolve the customer. In production minted at login by the Spring backend (`/v1/login`), which also removes every square bracket from the customer's message before enveloping, so the extractors below see exactly one delimiter of each kind — the server's. The token binds to the **customer**; the application is resolved as that customer's open one.
 - **Chat message** — the customer's natural-language message. **Untrusted.** `Intake` reads it to extract loan-request values (amount/term/purpose) and to interpret confirmation; no agent ever takes an identifier from it.
 
 Two PAF product gaps shape this design (both verified against the installed kit):
@@ -669,7 +669,9 @@ SELECT session_token, customer_id, application_id, scenario_label
 | `paf-test-jane-unknownemployer` | Unknown employer (`registered=false`) | `DECLINE`     |
 | `paf-test-kyle-dormantemployer` | Dormant employer                      | `REVIEW`      |
 
-**Fail-secure / injection.** A bare message with no `[[SESSION …]]` yields no token → `get_context` returns the error payload → G0 fails → apology, no writes. An injected `[[SESSION …]]` in the customer body is stripped by the backend before enveloping; a token mentioned as prose in the customer message must be ignored.
+**Fail-secure / injection.** A bare message with no `[[SESSION …]]` yields no token → `get_context` returns the error payload → G0 fails → apology, no writes. The backend removes every square bracket from the customer body before enveloping, so an injected `[[SESSION …]]` cannot reach these extractors in any spelling; a token mentioned as prose in the customer message must be ignored.
+
+**Disclosure.** The worker's instructions ask it to name a factor and never a number; `Disclosure.screen` in the Spring backend is what enforces it. A reply carrying an acronym, a reason code, a tier name, a percentage or a decimal never reaches the customer, and on a turn where the customer asked for a protected figure no digit does. The flow is free to be wrong about this; the backend is not.
 
 Verify each successful run:
 

@@ -1229,6 +1229,10 @@ def _ops_push_tests() -> None:
             "-o", "UserKnownHostsFile=/dev/null", "-o", "LogLevel=ERROR"]
     for source, dest, what in (
         (str(PROJECT_ROOT / "tests"), "/home/opc/artifact/roles/opstools/files/", "tests/"),
+        # The bench recognises a decision with the server's own gate.py, so the
+        # two cannot drift into separate opinions of what a decision reads like.
+        (str(PROJECT_ROOT / "src" / "ai" / "banking-mcp" / "gate.py"),
+         "/home/opc/artifact/roles/opstools/files/", "gate.py"),
         (_lb_ca(), BASTION_LB_CA, "the listener certificate"),
     ):
         result = subprocess.run(
@@ -1296,6 +1300,78 @@ def cloud_test(pytest_args: tuple) -> None:
         sys.exit(result.returncode)
 
 
+# Unknown options belong to pytest, not to click.
+@cloud.command("bench", context_settings={"ignore_unknown_options": True})
+@click.argument("pytest_args", nargs=-1, type=click.UNPROCESSED)
+def cloud_bench(pytest_args: tuple) -> None:
+    """Run the adversarial conversation bench from the ops bastion.
+
+    It signs in as a customer and holds whole conversations through the Spring
+    backend, so everything the backend does to a turn is on the path. Strictly
+    serial with a deliberate pause between turns: half an hour is the intended
+    cost, and volume is not an attack it runs.
+
+    Separate from `cloud test`, which stays the fast gate. The bench starts from
+    the seeded state, so it clears the queue, both chat histories, the sessions,
+    the traces and the applications its intake personas created.
+
+    The full plan is docs/TEST-BENCH.md.
+    """
+    _ensure_env()
+
+    console.print(Panel.fit("[bold]Conversation bench (from the bastion)[/bold]"))
+    reset = _ops_python(_reset_script(INTAKE_PERSONAS))
+    if reset.returncode != 0:
+        console.print("[red]Could not reset the demo data before the run.[/red]")
+        console.print((reset.stderr or reset.stdout or "").strip()[:400])
+        sys.exit(1)
+    console.print("[dim]Queue, chats, sessions, traces and intake applications cleared.[/dim]")
+
+    # Written on the bastion for the run and removed afterwards: it carries the
+    # database password and the compartment the opt-in judge bills against.
+    env_lines = "\n".join([
+        f"DB_SERVICE={os.getenv('DB_SERVICE', '')}",
+        f"DB_BACKEND_PASSWORD={os.getenv('DB_BACKEND_PASSWORD', '')}",
+        f"DB_WALLET_PASSWORD={os.getenv('DB_WALLET_PASSWORD', '')}",
+        f"GENAI_ENDPOINT={os.getenv('GENAI_ENDPOINT', '')}",
+        f"GENAI_MODEL={os.getenv('GENAI_MODEL', '')}",
+        f"OCI_COMPARTMENT_OCID={os.getenv('OCI_COMPARTMENT_OCID', '')}",
+    ])
+    remote_env = "/home/opc/.poc-bench-env"
+
+    # The judge is opt-in: it costs a model call per exchange, which is the cost
+    # the rest of the bench exists to avoid. An explicit -m from the caller wins.
+    # Quoted: the selector reaches the bastion as one pytest argument rather
+    # than two shell words.
+    selectors = ([] if any(a.startswith("-m") for a in pytest_args)
+                 else ["-m", shlex.quote("not judge")])
+    args = " ".join([
+        "tests/conversation",
+        *selectors,
+        # -ra lists every xfail and XPASS with its reason. That list is the
+        # working agenda the run exists to produce.
+        "-ra",
+        *(shlex.quote(a) for a in pytest_args),
+    ])
+    script = (
+        f"set -e; umask 077; cat > {remote_env} <<'EOF'\n{env_lines}\nEOF\n"
+        f"cd /home/opc/artifact/roles/opstools/files && "
+        f"POC_ENV_FILE={remote_env} "
+        f"BACKEND_BASE={_paf_base_url()} "
+        f"PAF_CA={BASTION_LB_CA} "
+        f"TNS_ADMIN=/opt/paf-poc/wallet "
+        f"{'{{ tests_venv }}'} -m pytest {args} -q; rc=$?; rm -f {remote_env}; exit $rc"
+    ).replace("{{ tests_venv }}", "/opt/paf-poc/tests-venv/bin/python")
+
+    console.print(f"[dim]Backend: {_paf_base_url()}/v1   database: {os.getenv('DB_SERVICE')} via wallet[/dim]")
+    console.print("[dim]Around 25-45 minutes. The xfail/XPASS tally at the end is the "
+                  "working agenda.[/dim]")
+    _ops_push_tests()
+    result = _ops_ssh(script, stream=True)
+    if result.returncode != 0:
+        sys.exit(result.returncode)
+
+
 @cloud.command("sql")
 @click.argument("statement")
 def cloud_sql(statement: str) -> None:
@@ -1341,18 +1417,20 @@ while True:
     console.print(out or "[dim]done[/dim]")
 
 
-@cloud.command("reset")
-def cloud_reset() -> None:
-    """Empty the reviewer queue, both chat histories, the login sessions and the
-    tool traces, so a test run or a demo starts from the seeded state.
+# The personas the bench walks through intake. Their application is written by
+# the conversation rather than by the seed, so clearing it is what makes a run
+# repeatable.
+INTAKE_PERSONAS = ("Carol Expat", "Liam NoApplication")
 
-    The seeded customers and their applications are untouched, so a customer
-    already processed can be run again. BANK_CORE.decision is left alone: it is a
-    blockchain table declared NO DELETE LOCKED, and outliving a reset is the
-    property the demo exists to show.
+
+def _reset_script(intake_personas: tuple = ()) -> str:
+    """Clear the tables a run writes, as ADMIN over the bastion.
+
+    `intake_personas` additionally drops the applications a conversation
+    created for a customer who started with none.
     """
-    _ensure_env()
-    script = """
+    names = ", ".join(repr(name) for name in intake_personas)
+    return f"""
 import json, oracledb
 p = json.load(open("/home/opc/ansible_params.json"))
 con = oracledb.connect(user="ADMIN", password=p["adb_admin_password"], dsn=p["adb_service"],
@@ -1364,12 +1442,29 @@ cur = con.cursor()
 for table in ("hitl_task", "chat_message", "auth_session", "decision_audit"):
     cur.execute("DELETE FROM BANK_CORE." + table)
     print(table, cur.rowcount)
+for name in [{names}]:
+    cur.execute('DELETE FROM BANK_CORE.loan_application WHERE customer_id = '
+                '(SELECT customer_id FROM BANK_CORE.customer WHERE full_name = :n)', n=name)
+    print("intake", cur.rowcount)
 con.commit()
 cur.execute("SELECT COUNT(*) FROM BANK_CORE.decision")
 print("decision", cur.fetchone()[0])
 """
+
+
+@cloud.command("reset")
+def cloud_reset() -> None:
+    """Empty the reviewer queue, both chat histories, the login sessions and the
+    tool traces, so a test run or a demo starts from the seeded state.
+
+    The seeded customers and their applications are untouched, so a customer
+    already processed can be run again. BANK_CORE.decision is left alone: it is a
+    blockchain table declared NO DELETE LOCKED, and outliving a reset is the
+    property the demo exists to show.
+    """
+    _ensure_env()
     console.print(Panel.fit("[bold]Resetting the demo data[/bold]"))
-    result = _ops_python(script)
+    result = _ops_python(_reset_script())
     if result.returncode != 0:
         err = [l[l.index("ORA-"):] for l in (result.stderr or "").splitlines() if "ORA-" in l]
         console.print("[red]" + (err[0] if err else "Reset failed.") + "[/red]")
