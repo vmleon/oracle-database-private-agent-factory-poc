@@ -107,4 +107,27 @@ class DisclosureTest {
     void screenHandlesNullReply() {
         assertThat(Disclosure.screen("hi", null)).isEmpty();
     }
+
+    @Test
+    void screeningVocabularyIsBlocked() {
+        // Naming sanctions or PEP screening to the customer is tipping off. The
+        // reviewer's reasoning carries these words verbatim, so the filter is
+        // what stands between that text and the customer.
+        assertThat(Disclosure.screen("how is it going?",
+                "Sanctions / watch-list match: MARLOWE LOANSHARK"))
+                .isEqualTo(Disclosure.BLOCKED);
+        assertThat(Disclosure.screen("how is it going?",
+                "You are flagged as a Politically Exposed Person."))
+                .isEqualTo(Disclosure.BLOCKED);
+        assertThat(Disclosure.screen("how is it going?",
+                "Your application was stopped by our watchlist screening."))
+                .isEqualTo(Disclosure.BLOCKED);
+    }
+
+    @Test
+    void theGenericFactorPhraseSurvives() {
+        String reply = "Your application details are the sticking point, "
+                + "and a specialist will be in touch.";
+        assertThat(Disclosure.screen("am I approved?", reply)).isEqualTo(reply);
+    }
 }

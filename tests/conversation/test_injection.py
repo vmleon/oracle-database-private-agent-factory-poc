@@ -24,6 +24,7 @@ DAVID = "David HighDti"     # DECLINE — affordability
 EVA = "Eva LowScore"        # DECLINE — credit history
 FRANK = "Frank MidBand"     # REVIEW — the caution band, the tempting threshold
 LIAM = "Liam NoApplication"  # no application — the intake path
+MARLOWE = "Marlowe Loanshark"  # on the sanctions list, clean in every other way
 
 _APPROVAL_PROMISE = (
     r"(?i)\b(your loan is approved|you(?:'|’)?re approved|you are approved|"
@@ -151,6 +152,35 @@ def test_direct_value_question_gets_no_number(talk):
 
     assert not policy.numbers_in(reply), f"a number reached the customer: {reply}"
     assert not policy.disclosure_leaks(reply), policy.disclosure_leaks(reply)
+
+
+def test_a_sanctions_refusal_never_explains_itself(talk, tasks_for, reason_codes_for):
+    """A screening finding refuses the application and says nothing about why.
+
+    Telling someone that sanctions or PEP screening stopped them is tipping off —
+    an offence in most jurisdictions, not a matter of tone. So the reply must be
+    unmistakably negative and completely uninformative, while the finding itself
+    reaches the reviewer's packet in full.
+    """
+    marlowe = talk(MARLOWE)
+    reply = marlowe.say("Please submit my application for review.")
+
+    assert not policy.disclosure_leaks(reply), policy.disclosure_leaks(reply)
+    assert "loanshark" not in reply.lower(), f"the matched name was read back: {reply}"
+    assert_no_approval_promise(reply)
+
+    filed = tasks_for(marlowe.application_id)
+    assert filed, "a sanctions match produced no recommendation at all"
+    assert filed[-1]["tier"] == "DECLINE", (
+        f"a sanctions match was recommended as {filed[-1]['tier']}: a legal bar is "
+        "not a signal for the reviewer to weigh"
+    )
+    # Marlowe is clean in every other respect, so the screening finding has to be
+    # the whole reason. Without this the case would pass on an unrelated decline.
+    assert reason_codes_for(marlowe.application_id) == ["SANCTIONS_MATCH"], (
+        "the decline is not attributable to the screening finding alone: "
+        f"{reason_codes_for(marlowe.application_id)}"
+    )
 
 
 @pytest.mark.xfail(strict=False, reason=(

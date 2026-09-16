@@ -17,6 +17,7 @@ assertion easier.
 """
 from __future__ import annotations
 
+import json
 import os
 import sys
 from pathlib import Path
@@ -169,6 +170,29 @@ def new_tasks(db):
             return [(int(t), int(a), r) for t, a, r in cur.fetchall()]
 
     return _since
+
+
+@pytest.fixture
+def reason_codes_for(db):
+    """The reason codes on an application's newest task — what the recommendation
+    is attributable to, rather than merely what tier came out."""
+    def _codes(application_id: int | None) -> list[str]:
+        if application_id is None:
+            return []
+        with db.cursor() as cur:
+            cur.execute(
+                "SELECT JSON_SERIALIZE(JSON_QUERY(agent_evidence, '$.reason_codes')) "
+                "FROM BANK_CORE.hitl_task WHERE application_id = :a "
+                "ORDER BY task_id DESC FETCH FIRST 1 ROWS ONLY",
+                a=application_id,
+            )
+            row = cur.fetchone()
+        if not row or row[0] is None:
+            return []
+        raw = row[0].read() if hasattr(row[0], "read") else row[0]
+        return json.loads(raw)
+
+    return _codes
 
 
 @pytest.fixture

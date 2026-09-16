@@ -19,7 +19,8 @@ databaseChangeLog:
   #
   # Scenarios not seeded here:
   #   - #1 (clean APPROVE) is Alice from 002.
-  #   - #5 needs sanctions_list — table not created in any prior changeset.
+  #   - #5 (sanctions match) is Marlowe from 023 — decisioning.aml carries
+  #     its own list, so the scenario needs only a customer named on it.
   #   - #10 needs fair_lending_review pre-flight — separate flow.
   #   - #11–#29 are runtime behaviours (agent / queue / UI) — no seed
   #     pre-data needed beyond what these eight provide.

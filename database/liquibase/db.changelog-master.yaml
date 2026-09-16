@@ -65,3 +65,6 @@ databaseChangeLog:
   - include:
       file: 022-review-claim.yaml
       relativeToChangelogFile: true
+  - include:
+      file: 023-seed-sanctions-persona.yaml
+      relativeToChangelogFile: true

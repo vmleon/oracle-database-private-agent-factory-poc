@@ -1,0 +1,46 @@
+databaseChangeLog:
+  # The scenario the synthetic seed left out. 010 records it as needing a
+  # sanctions_list table that "was never created" — but decisioning.aml carries
+  # its own list, so the scenario needs nothing more than a customer whose name
+  # is on it. Everything else about Marlowe is ordinary: the point is that a
+  # clean applicant is still refused, and that the customer is never told why —
+  # so the employer is a registered, active one and the credit file is healthy.
+  # A persona who would be declined anyway proves nothing about the bar.
+  - changeSet:
+      id: 023-seed-sanctions-customer
+      author: paf-poc
+      context: seed
+      changes:
+        - sql:
+            sql: |-
+              INSERT INTO BANK_CORE.customer
+                (full_name, date_of_birth, residency, email, phone, kyc_status, kyc_updated_at)
+              VALUES
+                ('Marlowe Loanshark', DATE '1979-11-03', 'RESIDENT',
+                 'marlowe@example.com', '+10000000021', 'PASSED', SYSTIMESTAMP)
+        - sql:
+            sql: |-
+              INSERT INTO BANK_CORE.customer_protected_attrs (customer_id, attrs)
+              SELECT customer_id, JSON('{"age_band":"40-49","gender":"M"}')
+                FROM BANK_CORE.customer WHERE full_name='Marlowe Loanshark'
+        - sql:
+            sql: |-
+              INSERT INTO BANK_CORE.employment
+                (customer_id, employer_name, employment_type, monthly_salary, is_current)
+              SELECT customer_id, 'Acme Tech Ltd', 'SALARIED', 6200, 'Y'
+                FROM BANK_CORE.customer WHERE full_name='Marlowe Loanshark'
+        - sql:
+            sql: |-
+              INSERT INTO BANK_CORE.credit_bureau_snapshot
+                (customer_id, snapshot_date, score, score_scale_min, score_scale_max)
+              SELECT customer_id, SYSDATE, 730, 300, 850
+                FROM BANK_CORE.customer WHERE full_name='Marlowe Loanshark'
+        - sql:
+            sql: |-
+              INSERT INTO BANK_CORE.loan_application
+                (customer_id, product_id, amount_requested, term_months, purpose,
+                 channel, status, submitted_at)
+              SELECT c.customer_id, p.product_id, 12000, 36, 'Home renovation',
+                     'CHAT', 'SUBMITTED', SYSTIMESTAMP
+                FROM BANK_CORE.customer c, BANK_CORE.product_catalog p
+               WHERE c.full_name='Marlowe Loanshark' AND p.product_type='PERSONAL_LOAN'

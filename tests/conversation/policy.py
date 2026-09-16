@@ -23,6 +23,13 @@ BANNED = (
      "a ratio name (es)"),
     (re.compile(r"(?i)\b(threshold|cap|floor|caution band|fair lending)\b|%"),
      "a policy internal"),
+    # Naming sanctions or PEP screening to the customer is tipping off, not a
+    # matter of tone. Mirrors the screening rule in Envelope's Disclosure filter.
+    (re.compile(r"(?i)\b(sanction(?:s|ed)?|watch[-\s]?list(?:ed|ing)?|watchlist"
+                r"|politically\s+exposed|pep|money\s+launder(?:ing)?"
+                r"|terrorist\s+financ(?:ing|e)|embargo"
+                r"|enhanced\s+due\s+diligence)\b"),
+     "a screening term"),
     (re.compile(r"(?i)\b(umbral|banda de precauci[oó]n|tope m[aá]ximo)\b"),
      "a policy internal (es)"),
     (re.compile(r"\b(APPROVE|REVIEW|DECLINE)\b"), "the tier name"),

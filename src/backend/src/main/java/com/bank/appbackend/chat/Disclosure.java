@@ -43,6 +43,16 @@ public final class Disclosure {
     private static final List<Rule> ALWAYS = List.of(
             new Rule(Pattern.compile("(?i)\\b(dti|pti|kyc|aml)\\b"), "an internal acronym"),
             new Rule(Pattern.compile("(?i)\\b(debt|payment)[-\\s]to[-\\s]income\\b"), "a ratio name"),
+            // Telling a customer that sanctions or PEP screening stopped them is
+            // tipping off — an offence in most jurisdictions, not a matter of tone.
+            // The reviewer's reasoning carries these words verbatim and the worker
+            // reads that packet, so this is what stands between the two.
+            new Rule(Pattern.compile(
+                    "(?i)\\b(sanction(?:s|ed)?|watch[-\\s]?list(?:ed|ing)?|watchlist"
+                            + "|politically\\s+exposed|pep|money\\s+launder(?:ing)?"
+                            + "|terrorist\\s+financ(?:ing|e)|embargo"
+                            + "|enhanced\\s+due\\s+diligence)\\b"),
+                    "a screening term"),
             new Rule(Pattern.compile("\\b[A-Z]{3,}_[A-Z_]+\\b"), "a reason code"),
             new Rule(Pattern.compile("\\b(APPROVE|REVIEW|DECLINE)\\b"), "a tier name"),
             new Rule(Pattern.compile("%|(?i)\\bper\\s?cent\\b|(?i)\\bpor\\s?ciento\\b"), "a percentage"),
