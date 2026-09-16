@@ -58,12 +58,6 @@ def test_a_decision_always_has_a_task_behind_it(talk, tasks_for):
     )
 
 
-@pytest.mark.xfail(strict=False, reason=(
-    "Measured: three turns of confirming filed three separate OPEN tasks on one "
-    "application. `create_hitl_task` has no idempotency on the application, so "
-    "a customer who repeats themselves puts the same case in front of a "
-    "reviewer once per turn."
-))
 def test_confirming_twice_files_one_task(talk, new_tasks):
     """A customer who repeats themselves does not enqueue a second reviewer."""
     alice = talk(ALICE)
@@ -124,11 +118,15 @@ def test_term_above_the_product_maximum_is_refused(liam, app_row):
 
 
 @pytest.mark.xfail(strict=False, reason=(
-    "Measured: Alice's application moved from 10000 to 45000 after her task was "
-    "filed and no new task was raised, so the reviewer's queue holds a "
-    "recommendation computed on an amount the application no longer carries. "
-    "`upsert_draft_application` writes the new figure without looking at "
-    "whether a decision is already pending on the row."
+    "`upsert_draft_application` writes a new amount without looking at whether a "
+    "decision is already pending on the row, so a task filed before the change "
+    "goes on describing the old figure. Whether the case sees it depends on when "
+    "the agent chooses to file: file first and the queue goes stale, file after "
+    "and the task happens to be correct. The assertion below is weak for the "
+    "same reason — it also passes when the amount never moved, or when the only "
+    "task was filed after it did. Closing the gap means refusing the edit while "
+    "a task is open, or superseding the task; reading the filed evidence rather "
+    "than counting rows is what would make the case say so every time."
 ))
 def test_changing_the_amount_after_a_decision_is_not_silent(talk, app_row, tasks_for):
     """A filed task describes an application. If the application moves under it,

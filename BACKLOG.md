@@ -24,8 +24,8 @@ Two of them are worth naming here because they are not about wording:
 - **Turns sometimes produce no reply at all** — about one in forty, 300 seconds of
   silence, and the message content is not the cause. Nothing durable is written, so
   a PAF timeout and a backend exception look identical afterwards.
-- **`create_hitl_task` is not idempotent**, so three confirmations file three
-  tasks, and an application can be rewritten under a task already filed.
+- **An application can be rewritten under a task already filed**, so the queue
+  can hold a recommendation computed on an amount the row no longer carries.
 
 What is left is the triage.
 

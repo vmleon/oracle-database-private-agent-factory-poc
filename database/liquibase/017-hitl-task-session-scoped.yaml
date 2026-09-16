@@ -91,6 +91,35 @@ databaseChangeLog:
                    ORDER BY application_id DESC
                    FETCH FIRST 1 ROW ONLY;
 
+                  -- One open task per application. A customer who repeats
+                  -- themselves refreshes the packet the reviewer will read
+                  -- rather than queueing the same case again, so the queue
+                  -- depth stays the number of cases waiting rather than the
+                  -- number of times someone said yes.
+                  BEGIN
+                    SELECT task_id INTO l_task_id
+                      FROM BANK_CORE.hitl_task
+                     WHERE application_id = l_application_id
+                       AND state = 'OPEN'
+                     ORDER BY task_id DESC
+                     FETCH FIRST 1 ROW ONLY;
+                  EXCEPTION WHEN NO_DATA_FOUND THEN
+                    l_task_id := NULL;
+                  END;
+
+                  IF l_task_id IS NOT NULL THEN
+                    UPDATE BANK_CORE.hitl_task
+                       SET agent_recommendation = p_recommendation,
+                           agent_reasoning      = p_reasoning,
+                           agent_explore_hints  = p_explore_hints,
+                           agent_evidence       = p_evidence,
+                           agent_run_id         = p_agent_run_id
+                     WHERE task_id = l_task_id;
+                    -- Deliberately no second enqueue: the task is already on the
+                    -- queue, and a message per call is what the duplicates were.
+                    RETURN l_task_id;
+                  END IF;
+
                   INSERT INTO BANK_CORE.hitl_task (
                     application_id,
                     agent_recommendation,

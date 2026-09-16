@@ -1,0 +1,26 @@
+databaseChangeLog:
+  # BANK_TOOLS keeps one OPEN task per application: a repeated confirmation
+  # refreshes the packet the reviewer will read instead of queueing the same
+  # case again. PKG_AGENT_TOOLS runs with definer's rights, so the UPDATE
+  # privilege belongs to BANK_TOOLS and to no caller.
+  - changeSet:
+      id: 021-grant-update-hitl-task-to-agent-tools
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              GRANT UPDATE ON BANK_CORE.hitl_task TO BANK_TOOLS
+
+  # The package body is created in 017, which runs before this grant exists, so
+  # on a deployment from scratch it compiles without UPDATE and lands INVALID.
+  # Recompiling here is what makes the first deployment produce the same state
+  # as every later one.
+  - changeSet:
+      id: 021-recompile-pkg-agent-tools
+      author: paf-poc
+      runAlways: true
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |-
+              ALTER PACKAGE BANK_TOOLS.PKG_AGENT_TOOLS COMPILE BODY
