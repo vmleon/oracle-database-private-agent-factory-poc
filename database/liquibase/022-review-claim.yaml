@@ -1,0 +1,120 @@
+databaseChangeLog:
+  # The reviewer's side of HITL_REQUEST. create_hitl_task enqueues; this is what
+  # dequeues. Claiming is one transaction: the message leaves the queue and the
+  # task moves OPEN -> IN_REVIEW together, so two reviewers cannot be handed the
+  # same case and a rolled-back claim puts the message back.
+  #
+  # Its own package rather than PKG_AGENT_TOOLS: the audience is the backoffice,
+  # and SVC_BACKEND has no business holding EXECUTE on create_hitl_task or
+  # upsert_draft_application.
+  - changeSet:
+      id: 022-grant-dequeue-hitl-request-to-agent-tools
+      author: paf-poc
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |-
+              BEGIN
+                DBMS_AQADM.GRANT_QUEUE_PRIVILEGE(
+                  privilege    => 'DEQUEUE',
+                  queue_name   => 'BANK_CORE.HITL_REQUEST',
+                  grantee      => 'BANK_TOOLS',
+                  grant_option => FALSE
+                );
+              END;
+
+  - changeSet:
+      id: 022-create-pkg-review-tools
+      author: paf-poc
+      runOnChange: true
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |-
+              CREATE OR REPLACE PACKAGE BANK_TOOLS.PKG_REVIEW_TOOLS AS
+                -- claim_next_task: take the next waiting case for this reviewer.
+                -- Dequeues one HITL_REQUEST and moves the task it names from OPEN
+                -- to IN_REVIEW in the same transaction. Returns the task_id, or
+                -- NULL when the queue holds nothing claimable.
+                FUNCTION claim_next_task(p_reviewer IN VARCHAR2) RETURN NUMBER;
+              END PKG_REVIEW_TOOLS;
+
+  - changeSet:
+      id: 022-create-pkg-review-tools-body
+      author: paf-poc
+      runOnChange: true
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |-
+              CREATE OR REPLACE PACKAGE BODY BANK_TOOLS.PKG_REVIEW_TOOLS AS
+
+                FUNCTION claim_next_task(p_reviewer IN VARCHAR2) RETURN NUMBER
+                IS
+                  l_deq_options DBMS_AQ.DEQUEUE_OPTIONS_T;
+                  l_msg_props   DBMS_AQ.MESSAGE_PROPERTIES_T;
+                  l_msgid       RAW(16);
+                  l_payload     JSON;
+                  l_task_id     NUMBER;
+                  no_messages   EXCEPTION;
+                  PRAGMA EXCEPTION_INIT(no_messages, -25228);
+                BEGIN
+                  l_deq_options.wait := DBMS_AQ.NO_WAIT;
+
+                  LOOP
+                    BEGIN
+                      DBMS_AQ.DEQUEUE(
+                        queue_name         => 'BANK_CORE.HITL_REQUEST',
+                        dequeue_options    => l_deq_options,
+                        message_properties => l_msg_props,
+                        payload            => l_payload,
+                        msgid              => l_msgid
+                      );
+                    EXCEPTION
+                      WHEN no_messages THEN
+                        RETURN NULL;
+                    END;
+
+                    l_task_id := JSON_VALUE(l_payload, '$.task_id' RETURNING NUMBER);
+
+                    -- A message can outlive the task it names: the case may have
+                    -- been closed, expired, or cleared by a demo reset. Taking the
+                    -- next one is the point of the loop — a reviewer is never
+                    -- handed a case that is not waiting, and the dead message is
+                    -- consumed rather than left at the head of the queue forever.
+                    UPDATE BANK_CORE.hitl_task
+                       SET state       = 'IN_REVIEW',
+                           assigned_to = p_reviewer
+                     WHERE task_id = l_task_id
+                       AND state   = 'OPEN';
+
+                    IF SQL%ROWCOUNT = 1 THEN
+                      RETURN l_task_id;
+                    END IF;
+                  END LOOP;
+                END claim_next_task;
+
+              END PKG_REVIEW_TOOLS;
+
+  - changeSet:
+      id: 022-grant-execute-pkg-review-tools-to-svc-backend
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              GRANT EXECUTE ON BANK_TOOLS.PKG_REVIEW_TOOLS TO SVC_BACKEND
+
+  # The body is created before the grant above exists on a deployment from
+  # scratch, so it compiles without DEQUEUE and lands INVALID. Recompiling here
+  # makes the first deployment produce the same state as every later one.
+  - changeSet:
+      id: 022-recompile-pkg-review-tools
+      author: paf-poc
+      runAlways: true
+      changes:
+        - sql:
+            splitStatements: false
+            sql: |-
+              ALTER PACKAGE BANK_TOOLS.PKG_REVIEW_TOOLS COMPILE BODY

@@ -23,18 +23,33 @@ public class HitlService {
     private static final String DEFAULT_REVIEWER = "Backoffice Reviewer";
 
     private final HitlRepository repo;
+    private final ClaimQueue claims;
 
-    public HitlService(HitlRepository repo) {
+    public HitlService(HitlRepository repo, ClaimQueue claims) {
         this.repo = repo;
+        this.claims = claims;
     }
 
-    /** OPEN tasks for the review queue. */
-    public List<HitlQueueItem> listOpen() {
-        return repo.findQueue("OPEN").stream()
+    /** The review queue: cases waiting, and cases a reviewer is holding. */
+    public List<HitlQueueItem> listQueue() {
+        return repo.findQueue().stream()
                 .map(r -> new HitlQueueItem(r.getTaskId(), r.getApplicationId(), r.getCustomerName(),
                         r.getAgentRecommendation(), r.getAmountRequested(), r.getTermMonths(),
-                        r.getCreatedAt()))
+                        r.getCreatedAt(), r.getState(), r.getAssignedTo()))
                 .toList();
+    }
+
+    /**
+     * Take the next waiting case for this reviewer. The message leaves
+     * HITL_REQUEST and the task moves OPEN → IN_REVIEW in one transaction, so two
+     * reviewers are never handed the same case and a rolled-back claim puts the
+     * message back. Returns null when nothing is waiting.
+     */
+    @Transactional
+    public HitlTaskView claimNext(String reviewer) {
+        Long taskId = claims.claimNext(reviewer == null || reviewer.isBlank()
+                ? DEFAULT_REVIEWER : reviewer);
+        return taskId == null ? null : getDetail(taskId);
     }
 
     /** Full recommendation packet for one task, including the agent tool trace. 404 if unknown. */

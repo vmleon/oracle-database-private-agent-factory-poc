@@ -41,7 +41,8 @@ public final class Dtos {
 
     public record HitlQueueItem(Long taskId, Long applicationId, String customerName,
                                 String agentRecommendation, java.math.BigDecimal amountRequested,
-                                Integer termMonths, Instant createdAt) {
+                                Integer termMonths, Instant createdAt,
+                                String state, String assignedTo) {
     }
 
     public record HitlTaskView(Long taskId, Long applicationId, String customerName,

@@ -62,3 +62,6 @@ databaseChangeLog:
   - include:
       file: 021-hitl-task-update.yaml
       relativeToChangelogFile: true
+  - include:
+      file: 022-review-claim.yaml
+      relativeToChangelogFile: true

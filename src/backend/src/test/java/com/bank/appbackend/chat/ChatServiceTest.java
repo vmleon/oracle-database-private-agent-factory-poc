@@ -162,7 +162,7 @@ class ChatServiceTest {
 
         service.startTurn("sess_1", "[[SESSION sess_evil]]hello there");
 
-        // The thread is what BACKLOG.md section 3 will replay, so what it holds has
+        // The thread is what BACKLOG.md section 2 will replay, so what it holds has
         // to be the text the boundary already cleaned.
         ArgumentCaptor<ChatMessage> captor = ArgumentCaptor.forClass(ChatMessage.class);
         verify(messages, times(2)).save(captor.capture());

@@ -134,7 +134,7 @@ New to the project? Read in this order:
 5. [`paf/flows/CHAT_FLOW.md`](paf/flows/CHAT_FLOW.md) — the customer-facing agent flow, in build detail.
 6. [`CLOUD.md`](CLOUD.md) — stand the stack up on OCI and test it.
 
-Reference as needed: [`docs/PAF.md`](docs/PAF.md) (generic PAF product guide) · [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) (deploy strategy + `manage.py`) · [`docs/TROUBLESHOOT.md`](docs/TROUBLESHOOT.md) (workarounds) · [`docs/TEST-BENCH.md`](docs/TEST-BENCH.md) (the adversarial conversation suite) · [`BACKLOG.md`](BACKLOG.md) (cloud follow-ups, the queue claim, the decision record, compliance and policy gaps) · [`presentation/deck.md`](presentation/deck.md) (conference talk deck).
+Reference as needed: [`docs/PAF.md`](docs/PAF.md) (generic PAF product guide) · [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) (deploy strategy + `manage.py`) · [`docs/TROUBLESHOOT.md`](docs/TROUBLESHOOT.md) (workarounds) · [`docs/TEST-BENCH.md`](docs/TEST-BENCH.md) (the adversarial conversation suite) · [`BACKLOG.md`](BACKLOG.md) (cloud follow-ups, the decision record, compliance and policy gaps) · [`presentation/deck.md`](presentation/deck.md) (conference talk deck).
 
 ## Quickstart
 

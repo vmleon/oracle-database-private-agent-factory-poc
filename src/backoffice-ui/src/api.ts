@@ -13,6 +13,8 @@ export interface HitlQueueItem {
   amountRequested: number | null;
   termMonths: number | null;
   createdAt: string | null;
+  state: "OPEN" | "IN_REVIEW";
+  assignedTo: string | null;
 }
 
 export interface HitlTaskView {
@@ -42,9 +44,17 @@ export interface DecisionResponse {
 }
 
 export function listHitlTasks(): Promise<HitlQueueItem[]> {
-  return fetch("/v1/hitl/tasks?state=OPEN").then((r) =>
-    json<HitlQueueItem[]>(r),
-  );
+  return fetch("/v1/hitl/tasks").then((r) => json<HitlQueueItem[]>(r));
+}
+
+/** Take the next waiting case. Resolves null when nothing is waiting. */
+export function claimNextTask(reviewer: string): Promise<HitlTaskView | null> {
+  return fetch(`/v1/hitl/claim?reviewer=${encodeURIComponent(reviewer)}`, {
+    method: "POST",
+  }).then((r) => {
+    if (r.status === 204) return null;
+    return json<HitlTaskView>(r);
+  });
 }
 
 export function getHitlTask(taskId: number): Promise<HitlTaskView> {

@@ -17,14 +17,16 @@ public interface HitlRepository extends JpaRepository<HitlTask, Long> {
                    t.agent_recommendation AS agentRecommendation,
                    la.amount_requested   AS amountRequested,
                    la.term_months        AS termMonths,
-                   t.created_at          AS createdAt
+                   t.created_at          AS createdAt,
+                   t.state               AS state,
+                   t.assigned_to         AS assignedTo
               FROM BANK_CORE.hitl_task t
               JOIN BANK_CORE.loan_application la ON la.application_id = t.application_id
               JOIN BANK_CORE.customer c          ON c.customer_id = la.customer_id
-             WHERE t.state = :state
+             WHERE t.state IN ('OPEN', 'IN_REVIEW')
              ORDER BY t.created_at
             """, nativeQuery = true)
-    List<HitlQueueRow> findQueue(@Param("state") String state);
+    List<HitlQueueRow> findQueue();
 
     @Query(value = """
             SELECT t.task_id            AS taskId,

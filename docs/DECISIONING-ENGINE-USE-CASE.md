@@ -523,7 +523,7 @@ Async, retryable, and multi-consumer work runs through **Oracle Database TxEvent
 
 | Queue          | Producer                                          | Consumer                                  | Payload (JSON)                                                                         | Notes                                                                                                                                                                                                                                                                                                                                                        |
 | -------------- | ------------------------------------------------- | ----------------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `HITL_REQUEST` | `CHAT_FLOW` (`create_hitl_task` in `BANK_TOOLS`) | Backoffice reviewer claim worker per role | `{ application_id, task_id, agent_recommendation, role_hint, priority, agent_run_id }` | Single-consumer. Dequeue commits OPEN → IN_REVIEW on `hitl_task` in the same tx. `role_hint` (correlation) lets a reviewer dequeue only tasks for their role; `agent_recommendation` lets the queue be filtered by tier. The recommendation packet itself (reasoning, explore_hints, evidence) lives on the `hitl_task` row to keep the queue payload small. |
+| `HITL_REQUEST` | `CHAT_FLOW` (`create_hitl_task` in `BANK_TOOLS`) | Backoffice reviewer claim worker per role | `{ application_id, task_id, agent_recommendation, agent_run_id }` | Single-consumer. `BANK_TOOLS.PKG_REVIEW_TOOLS.claim_next_task` dequeues and commits OPEN → IN_REVIEW on `hitl_task` in the same transaction, skipping a message whose task is no longer waiting. The recommendation packet itself (reasoning, explore_hints, evidence) lives on the `hitl_task` row to keep the queue payload small. Per-role claiming would need a `role_hint` correlation on the message; nothing sets one today, so every reviewer draws from one queue. |
 
 ### Planned queues (future scope, same pattern)
 
@@ -537,12 +537,12 @@ Async, retryable, and multi-consumer work runs through **Oracle Database TxEvent
 - Create with `dbms_aqadm.create_transactional_event_queue(queue_payload_type => 'JSON', multiple_consumers => FALSE)`; start with `dbms_aqadm.start_queue`. Wrap both calls in PL/SQL anonymous blocks that catch `ORA-24006` (queue exists) and `ORA-24010` (already started) so the changeset is idempotent.
 - Grant `EXECUTE ON DBMS_AQ` to schemas that need it; use `dbms_aqadm.grant_queue_privilege` to scope `ENQUEUE` and `DEQUEUE` per producer/consumer schema. **Avoid `aq_administrator_role`** for application schemas — it grants more than the workload needs.
 - Attach an exception queue with `dbms_aqadm.set_queue_max_retries` + `dbms_aqadm.alter_queue(retry_delay => N, max_retries => N, retention_time => N)` so poison messages have somewhere to land.
-- Set `correlation` on `msgproperties` to the `role_hint` so consumers can filter and observers can trace messages to their originating record.
+- `correlation` on `msgproperties` is where a `role_hint` would go, so consumers could filter and observers could trace messages to their originating record. Unset today: there is one reviewer role.
 - Use `dbms_aq.register` only if we later need callback-style dequeue from PL/SQL; the PoC polls from Python/Java workers via the `python-oracledb` `connection.queue()` API.
 
 ### Where the consumers live
 
-- **`HITL_REQUEST` consumer** — the **Backoffice UI's "Claim next" action** calls the Application Service, which issues a `DEQONE` with the reviewer's `role_hint` and updates `hitl_task` in the same transaction. No separate worker — claim is on-demand.
+- **`HITL_REQUEST` consumer** — the **Backoffice UI's "Claim next" action** calls `POST /v1/hitl/claim`, which dequeues one message and updates `hitl_task` in the same transaction. No separate worker — claim is on-demand.
 
 ### Why TxEventQ rather than a table queue
 

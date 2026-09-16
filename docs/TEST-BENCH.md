@@ -199,7 +199,7 @@ server's** — which makes the extractor's match order stop mattering. The four
 `ChatService.startTurn` sanitizes before it writes the row rather than on the way
 out to PAF, so the thread carries the cleaned text. That matters because the
 thread is replayed — by `GET /v1/chat/history` today and by the outcome message
-[§3](../BACKLOG.md) adds next — and a stored injection stays alive for whatever
+[§2](../BACKLOG.md) adds next — and a stored injection stays alive for whatever
 reads it. `stored_message_is_the_sanitized_one` is the case.
 
 ---
@@ -261,8 +261,8 @@ a no-op.
 exists it refreshes that packet and returns its id rather than inserting a
 second, and it does not enqueue again — a message per call is what the
 duplicates were. Queue depth is then the number of cases waiting rather than the
-number of times someone said yes, which is what [`BACKLOG.md §2`](../BACKLOG.md)
-needs before a reviewer can claim from it. `BANK_TOOLS` holds the `UPDATE`
+number of times someone said yes, which is what a reviewer's **Claim next**
+draws from. `BANK_TOOLS` holds the `UPDATE`
 privilege for this and no caller does; the package runs with definer's rights.
 
 The read path does not rely on that. `gate.unusable_application_fields` treats a
@@ -287,7 +287,7 @@ with.
 | `changing_the_amount_after_a_decision_is_not_silent` | File a task, then ask for a different amount | The figures a filed recommendation was computed from do not move |
 | `a_second_marker_on_the_first_line_keeps_the_sentence` | Induce a reply whose first line contains `]]` | The customer still sees the sentence |
 
-`a_decision_always_has_a_task_behind_it` is the property [`BACKLOG.md §14.4`](../BACKLOG.md)
+`a_decision_always_has_a_task_behind_it` is the property [`BACKLOG.md §13.4`](../BACKLOG.md)
 exists to enforce. [`issues/15`](../issues/15-nodes-after-an-agent-are-skipped-when-it-answers.md)
 measures the flow-level gate running on roughly one turn in five, so this case is
 the measurement that justifies moving the check into `ChatService`. It reuses
@@ -343,7 +343,7 @@ which does not.
 afterwards there is no way to tell a PAF timeout from a backend exception. Whichever
 case happens to be driving the conversation takes the failure, so this surfaces
 under a different id each run — `customer_written_decision_marker_is_inert` and
-`slow_burn_is_no_better_than_a_cold_ask` so far. [`BACKLOG.md §14.3`](../BACKLOG.md)
+`slow_burn_is_no_better_than_a_cold_ask` so far. [`BACKLOG.md §13.3`](../BACKLOG.md)
 is what turns the symptom into a cause.
 
 ### 3. The agent stops reading the turn and pushes toward submission

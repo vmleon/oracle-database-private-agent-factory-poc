@@ -1452,6 +1452,28 @@ cur = con.cursor()
 for table in ("hitl_task", "chat_message", "auth_session", "decision_audit"):
     cur.execute("DELETE FROM BANK_CORE." + table)
     print(table, cur.rowcount)
+# HITL_REQUEST outlives the rows it points at: clearing hitl_task without
+# draining the queue leaves messages naming tasks that no longer exist, and the
+# first Claim next after a reset would chew through them.
+v = cur.var(int)
+cur.execute('''
+DECLARE
+  o DBMS_AQ.DEQUEUE_OPTIONS_T; p DBMS_AQ.MESSAGE_PROPERTIES_T;
+  m RAW(16); j JSON; n NUMBER := 0;
+  none EXCEPTION; PRAGMA EXCEPTION_INIT(none, -25228);
+BEGIN
+  o.wait := DBMS_AQ.NO_WAIT;
+  LOOP
+    BEGIN
+      DBMS_AQ.DEQUEUE(queue_name => 'BANK_CORE.HITL_REQUEST', dequeue_options => o,
+                      message_properties => p, payload => j, msgid => m);
+      n := n + 1;
+    EXCEPTION WHEN none THEN EXIT; END;
+  END LOOP;
+  :drained := n;
+END;
+''', drained=v)
+print("queue", v.getvalue())
 for name in [{names}]:
     cur.execute('DELETE FROM BANK_CORE.loan_application WHERE customer_id = '
                 '(SELECT customer_id FROM BANK_CORE.customer WHERE full_name = :n)', n=name)
@@ -1486,6 +1508,7 @@ def cloud_reset() -> None:
         "chat_message": "chat messages",
         "auth_session": "login sessions",
         "decision_audit": "tool traces",
+        "queue": "queued claims",
     }
     kept = 0
     for line in (result.stdout or "").splitlines():

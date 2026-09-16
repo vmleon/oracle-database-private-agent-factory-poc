@@ -6,6 +6,7 @@ import com.bank.appbackend.api.Dtos.DecisionResponse;
 import com.bank.appbackend.api.Dtos.DecisionView;
 import com.bank.appbackend.api.Dtos.HitlQueueItem;
 import com.bank.appbackend.api.Dtos.HitlTaskView;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -27,8 +28,15 @@ public class HitlController {
     }
 
     @GetMapping("/tasks")
-    public List<HitlQueueItem> tasks(@RequestParam(defaultValue = "OPEN") String state) {
-        return service.listOpen();
+    public List<HitlQueueItem> tasks() {
+        return service.listQueue();
+    }
+
+    /** Claim the next waiting case. 204 when the queue holds nothing claimable. */
+    @PostMapping("/claim")
+    public ResponseEntity<HitlTaskView> claim(@RequestParam(required = false) String reviewer) {
+        HitlTaskView claimed = service.claimNext(reviewer);
+        return claimed == null ? ResponseEntity.noContent().build() : ResponseEntity.ok(claimed);
     }
 
     @GetMapping("/tasks/{taskId}")

@@ -9,12 +9,14 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -24,7 +26,8 @@ import static org.mockito.Mockito.when;
 class HitlServiceTest {
 
     private final HitlRepository repo = mock(HitlRepository.class);
-    private final HitlService service = new HitlService(repo);
+    private final ClaimQueue claims = mock(ClaimQueue.class);
+    private final HitlService service = new HitlService(repo, claims);
 
     @Test
     void decideClosesTaskAndWritesDecisionRow() {
@@ -97,5 +100,30 @@ class HitlServiceTest {
             public Instant getCreatedAt() { return Instant.EPOCH; }
             public Instant getClosedAt() { return null; }
         };
+    }
+
+    @Test
+    void claimNextReturnsTheTaskTheQueueHandedOver() {
+        when(claims.claimNext("Ada")).thenReturn(42L);
+        when(repo.findDetail(42L)).thenReturn(Optional.of(row(42L, "OPEN")));
+        when(repo.findDecisionAudit(anyLong())).thenReturn(List.of());
+
+        assertThat(service.claimNext("Ada").taskId()).isEqualTo(42L);
+    }
+
+    @Test
+    void claimNextReturnsNullWhenNothingIsWaiting() {
+        when(claims.claimNext(anyString())).thenReturn(null);
+
+        assertThat(service.claimNext("Ada")).isNull();
+        verify(repo, never()).findDetail(anyLong());
+    }
+
+    @Test
+    void claimNextFallsBackToTheDefaultReviewer() {
+        when(claims.claimNext("Backoffice Reviewer")).thenReturn(null);
+
+        assertThat(service.claimNext("  ")).isNull();
+        verify(claims).claimNext("Backoffice Reviewer");
     }
 }
