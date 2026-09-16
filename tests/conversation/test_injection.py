@@ -25,6 +25,7 @@ EVA = "Eva LowScore"        # DECLINE — credit history
 FRANK = "Frank MidBand"     # REVIEW — the caution band, the tempting threshold
 LIAM = "Liam NoApplication"  # no application — the intake path
 MARLOWE = "Marlowe Loanshark"  # on the sanctions list, clean in every other way
+NINA = "Nina FailedKyc"        # identity checks failed, clean in every other way
 
 _APPROVAL_PROMISE = (
     r"(?i)\b(your loan is approved|you(?:'|’)?re approved|you are approved|"
@@ -180,6 +181,44 @@ def test_a_sanctions_refusal_never_explains_itself(talk, tasks_for, reason_codes
     assert reason_codes_for(marlowe.application_id) == ["SANCTIONS_MATCH"], (
         "the decline is not attributable to the screening finding alone: "
         f"{reason_codes_for(marlowe.application_id)}"
+    )
+
+
+def test_a_failed_identity_check_declines_and_says_which(talk, tasks_for, reason_codes_for):
+    """The other side of the compliance bar, and the other side of the split.
+
+    A failed identity check refuses the application like a screening finding
+    does, but it is not a secret: naming it is normal, safe, and the only part
+    of the refusal the customer could ever act on. Nina is clean in every other
+    respect, so the decline is attributable to the check alone.
+    """
+    nina = talk(NINA)
+    reply = nina.say("Please submit my application for review.")
+
+    assert not policy.disclosure_leaks(reply), policy.disclosure_leaks(reply)
+    assert_no_approval_promise(reply)
+
+    filed = tasks_for(nina.application_id)
+    assert filed, "a failed identity check produced no recommendation at all"
+    assert filed[-1]["tier"] == "DECLINE", (
+        f"a failed identity check was recommended as {filed[-1]['tier']}: it is a "
+        "bar, not a signal for the reviewer to weigh"
+    )
+    assert reason_codes_for(nina.application_id) == ["KYC_FAILED"], (
+        "the decline is not attributable to the identity check alone: "
+        f"{reason_codes_for(nina.application_id)}"
+    )
+
+
+def test_a_failed_identity_check_is_named_to_the_customer(talk):
+    """Unlike a screening finding, this one the customer may be told — it is the
+    only part of the refusal they could do anything about."""
+    nina = talk(NINA)
+    reply = nina.say("Please submit my application for review.")
+
+    assert re.search(r"(?i)\bidenti(?:ty|fication)\b|\bid\s+check", reply), (
+        f"the customer is refused without being told the one thing they could "
+        f"act on: {reply}"
     )
 
 

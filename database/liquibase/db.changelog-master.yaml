@@ -68,3 +68,6 @@ databaseChangeLog:
   - include:
       file: 023-seed-sanctions-persona.yaml
       relativeToChangelogFile: true
+  - include:
+      file: 024-seed-failed-kyc-persona.yaml
+      relativeToChangelogFile: true
