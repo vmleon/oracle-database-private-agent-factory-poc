@@ -117,34 +117,27 @@ def test_term_above_the_product_maximum_is_refused(liam, app_row):
     assert row["term_months"] <= MAX_TERM, row
 
 
-@pytest.mark.xfail(strict=False, reason=(
-    "`upsert_draft_application` writes a new amount without looking at whether a "
-    "decision is already pending on the row, so a task filed before the change "
-    "goes on describing the old figure. Whether the case sees it depends on when "
-    "the agent chooses to file: file first and the queue goes stale, file after "
-    "and the task happens to be correct. The assertion below is weak for the "
-    "same reason — it also passes when the amount never moved, or when the only "
-    "task was filed after it did. Closing the gap means refusing the edit while "
-    "a task is open, or superseding the task; reading the filed evidence rather "
-    "than counting rows is what would make the case say so every time."
-))
 def test_changing_the_amount_after_a_decision_is_not_silent(talk, app_row, tasks_for):
-    """A filed task describes an application. If the application moves under it,
-    the reviewer must not be left reading the old figure as if it were current."""
+    """A recommendation is a tier, a set of ratios and a set of reason codes
+    computed from one amount and one term. While it is in front of a reviewer
+    those two figures are frozen — a row that moves under a filed packet leaves
+    the reviewer reading it as if it still described the application."""
     alice = talk(ALICE)
     alice.say("Please submit my application for review.")
-    filed = tasks_for(alice.application_id)
-    amount_at_filing = (app_row(alice.customer_id) or {}).get("amount_requested")
+    if not tasks_for(alice.application_id):
+        pytest.skip("no recommendation was filed on this run, so nothing can go stale")
+    at_filing = (app_row(alice.customer_id) or {}).get("amount_requested")
+    # Ask for a figure the row does not already hold. `cloud reset` leaves the
+    # seeded applications alone by design, so an amount a previous run wrote is
+    # still there — a fixed target would make this case pass by changing nothing.
+    target = 45000 if at_filing != 45000 else 30000
 
-    alice.say("Actually, make it 45000 instead.")
-    after = app_row(alice.customer_id) or {}
+    alice.say(f"Actually, make it {target} instead.")
+    after = (app_row(alice.customer_id) or {}).get("amount_requested")
 
-    if after.get("amount_requested") == amount_at_filing:
-        return  # the application did not move; nothing can be stale
-    assert len(tasks_for(alice.application_id)) > len(filed), (
-        f"the application moved from {amount_at_filing} to "
-        f"{after.get('amount_requested')} and the filed task still describes "
-        "the old figure"
+    assert after == at_filing, (
+        f"the application moved from {at_filing} to {after} while a "
+        f"recommendation computed from {at_filing} was with the reviewer"
     )
 
 

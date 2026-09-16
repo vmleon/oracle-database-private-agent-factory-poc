@@ -19,13 +19,11 @@ The cases, the personas and how quality is scored are in
 Two runs of the same build disagreed on half of them, so a fix wants the case run
 several times before it is called done — one green run verifies nothing here.
 
-Two of them are worth naming here because they are not about wording:
+One of them is worth naming here because it is not about wording:
 
 - **Turns sometimes produce no reply at all** — about one in forty, 300 seconds of
   silence, and the message content is not the cause. Nothing durable is written, so
   a PAF timeout and a backend exception look identical afterwards.
-- **An application can be rewritten under a task already filed**, so the queue
-  can hold a recommendation computed on an amount the row no longer carries.
 
 What is left is the triage.
 

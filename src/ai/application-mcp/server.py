@@ -103,6 +103,11 @@ def upsert_application(
         "max_term_months": ... } when the request falls outside what this
         product is sold at. Nothing is written in that case — tell the customer
         the range that came back and ask for a figure inside it.
+        { "error": "application_under_review" } when a recommendation is already
+        with a reviewer and this call would change the amount or the term.
+        Nothing is written — tell the customer their application is already with
+        the team, so the figures it was assessed on cannot change now. Changing
+        only the purpose is still allowed.
     """
     started = _now()
     result = _upsert_application_impl(session_token, amount, term_months, purpose)
@@ -158,6 +163,9 @@ def _upsert_application_impl(
         if refused:
             print(f"[upsert_application] -> {refused}", flush=True)
             return refused
+        if "application_under_review" in (getattr(err, "message", "") or ""):
+            print("[upsert_application] -> application_under_review", flush=True)
+            return {"error": "application_under_review"}
         raise
     print(f"[upsert_application] -> application_id={application_id}", flush=True)
     return {"application_id": application_id}

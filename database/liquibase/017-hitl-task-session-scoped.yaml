@@ -169,6 +169,9 @@ databaseChangeLog:
                   l_max_amount     BANK_CORE.product_catalog.max_amount%TYPE;
                   l_min_term       BANK_CORE.product_catalog.min_term_months%TYPE;
                   l_max_term       BANK_CORE.product_catalog.max_term_months%TYPE;
+                  l_pending        NUMBER;
+                  l_cur_amount     BANK_CORE.loan_application.amount_requested%TYPE;
+                  l_cur_term       BANK_CORE.loan_application.term_months%TYPE;
                 BEGIN
                   -- Fail-secure: unknown/expired token raises NO_DATA_FOUND,
                   -- which the MCP wrapper maps to invalid_or_expired_session.
@@ -218,6 +221,35 @@ databaseChangeLog:
                   EXCEPTION WHEN NO_DATA_FOUND THEN
                     l_application_id := NULL;
                   END;
+
+                  -- A recommendation is a tier, a set of ratios and a set of
+                  -- reason codes computed from one amount and one term. While it
+                  -- is in front of a reviewer those two figures are frozen: a row
+                  -- that moves under a filed packet leaves the reviewer reading
+                  -- it as if it still described the application. The purpose is
+                  -- free to change — no decision is computed from it — and a call
+                  -- that repeats the figures it already holds is a no-op, so only
+                  -- a real change is refused.
+                  IF l_application_id IS NOT NULL THEN
+                    SELECT COUNT(*) INTO l_pending
+                      FROM BANK_CORE.hitl_task
+                     WHERE application_id = l_application_id
+                       AND state IN ('OPEN','IN_REVIEW');
+
+                    IF l_pending > 0 THEN
+                      SELECT amount_requested, term_months
+                        INTO l_cur_amount, l_cur_term
+                        FROM BANK_CORE.loan_application
+                       WHERE application_id = l_application_id;
+
+                      IF (p_amount IS NOT NULL
+                          AND (l_cur_amount IS NULL OR p_amount <> l_cur_amount))
+                         OR (p_term_months IS NOT NULL
+                             AND (l_cur_term IS NULL OR p_term_months <> l_cur_term)) THEN
+                        RAISE_APPLICATION_ERROR(-20012, 'application_under_review');
+                      END IF;
+                    END IF;
+                  END IF;
 
                   IF l_application_id IS NULL THEN
                     INSERT INTO BANK_CORE.loan_application
