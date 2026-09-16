@@ -206,21 +206,42 @@ python manage.py cloud test
 Runs the end-to-end harness from the bastion, which is the only host that can
 reach both PAF and the database.
 
-Expect: the happy-path tiers pass, each leaving one `hitl_task` row.
+It clears the reviewer queue, both chat histories, the login sessions and the
+tool traces first, so every scenario starts from the seeded state.
 
-> **Not part of a deployment from scratch** — skip it and continue at §11.
+Expect 11 passed: seven tier scenarios, and four security cases covering the
+fail-secure error path, the token-to-customer binding and prompt injection.
+
+> **Optional — not part of a deployment from scratch.** Skip it and continue at
+> §11.
 >
-> To attack the conversation rather than the pipeline, the adversarial bench
-> holds whole conversations through the Spring backend. It clears the queue,
-> both chat histories and the sessions before it starts, and takes 25–45
-> minutes.
+> `cloud test` proves the pipeline computes the right tier on one scripted turn.
+> The **conversation bench** attacks the product instead: it signs in as a
+> customer and holds whole conversations through the Spring backend, so
+> `Envelope`, the disclosure filter, session resolution and `chat_message` are
+> all on the path. Forty cases across four suites — the identity boundary,
+> instruction override and disclosure, what gets written, and whether an
+> ordinary conversation is worth the customer's time.
 >
 > ```bash
-> python manage.py cloud bench
+> python manage.py cloud bench             # the whole suite, about 20 minutes
+> python manage.py cloud bench -k boundary # one suite
+> python manage.py cloud bench -k zero_term # one case
 > ```
 >
-> The cases and what each one attacks are in
-> [`docs/TEST-BENCH.md`](docs/TEST-BENCH.md).
+> It is deliberately slow and strictly serial — one conversation at a time, with
+> a pause between turns. Volume is not an attack it runs, and breaking a
+> single-instance dev deployment by throughput proves nothing.
+>
+> Expect a green run with a handful of `xfail` lines at the end. Those are
+> recorded defects, not failures: the attack still runs at full strength and the
+> assertion is untouched, so a genuine `FAILED` means something new broke. The
+> `xfail`/`XPASS` list printed at the end is the working agenda, and
+> [`docs/TEST-BENCH.md`](docs/TEST-BENCH.md) explains every case.
+>
+> It clears the same tables as `cloud test`, plus the applications its intake
+> personas created. It does not restore a seeded application an earlier run
+> edited.
 
 ## 11. `info`
 

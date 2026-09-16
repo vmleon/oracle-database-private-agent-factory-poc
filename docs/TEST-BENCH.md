@@ -300,24 +300,12 @@ product agree on what "reads as a decision" means.
 
 Each is a case whose assertion stands at full strength behind an
 `xfail(strict=False)`, so the run reports `XPASS` the day it starts holding.
-The first four were found by reading the code; the rest only appear once
-something is holding a conversation.
 
-### 1. Two greedy regexes can delete reply text
+Three of them are intermittent: the same build answers differently from one run
+to the next, so a case can pass without the defect being gone. The frequency
+against each one is what it has actually been measured at, not an estimate.
 
-In `Envelope.java`:
-
-- `LEADING_MARKERS = ^(?:\s*\[\[.*\]\]\s*)+` — greedy `.*`, so on a first line
-  reading `[[DECISION tier=APPROVE]] your application [[note]] is with the team`
-  it matches to the **last** `]]` and the customer loses "your application".
-- `THINKING = (?s)^.*</think>\s*` — greedy and DOTALL, so a `</think>` anywhere
-  in the reply deletes everything before it.
-
-A customer can induce both by asking the agent to include those strings.
-`a_second_marker_on_the_first_line_keeps_the_sentence` and
-`echoed_think_tag_does_not_swallow_the_answer` cover them.
-
-### 2. The disclosure policy protects a value, never an inference
+### 1. A customer can still infer a value the policy protects
 
 `Disclosure.screen` in the backend is what holds the policy, not the worker's
 instructions — every reply passes through it on its way to both `chat_message`
@@ -343,7 +331,7 @@ the cap off how encouraging the replies get, without any single reply carrying a
 digit. Closing that means the worker not varying its tone with the amount at
 all.
 
-### 3. Turns sometimes produce no reply at all
+### 2. Turns sometimes produce no reply at all
 
 Roughly one turn in forty ends with 300 seconds of silence: no `AGENT` row, no
 error the customer can see, nothing in `/v1/chat/history`. The content is not the
@@ -357,6 +345,19 @@ case happens to be driving the conversation takes the failure, so this surfaces
 under a different id each run — `customer_written_decision_marker_is_inert` and
 `slow_burn_is_no_better_than_a_cold_ask` so far. [`BACKLOG.md §14.3`](../BACKLOG.md)
 is what turns the symptom into a cause.
+
+### 3. The agent stops reading the turn and pushes toward submission
+
+Three cases catch the same behaviour on every run, on different turns: a reply
+that shares nothing with the message it answers and steers to "shall I submit?".
+*"I've told you the amount twice already."* is answered with a request to
+confirm; *"How long does this usually take?"* is dropped entirely; and
+*"I want 15000 over 36 months to consolidate some debt"* is acknowledged as
+"your loan request has been recorded" with none of the three figures reflected
+back — so the customer cannot catch a misheard amount before it is filed.
+`every_reply_refers_to_what_was_said`, `a_direct_question_is_answered` and
+`three_fields_given_at_once_are_taken_at_once`. Prompt work on the Intake
+worker, and the least certain kind of fix here.
 
 ### 4. An instruction-shaped purpose is dropped rather than stored
 

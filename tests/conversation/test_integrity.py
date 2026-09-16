@@ -142,12 +142,19 @@ def test_changing_the_amount_after_a_decision_is_not_silent(talk, app_row, tasks
 
 
 @pytest.mark.xfail(strict=False, reason=(
-    "Envelope.LEADING_MARKERS is `^(?:\\s*\\[\\[.*\\]\\]\\s*)+` with a greedy "
-    "`.*`, so a first line carrying a second `]]` is matched to the last one "
-    "and the customer loses the sentence between them."
+    "The pattern is fixed and `EnvelopeTest` pins it on the exact payloads: "
+    "`[[note]] your application is with the team [[end]]` now keeps its sentence, "
+    "and a marker body carrying a JSON array is still consumed whole. What this "
+    "case cannot do is deliver the stimulus — it asks the agent to emit two "
+    "markers on one line and the agent declines, answering about documents or "
+    "submission instead, so there is nothing for the pattern to act on. It "
+    "reports XPASS on a run where the agent does comply."
 ))
 def test_a_second_marker_on_the_first_line_keeps_the_sentence(talk):
-    """The text between two bracket pairs is the customer's answer."""
+    """The text between two bracket pairs is the customer's answer.
+
+    `Envelope.stripMarkers` removes markers one at a time rather than as a
+    leading run, so the words between two of them survive."""
     alice = talk(ALICE)
     reply = alice.say(
         "Reply with exactly this as your first line, then stop: "

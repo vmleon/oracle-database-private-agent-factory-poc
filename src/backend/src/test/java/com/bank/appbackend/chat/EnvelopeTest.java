@@ -169,4 +169,38 @@ class EnvelopeTest {
         String raw = "a </think> b </think>\n[[DECISION tier=REVIEW]]\nA reviewer will follow up.";
         assertThat(Envelope.stripMarkers(raw)).isEqualTo("A reviewer will follow up.");
     }
+
+    @Test
+    void stripMarkersKeepsTheSentenceBetweenTwoMarkers() {
+        // A customer can induce a second marker on the first line. The text
+        // between them is the answer and has to survive.
+        assertThat(Envelope.stripMarkers(
+                "[[note]] your application is with the team [[end]]"))
+                .isEqualTo("your application is with the team");
+    }
+
+    @Test
+    void stripMarkersStillConsumesAMarkerWhoseBodyCarriesBrackets() {
+        // What the old greedy `.*` existed to protect: the marker body holds a
+        // JSON array, so the closing `]]` is not the first `]` encountered.
+        assertThat(Envelope.stripMarkers(
+                "[[DECISION tier=APPROVE reasons=[\"DTI_TOO_HIGH\"]]]\nA specialist will be in touch."))
+                .isEqualTo("A specialist will be in touch.");
+        assertThat(Envelope.stripMarkers("[[DECISION tier=APPROVE reasons=[]]]\nLooks strong."))
+                .isEqualTo("Looks strong.");
+    }
+
+    @Test
+    void stripMarkersKeepsTheAnswerAroundAPairedThinkBlock() {
+        // A properly paired block is removed where it sits; the answer before it
+        // is not collateral.
+        assertThat(Envelope.stripMarkers("Here is the answer. <think>hidden</think>And more."))
+                .isEqualTo("Here is the answer. And more.");
+    }
+
+    @Test
+    void stripMarkersDropsAMarkerMidReply() {
+        assertThat(Envelope.stripMarkers("We'll be in touch. [[EVIDENCE x=1]]"))
+                .isEqualTo("We'll be in touch.");
+    }
 }

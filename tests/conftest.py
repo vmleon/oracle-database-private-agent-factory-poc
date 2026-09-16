@@ -221,6 +221,28 @@ def evidence_and_trace(db):
 
 
 @pytest.fixture
+def open_task(db):
+    """The OPEN task on an application, or None.
+
+    `create_hitl_task` keeps one open task per application, so a run that files
+    for a customer who already has one refreshes it rather than adding a row.
+    What a scenario asserts is that a recommendation stands on its own
+    application — not that a row was inserted this minute."""
+    def _open(application_id: int):
+        with db.cursor() as cur:
+            cur.execute(
+                "SELECT task_id, agent_recommendation FROM BANK_CORE.hitl_task "
+                "WHERE application_id = :a AND state = 'OPEN' "
+                "ORDER BY task_id DESC FETCH FIRST 1 ROWS ONLY",
+                a=application_id,
+            )
+            row = cur.fetchone()
+        return None if row is None else (int(row[0]), row[1])
+
+    return _open
+
+
+@pytest.fixture
 def new_hitl_rows(db):
     """Capture the latest task_id at fixture-creation; return a callable that
     yields rows created since. Use to assert exactly-N rows per test."""

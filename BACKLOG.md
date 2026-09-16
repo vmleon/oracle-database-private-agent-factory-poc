@@ -5,31 +5,45 @@ then the items waiting on a decision or a spike, then optional residuals.
 
 **Maintenance convention.** When an item is done and implemented successfully, **remove it from this backlog and delete the related `issues/` file(s)** — keep the repo describing the final state, not the history. If an issue is only **partially** improved (a workaround, not a real fix), **refresh that issue** so it stays accurate instead of deleting it.
 
-## 1. Triage what the conversation bench records
+## 1. Four conversation findings still open
 
 `tests/conversation/` drives the product the way a customer does — `POST
 /v1/login`, then `POST /v1/chat` and poll `GET /v1/chat/history` — so a case
-crosses the whole path and asserts the database row at the end of it. Four
-suites of 40 cases, run by `python manage.py cloud bench` in about 21 minutes.
-The cases, the personas and how quality is scored are in
-[`docs/TEST-BENCH.md`](docs/TEST-BENCH.md); the defects it records are
-[§"The defects the bench records"](docs/TEST-BENCH.md) there, each behind an
-`xfail(strict=False)` with its assertion at full strength.
+crosses the whole path and asserts the database row at the end of it. Forty cases
+across four suites, run by `python manage.py cloud bench` in about twenty
+minutes. Every case, persona and quality signal is in
+[`docs/TEST-BENCH.md`](docs/TEST-BENCH.md).
 
-Two runs of the same build disagreed on half of them, so a fix wants the case run
-several times before it is called done — one green run verifies nothing here.
+It has already paid for itself: eight of the twelve findings it produced are
+fixed, and two of those — the sentinel that beat the server's own envelope, and
+a debt-to-income ratio answered as a bare number — were reachable by a customer
+typing one sentence.
 
-One of them is worth naming here because it is not about wording:
+Four remain, each behind an `xfail(strict=False)` with its assertion at full
+strength, so the day one starts holding the run says `XPASS`:
 
-- **Turns sometimes produce no reply at all** — about one in forty, 300 seconds of
-  silence, and the message content is not the cause. Nothing durable is written, so
-  a PAF timeout and a backend exception look identical afterwards.
+- **A customer can still infer a value the policy protects.** Walking the amount
+  down across four turns reads the cap off how encouraging the replies get,
+  without a digit in any of them. `Disclosure` filters a reply; it cannot filter
+  a sequence. Closing it means the worker not varying its tone with the amount at
+  all, which costs the conversation something real.
+- **Turns sometimes produce no reply at all** — two in roughly 135, 300 seconds
+  of silence, and the message content is not the cause. `runTurn` writes nothing
+  durable, so a PAF timeout and a backend exception look identical afterwards.
+  §14.3 is what turns the symptom into a cause.
+- **The agent stops reading the turn and pushes toward submission.** Three cases
+  catch it on every run. Prompt work on the Intake worker, and the least certain
+  kind of fix here.
+- **An instruction-shaped purpose is dropped rather than stored** — on two runs
+  of three. Nothing in the product decides which happens. The half that matters
+  holds every time: the instruction is not obeyed and nothing leaks.
 
-What is left is the triage.
+Three of the four are intermittent, so a fix wants its case run several times
+before it is called done — one green run verifies nothing here.
 
 - **Decision.** Which are defects to fix and which are accepted PoC behaviour.
-  Each one fixed is an `xfail` marker removed, so the list shrinks on its own as
-  the work lands.
+  The bisection leak is the one most likely to be accepted; the turn hang is the
+  one most likely to embarrass a demo.
 
 ## 2. Let a reviewer claim from the queue
 

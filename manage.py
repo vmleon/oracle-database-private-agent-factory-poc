@@ -1293,6 +1293,16 @@ def cloud_test(pytest_args: tuple) -> None:
     ).replace("{{ tests_venv }}", "/opt/paf-poc/tests-venv/bin/python")
 
     console.print(Panel.fit("[bold]End-to-end tests (from the bastion)[/bold]"))
+    # Each scenario asserts that its run filed a recommendation. `create_hitl_task`
+    # keeps one OPEN task per application, so a task left behind by an earlier run
+    # is refreshed rather than inserted and the assertion sees nothing new. The
+    # suite has always wanted an empty queue; this is what makes that explicit.
+    reset = _ops_python(_reset_script())
+    if reset.returncode != 0:
+        console.print("[red]Could not clear the queue before the run.[/red]")
+        console.print((reset.stderr or reset.stdout or "").strip()[:400])
+        sys.exit(1)
+    console.print("[dim]Queue, chats, sessions and traces cleared.[/dim]")
     console.print(f"[dim]PAF: {_paf_base_url()}   database: {os.getenv('DB_SERVICE')} via wallet[/dim]")
     _ops_push_tests()
     result = _ops_ssh(script, stream=True)

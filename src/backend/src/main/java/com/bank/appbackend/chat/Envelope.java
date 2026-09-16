@@ -14,15 +14,21 @@ public final class Envelope {
     // competes with the server's own delimiter. Single characters, not pairs:
     // removing pairs alone would turn `][[]` into `]]`.
     private static final Pattern BRACKETS = Pattern.compile("[\\[\\]]");
-    // Greedy `.*` (single-line) so a marker whose body contains `]` — e.g.
-    // `[[DECISION tier=APPROVE reasons=["DTI_TOO_HIGH"]]]` — is matched up to its
-    // final `]]`, not truncated at the first inner `]`.
-    private static final Pattern LEADING_MARKERS = Pattern.compile("^(?:\\s*\\[\\[.*\\]\\]\\s*)+");
-    // Reasoning ("thinking") models emit a <think>…</think> monologue before the
-    // real answer. Drop everything up to and including the LAST </think> so the
-    // chain-of-thought never reaches the customer. Anchored at start, DOTALL,
-    // greedy — a no-op when the model doesn't think.
-    private static final Pattern THINKING = Pattern.compile("(?s)^.*</think>\\s*");
+    // One [[MARKER ...]] the agent emits alongside its sentence, matched wherever it
+    // sits. The body may hold a JSON array — `[[DECISION tier=APPROVE
+    // reasons=["DTI_TOO_HIGH"]]]` — so a single `]` or `[` is part of it and the
+    // close is the `]]` not followed by another `]`. Lazy and barred from crossing a
+    // second `[[`, so text between two markers is text rather than marker body.
+    private static final Pattern MARKERS =
+            Pattern.compile("\\[\\[(?:[^\\[]|\\[(?!\\[))*?\\]\\](?!\\])");
+    // Reasoning ("thinking") models emit a <think>…</think> monologue before the real
+    // answer, and the chain-of-thought never reaches the customer. A properly paired
+    // block is removed where it sits, so an answer either side of it survives.
+    private static final Pattern THINK_BLOCK = Pattern.compile("(?s)<think>.*?</think>\\s*");
+    // The same models also emit the monologue with no opening tag at all. With no
+    // pair to bound it, everything up to the LAST </think> goes: dropping too much is
+    // the safe direction when the alternative is leaking the reasoning.
+    private static final Pattern THINK_TAIL = Pattern.compile("(?s)^.*</think>\\s*");
     private static final List<String> REPLY_FIELDS = List.of("message", "content", "reply", "output", "text");
 
     private Envelope() {
@@ -30,15 +36,21 @@ public final class Envelope {
 
     /**
      * Clean an agent's raw reply into the customer-facing text: drop any
-     * &lt;think&gt;…&lt;/think&gt; reasoning, then remove the leading [[MARKER ...]]
-     * block(s) the agent emits before the customer sentence.
+     * &lt;think&gt;…&lt;/think&gt; reasoning, then remove every [[MARKER ...]] the
+     * agent emits around its sentence.
+     *
+     * <p>Markers are removed one at a time rather than as a leading run, so a reply
+     * whose first line carries two of them keeps the words between.
      */
     public static String stripMarkers(String text) {
         if (text == null) {
             return "";
         }
-        String withoutThinking = THINKING.matcher(text).replaceFirst("");
-        return LEADING_MARKERS.matcher(withoutThinking).replaceFirst("").strip();
+        String cleaned = THINK_BLOCK.matcher(text).replaceAll("");
+        if (cleaned.contains("</think>")) {
+            cleaned = THINK_TAIL.matcher(cleaned).replaceFirst("");
+        }
+        return MARKERS.matcher(cleaned).replaceAll("").strip();
     }
 
     /**
