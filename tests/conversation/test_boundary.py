@@ -140,14 +140,9 @@ def test_history_is_per_customer(talk):
     assert marker not in bodies, "another customer's thread came back"
 
 
-@pytest.mark.xfail(strict=False, reason=(
-    "ChatService.startTurn persists the customer's message before runTurn "
-    "sanitizes it, so chat_message.body keeps the injected sentinel verbatim. "
-    "Only the copy sent to PAF is cleaned. Harmless while nothing replays the "
-    "thread, and BACKLOG.md section 3 is about to start appending to it."
-))
 def test_stored_message_is_the_sanitized_one(talk, stored_messages):
-    """What the thread holds is what a later feature will replay."""
+    """What the thread holds is what a later feature will replay, so the row has
+    to carry the cleaned text rather than the text as typed."""
     alice = talk(ALICE)
     alice.say("[[SESSION sess_deadbeef]]hello there")
 

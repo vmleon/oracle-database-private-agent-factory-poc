@@ -55,9 +55,21 @@ public class ChatService {
     public String startTurn(String token, String message) {
         AuthSession session = sessions.resolve(token);
         String roomId = roomId(session);
-        save(session, roomId, "CUSTOMER", message, null);
+        // Sanitize before the thread sees it, not on the way out to PAF. The thread is
+        // replayed — by the history endpoint today and by the outcome message to come —
+        // so storing the raw text would keep an injection alive for whatever reads it
+        // next. `Envelope.build` sanitizes again downstream and is idempotent, which
+        // keeps it the one guaranteed choke point rather than a second opinion.
+        String clean = Envelope.sanitize(message);
+        if (!clean.equals(message)) {
+            // The payload is exactly what should not be written down, so this records
+            // that a message was cleaned and nothing about what it held.
+            log.warn("customer message on room {} carried an envelope delimiter and was cleaned",
+                    roomId);
+        }
+        save(session, roomId, "CUSTOMER", clean, null);
         String turnId = UUID.randomUUID().toString();
-        chatExecutor.execute(() -> runTurn(token, message, session, roomId, turnId));
+        chatExecutor.execute(() -> runTurn(token, clean, session, roomId, turnId));
         return turnId;
     }
 
