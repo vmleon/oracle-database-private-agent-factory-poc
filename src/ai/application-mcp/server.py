@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from datetime import datetime, timezone
 
 import httpx
@@ -95,8 +96,13 @@ def upsert_application(
     Returns
     -------
     dict
-        { "application_id": int } on success, or
+        { "application_id": int } on success.
         { "error": "invalid_or_expired_session" } for a bad/expired token.
+        { "error": "amount_out_of_range", "min_amount": ..., "max_amount": ... }
+        or { "error": "term_out_of_range", "min_term_months": ...,
+        "max_term_months": ... } when the request falls outside what this
+        product is sold at. Nothing is written in that case — tell the customer
+        the range that came back and ask for a figure inside it.
     """
     started = _now()
     result = _upsert_application_impl(session_token, amount, term_months, purpose)
@@ -105,6 +111,25 @@ def upsert_application(
            {"amount": amount, "term_months": term_months, "purpose": purpose},
            result, session_token=session_token)
     return result
+
+
+# PKG_AGENT_TOOLS refuses an amount or term the product is not sold at, and packs
+# the bounds into the error so the agent can name them instead of guessing.
+_OUT_OF_RANGE = re.compile(r"(amount|term)_out_of_range:(-?[\d.]+):(-?[\d.]+)")
+_RANGE_KEYS = {
+    "amount": ("min_amount", "max_amount", float),
+    "term": ("min_term_months", "max_term_months", int),
+}
+
+
+def _out_of_range(err) -> dict | None:
+    """The refusal as a structured result, or None when this was another error."""
+    found = _OUT_OF_RANGE.search(getattr(err, "message", "") or "")
+    if not found:
+        return None
+    kind, low, high = found.group(1), found.group(2), found.group(3)
+    low_key, high_key, cast = _RANGE_KEYS[kind]
+    return {"error": f"{kind}_out_of_range", low_key: cast(low), high_key: cast(high)}
 
 
 def _upsert_application_impl(
@@ -129,6 +154,10 @@ def _upsert_application_impl(
         if getattr(err, "code", None) == 1403:
             print("[upsert_application] -> invalid_or_expired_session", flush=True)
             return {"error": "invalid_or_expired_session"}
+        refused = _out_of_range(err)
+        if refused:
+            print(f"[upsert_application] -> {refused}", flush=True)
+            return refused
         raise
     print(f"[upsert_application] -> application_id={application_id}", flush=True)
     return {"application_id": application_id}

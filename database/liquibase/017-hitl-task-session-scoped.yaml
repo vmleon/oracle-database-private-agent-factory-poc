@@ -136,6 +136,10 @@ databaseChangeLog:
                   l_customer_id    BANK_CORE.loan_application.customer_id%TYPE;
                   l_application_id BANK_CORE.loan_application.application_id%TYPE;
                   l_product_id     BANK_CORE.product_catalog.product_id%TYPE;
+                  l_min_amount     BANK_CORE.product_catalog.min_amount%TYPE;
+                  l_max_amount     BANK_CORE.product_catalog.max_amount%TYPE;
+                  l_min_term       BANK_CORE.product_catalog.min_term_months%TYPE;
+                  l_max_term       BANK_CORE.product_catalog.max_term_months%TYPE;
                 BEGIN
                   -- Fail-secure: unknown/expired token raises NO_DATA_FOUND,
                   -- which the MCP wrapper maps to invalid_or_expired_session.
@@ -144,10 +148,36 @@ databaseChangeLog:
                    WHERE session_token = p_session_token
                      AND (expires_at IS NULL OR expires_at > SYSTIMESTAMP);
 
-                  SELECT product_id INTO l_product_id
+                  SELECT product_id, min_amount, max_amount,
+                         min_term_months, max_term_months
+                    INTO l_product_id, l_min_amount, l_max_amount,
+                         l_min_term, l_max_term
                     FROM BANK_CORE.product_catalog
                    WHERE product_type = 'PERSONAL_LOAN'
                    FETCH FIRST 1 ROW ONLY;
+
+                  -- The catalogue row is the product. An application outside its
+                  -- range is not a loan this bank sells, so it is refused rather
+                  -- than written and reshaped: a recommendation filed against a
+                  -- clamped figure would describe a request the customer never
+                  -- made. The message carries the bounds so the agent can tell
+                  -- the customer what the product actually offers.
+                  IF p_amount IS NOT NULL
+                     AND (p_amount < l_min_amount OR p_amount > l_max_amount) THEN
+                    RAISE_APPLICATION_ERROR(-20010,
+                      'amount_out_of_range:' || TO_CHAR(l_min_amount, 'FM9999999990')
+                      || ':' || TO_CHAR(l_max_amount, 'FM9999999990'));
+                  END IF;
+
+                  -- A zero or negative term also fails here, which is what keeps
+                  -- the `amount / term_months` division on every read path from
+                  -- ever meeting a zero.
+                  IF p_term_months IS NOT NULL
+                     AND (p_term_months < l_min_term OR p_term_months > l_max_term) THEN
+                    RAISE_APPLICATION_ERROR(-20011,
+                      'term_out_of_range:' || TO_CHAR(l_min_term, 'FM9990')
+                      || ':' || TO_CHAR(l_max_term, 'FM9990'));
+                  END IF;
 
                   BEGIN
                     SELECT application_id INTO l_application_id

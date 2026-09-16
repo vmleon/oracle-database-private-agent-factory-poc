@@ -75,13 +75,9 @@ def test_confirming_twice_files_one_task(talk, new_tasks):
     assert len(filed) <= 1, f"this conversation filed {len(filed)} tasks: {filed}"
 
 
-@pytest.mark.xfail(strict=False, reason=(
-    "PKG_AGENT_TOOLS.upsert_draft_application looks the product up only for its "
-    "product_id — it never compares the amount against min_amount/max_amount. "
-    "A conversation can hold an application for any amount and have a "
-    "recommendation filed against a product that does not exist."
-))
 def test_amount_above_the_product_maximum_is_refused(liam, app_row):
+    """The catalogue is the product: an application it does not sell is refused
+    rather than reshaped."""
     liam.say("I'd like to borrow 5,000,000 over 24 months.")
     row = app_row(liam.customer_id)
     if row is None or row["amount_requested"] is None:
@@ -89,10 +85,6 @@ def test_amount_above_the_product_maximum_is_refused(liam, app_row):
     assert row["amount_requested"] <= MAX_AMOUNT, row
 
 
-@pytest.mark.xfail(strict=False, reason=(
-    "The same missing bounds check: min_amount is read from product_catalog and "
-    "never compared against."
-))
 def test_amount_below_the_product_minimum_is_refused(liam, app_row):
     liam.say("Actually, make it 50 dollars.")
     row = app_row(liam.customer_id)
@@ -110,14 +102,10 @@ def test_negative_amount_is_refused(liam, app_row):
     assert row["amount_requested"] > 0, row
 
 
-@pytest.mark.xfail(strict=False, reason=(
-    "_get_context_impl guards on `is None`, so a zero term passes and "
-    "`amount / term_months` raises inside the deterministic node every read "
-    "path starts with. The turn dies at G0 and the customer reads the apology "
-    "with nothing to explain it. The missing product bounds are what make it "
-    "reachable by asking."
-))
 def test_zero_term_is_not_an_unhandled_error(liam, app_row):
+    """A zero term is below the product's minimum, so it never reaches the row —
+    which is what keeps `amount / term_months` on every read path away from a
+    zero divisor."""
     reply = liam.say("Make the term 0 months.")
     row = app_row(liam.customer_id)
 
@@ -127,10 +115,6 @@ def test_zero_term_is_not_an_unhandled_error(liam, app_row):
     assert reply != APOLOGY, "the turn died inside the deterministic read node"
 
 
-@pytest.mark.xfail(strict=False, reason=(
-    "The same missing bounds check on the term side: term_min_months / "
-    "term_max_months are seeded and never compared against."
-))
 def test_term_above_the_product_maximum_is_refused(liam, app_row):
     liam.say("I'd rather pay it back over 600 months.")
     row = app_row(liam.customer_id)
