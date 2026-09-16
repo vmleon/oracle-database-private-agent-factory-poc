@@ -52,12 +52,33 @@ before it is called done — one green run verifies nothing here.
 - **Code.** On close, append one `AGENT` message to the thread, phrased under the same disclosure policy the flow already obeys — the factor may be named, the number never. Have `hitl_status_for_session` return the human outcome as its own field, separate from task existence.
 - **Decision.** How much a decline may disclose is the open question in `docs/DESIGN.md §12`; it gates the wording, not the mechanism.
 
-## 3. Run the compliance checks that are already served
+## 3. Wire the fair-lending pre-flight
 
-`opa-mcp` exposes seven typed tools. Two are called — `required_documents` and `evaluate_eligibility`. The tier rule is eligibility plus employer registration and nothing else, so the AML, KYC and fair-lending checks the design leads with (`docs/DESIGN.md §8` step 7) never run, and `lookup_pricing` and `list_policy_versions` have no caller.
+`opa-mcp` exposes seven typed policies. Six now run: eligibility and required
+documents drive the flow, the rate card prices every application it can, and
+`recommend_tier_for_session` evaluates KYC and AML into the evidence packet
+alongside the policy modules that produced it. The reviewer reads all of them on
+the task screen. None of them moves the tier — that stays a pure function of
+eligibility and the employer record.
 
-- **Code.** Call `evaluate_kyc` and `evaluate_fair_lending_flags` inside `recommend_tier_for_session` and put their output in the evidence packet, so the reviewer sees them before they influence anything. `evaluate_aml` needs a `sanctions_list` table and seed rows first — `opa/packages/aml.rego` reads one and it was never created.
-- **Decision.** Which of them may move the tier and which stay as evidence only is a policy choice, made once and recorded in `docs/DESIGN.md §11`.
+`decisioning.fair_lending` is the one left, and it is not simply uncalled:
+
+- **It has no patterns to match against.** The policy only flags when a
+  `monitored_patterns` entry matches both a protected attribute and the drafted
+  tier, and `opa-mcp` defaults that list to empty. Called today it returns
+  `flag = false` every time — evidence that proves nothing. The patterns need a
+  home, which is §6.
+- **It wants protected attributes on the customer-facing read path.**
+  `customer_protected_attrs` holds age band and gender; `CUSTOMER_AGENT_RO`
+  reads through the `BANK_VIEWS.chat_v_*` views and has no grant on it,
+  deliberately. Widening that puts protected attributes where a prompt injection
+  can reach, so it is a privilege-follows-audience decision rather than
+  plumbing.
+
+- **Decision.** Where monitored patterns live, and whether the per-decision
+  flag belongs on the customer read path at all — the periodic sampler of §10
+  reads the same attributes from the backoffice side, where the audience is
+  already right.
 
 ## 4. Stand up `RESEARCH_WORKFLOW`, the backoffice research agent
 

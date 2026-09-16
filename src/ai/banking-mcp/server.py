@@ -446,6 +446,72 @@ def _pricing_impl(ctx: dict) -> dict | None:
         return None
 
 
+def _compliance_impl(package: str, opa_input: dict) -> dict | None:
+    """One decisioning package, evaluated on a context the caller already has.
+
+    These are evidence, not gates: `tier_from` is a pure function of eligibility
+    and the employer record and stays that way. A reviewer sees a KYC or
+    sanctions finding before it influences anything, which is the order a human
+    decision wants. Returns None when OPA cannot be reached — the tier must not
+    depend on the policy server being up.
+    """
+    try:
+        resp = httpx.post(f"{_OPA_URL}/v1/data/decisioning/{package}",
+                          json={"input": opa_input}, timeout=5.0)
+        resp.raise_for_status()
+        result = resp.json().get("result") or {}
+    except Exception as exc:  # noqa: BLE001 — compliance evidence is informational
+        print(f"[recommend_tier_for_session] {package} unavailable: {exc}", flush=True)
+        return None
+    return {
+        "allow": bool(result.get("allow")),
+        "deny": sorted(result.get("deny") or []),
+        "warn": sorted(result.get("warn") or []),
+    }
+
+
+def _kyc_impl(ctx: dict) -> dict | None:
+    """KYC status and ID expiry. `documents` is empty until an upload path
+    exists, so the expiry rule stands ready rather than firing."""
+    customer = ctx.get("customer") or {}
+    if not customer.get("kyc_status"):
+        return None
+    return _compliance_impl("kyc", {
+        "customer": {"kyc_status": customer["kyc_status"]},
+        "documents": [],
+        "today": _now_utc().date().isoformat(),
+    })
+
+
+def _aml_impl(ctx: dict) -> dict | None:
+    """Sanctions and watch-list screening on the customer's name.
+
+    `aml.rego` carries its own synthetic list, so this needs no table. The PEP
+    and suspicious-outflow rules read inputs the schema does not hold yet; a
+    missing input is undefined in Rego, so they stay silent rather than firing
+    on a guess."""
+    customer = ctx.get("customer") or {}
+    if not customer.get("name"):
+        return None
+    return _compliance_impl("aml", {"customer": {"full_name": customer["name"]}})
+
+
+def _policy_versions_impl() -> list[dict] | None:
+    """Which policy modules decided this. Stamped into the packet so the
+    decision record says what it was evaluated against, not just what came out."""
+    try:
+        resp = httpx.get(f"{_OPA_URL}/v1/policies", timeout=5.0)
+        resp.raise_for_status()
+        return sorted(
+            ({"id": e.get("id"), "raw_bytes": len(e.get("raw", "") or "")}
+             for e in resp.json().get("result", [])),
+            key=lambda e: e["id"] or "",
+        )
+    except Exception as exc:  # noqa: BLE001 — provenance is informational
+        print(f"[recommend_tier_for_session] policy versions unavailable: {exc}", flush=True)
+        return None
+
+
 def _documents_impl(session_token: str) -> dict:
     """Deterministic document set: token in -> the required doc_type list out.
 
@@ -624,6 +690,11 @@ def recommend_tier_for_session(session_token: str) -> dict:
             # decision record reads them from when the reviewer closes the task.
             "derived": ctx.get("derived"),
             "pricing": _pricing_impl(ctx),
+            # Compliance evidence. Served by OPA all along and never asked for:
+            # the reviewer reads these next to the tier, and neither moves it.
+            "kyc": _kyc_impl(ctx),
+            "aml": _aml_impl(ctx),
+            "policy_versions": _policy_versions_impl(),
         },
     }
     _audit("recommend_tier_for_session", "SUCCESS", started, _now_utc(), {}, out,

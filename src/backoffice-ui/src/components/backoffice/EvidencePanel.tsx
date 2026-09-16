@@ -13,6 +13,15 @@ interface Evidence {
     registered_address?: string;
     last_filed_year?: number;
   };
+  /** Compliance packages, evaluated as evidence — none of them moves the tier. */
+  kyc?: ComplianceResult;
+  aml?: ComplianceResult;
+}
+
+interface ComplianceResult {
+  allow?: boolean;
+  deny?: string[];
+  warn?: string[];
 }
 
 type Tone = "good" | "warn" | "bad" | "neutral";
@@ -112,7 +121,7 @@ export function EvidencePanel({ raw }: { raw: string | null }) {
     );
   }
 
-  const { employer, documents, reason_codes } = e;
+  const { employer, documents, reason_codes, kyc, aml } = e;
 
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -161,6 +170,46 @@ export function EvidencePanel({ raw }: { raw: string | null }) {
           <p className="text-sm text-ink-mute">None.</p>
         )}
       </Card>
+
+      <Compliance title="KYC" result={kyc} />
+      <Compliance title="Sanctions and AML" result={aml} />
     </div>
+  );
+}
+
+/** A compliance package's findings. Read before the decision, and never part of
+ *  it — the tier is eligibility plus the employer record and nothing else. */
+function Compliance({ title, result }: { title: string; result?: ComplianceResult }) {
+  if (!result) {
+    return (
+      <Card title={title}>
+        <p className="text-sm text-ink-mute">Not checked on this run.</p>
+      </Card>
+    );
+  }
+
+  const deny = result.deny ?? [];
+  const warn = result.warn ?? [];
+  const tone: Tone = deny.length ? "bad" : warn.length ? "warn" : "good";
+
+  return (
+    <Card title={title}>
+      <div className="mb-2">
+        <Badge tone={tone}>
+          {deny.length ? "Finding" : warn.length ? "Needs a look" : "Clear"}
+        </Badge>
+      </div>
+      {deny.length === 0 && warn.length === 0 ? (
+        <p className="text-sm text-ink-mute">Nothing raised.</p>
+      ) : (
+        <ul className="space-y-1">
+          {[...deny, ...warn].map((m) => (
+            <li key={m} className="text-sm leading-relaxed text-paper">
+              {m}
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
   );
 }
