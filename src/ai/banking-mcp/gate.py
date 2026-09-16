@@ -47,6 +47,17 @@ CUSTOMER_FACTORS = {
     "AGE_OUT_OF_RANGE": "your eligibility for this product",
     "EMPLOYER_UNVERIFIED": "your employer's registration",
     "EMPLOYER_DORMANT": "your employer's trading status",
+    # Identity checks are a normal thing to name, and actionable for the customer.
+    "KYC_FAILED": "the identity checks on your application",
+    "KYC_PENDING": "the identity checks on your application",
+    "ID_EXPIRED": "the identity checks on your application",
+    # Screening findings are not. Telling someone that sanctions or politically
+    # exposed person screening stopped them is tipping off — an offence in most
+    # jurisdictions, not a disclosure-policy preference. They fall back to the
+    # generic phrase, and the finding itself reaches the reviewer's packet only.
+    "SANCTIONS_MATCH": "your application details",
+    "PEP_REVIEW": "your application details",
+    "AML_PATTERN": "your application details",
     "POLICY_OTHER": "your application details",
 }
 
@@ -134,11 +145,24 @@ def gate_decision(
         return {"gate": GATE_OK, "stage": "COLLECTING", "task_id": None}
     return {"gate": GATE_OK, "stage": "AWAITING_DECISION", "task_id": None}
 
-def tier_from(eligibility: dict, employer: dict) -> tuple[str, list[str]]:
+def tier_from(eligibility: dict, employer: dict,
+              kyc: dict | None = None, aml: dict | None = None) -> tuple[str, list[str]]:
     """The recommendation tier and its reason codes — a pure function of the
-    server-computed eligibility and employer records. No model decides this."""
+    server-computed eligibility, employer and compliance records. No model
+    decides this.
+
+    KYC and AML are hard bars rather than signals to weigh: a sanctions match or
+    a failed identity check is a legal prohibition, so recommending APPROVE
+    beside one would misinform the human who decides. Their warnings —
+    a pending check, a politically exposed person — are what a reviewer should
+    look at, so they read as REVIEW.
+    """
     deny = eligibility.get("deny") or []
     warn = eligibility.get("warn") or []
+    kyc_deny = (kyc or {}).get("deny") or []
+    kyc_warn = (kyc or {}).get("warn") or []
+    aml_deny = (aml or {}).get("deny") or []
+    aml_warn = (aml or {}).get("warn") or []
     registered = employer.get("registered")
     status = (employer.get("trading_status") or "").lower()
     codes: list[str] = []
@@ -150,11 +174,31 @@ def tier_from(eligibility: dict, employer: dict) -> tuple[str, list[str]]:
         codes.append("EMPLOYER_UNVERIFIED")
     elif status == "dormant":
         codes.append("EMPLOYER_DORMANT")
-    if deny or registered is False:
+    for message in (*kyc_deny, *kyc_warn, *aml_deny, *aml_warn):
+        codes.append(compliance_code(message))
+    if deny or registered is False or kyc_deny or aml_deny:
         return "DECLINE", codes
-    if warn or status == "dormant":
+    if warn or status == "dormant" or kyc_warn or aml_warn:
         return "REVIEW", codes
     return "APPROVE", codes
+
+
+def compliance_code(message: str) -> str:
+    """Map a KYC or AML message to a stable reason code for the reviewer."""
+    text = (message or "").lower()
+    if "sanctions" in text or "watch-list" in text:
+        return "SANCTIONS_MATCH"
+    if "politically exposed" in text:
+        return "PEP_REVIEW"
+    if "suspicious pattern" in text:
+        return "AML_PATTERN"
+    if "kyc status is failed" in text:
+        return "KYC_FAILED"
+    if "kyc status is pending" in text:
+        return "KYC_PENDING"
+    if "expired" in text:
+        return "ID_EXPIRED"
+    return "POLICY_OTHER"
 
 
 def reason_code(message: str) -> str:

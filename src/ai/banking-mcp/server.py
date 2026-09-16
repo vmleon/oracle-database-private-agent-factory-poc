@@ -629,10 +629,13 @@ def verify_employer_for_session(session_token: str) -> dict:
 def recommend_tier_for_session(session_token: str) -> dict:
     """Deterministic recommendation: token in -> the decision packet out.
 
-    Computes eligibility, the employer record and the required documents from
-    the values the token resolves to, then applies the tier rule:
-      DECLINE if eligibility.deny is non-empty OR employer.registered is false
-      REVIEW  if eligibility.warn is non-empty OR trading_status is "dormant"
+    Computes eligibility, the employer record, the required documents and the
+    KYC and AML findings from the values the token resolves to, then applies the
+    tier rule:
+      DECLINE if eligibility.deny OR employer.registered is false
+              OR a KYC or AML deny — those are legal bars, not signals to weigh
+      REVIEW  if eligibility.warn OR trading_status is "dormant"
+              OR a KYC or AML warn
       APPROVE otherwise
 
     No model chooses the tier, re-words the evidence or files a value in the
@@ -659,7 +662,9 @@ def recommend_tier_for_session(session_token: str) -> dict:
     eligibility = _eligibility_impl(session_token)
     employer = _employer_impl(session_token)
     documents = (_documents_impl(session_token) or {}).get("required") or []
-    tier, codes = tier_from(eligibility, employer)
+    kyc = _kyc_impl(ctx)
+    aml = _aml_impl(ctx)
+    tier, codes = tier_from(eligibility, employer, kyc, aml)
 
     deny = eligibility.get("deny") or []
     warn = eligibility.get("warn") or []
@@ -672,8 +677,13 @@ def recommend_tier_for_session(session_token: str) -> dict:
         parts.append("employer not on the company registry")
     elif (employer.get("trading_status") or "").lower() == "dormant":
         parts.append("employer trading status dormant")
+    for message in ((kyc or {}).get("deny") or []) + ((aml or {}).get("deny") or []):
+        parts.append("compliance bar: " + message)
+    for message in ((kyc or {}).get("warn") or []) + ((aml or {}).get("warn") or []):
+        parts.append("compliance warn: " + message)
     if not parts:
-        parts.append("no deny or warn messages; employer registered and active")
+        parts.append("no deny or warn messages; employer registered and active; "
+                     "identity and screening checks clear")
     reasoning = "; ".join(parts) + "."
 
     out = {
@@ -692,8 +702,8 @@ def recommend_tier_for_session(session_token: str) -> dict:
             "pricing": _pricing_impl(ctx),
             # Compliance evidence. Served by OPA all along and never asked for:
             # the reviewer reads these next to the tier, and neither moves it.
-            "kyc": _kyc_impl(ctx),
-            "aml": _aml_impl(ctx),
+            "kyc": kyc,
+            "aml": aml,
             "policy_versions": _policy_versions_impl(),
         },
     }

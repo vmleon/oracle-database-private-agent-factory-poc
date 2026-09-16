@@ -21,6 +21,7 @@ from gate import (  # noqa: E402
     gate_decision,
     reason_code,
     tier_from,
+    compliance_code,
 )
 
 COMPLETE = {
@@ -224,3 +225,77 @@ def test_a_zero_purpose_is_not_a_number_and_stays_usable():
     # Only the fields a read path divides by are range-checked; a purpose is text.
     assert unusable_application_fields(
         {"amount_requested": 10000, "term_months": 24, "purpose": "0"}) == []
+
+
+# KYC and AML are hard bars, not signals to weigh: recommending APPROVE beside a
+# sanctions match would misinform the human who decides.
+
+CLEAN_ELIGIBILITY = {"deny": [], "warn": []}
+ACTIVE_EMPLOYER = {"registered": True, "trading_status": "active"}
+
+
+def test_a_sanctions_match_declines():
+    tier, codes = tier_from(
+        CLEAN_ELIGIBILITY, ACTIVE_EMPLOYER,
+        aml={"deny": ["Sanctions / watch-list match: PABLO ESCOBAR"], "warn": []})
+    assert tier == "DECLINE"
+    assert codes == ["SANCTIONS_MATCH"]
+
+
+def test_a_failed_identity_check_declines():
+    tier, codes = tier_from(CLEAN_ELIGIBILITY, ACTIVE_EMPLOYER,
+                            kyc={"deny": ["KYC status is FAILED"], "warn": []})
+    assert tier == "DECLINE"
+    assert codes == ["KYC_FAILED"]
+
+
+def test_a_pending_check_asks_for_review():
+    tier, codes = tier_from(
+        CLEAN_ELIGIBILITY, ACTIVE_EMPLOYER,
+        kyc={"deny": [], "warn": ["KYC status is PENDING — reviewer should verify"]})
+    assert tier == "REVIEW"
+    assert codes == ["KYC_PENDING"]
+
+
+def test_a_politically_exposed_person_asks_for_review():
+    tier, codes = tier_from(
+        CLEAN_ELIGIBILITY, ACTIVE_EMPLOYER,
+        aml={"deny": [], "warn": ["Politically Exposed Person — enhanced due diligence required"]})
+    assert tier == "REVIEW"
+    assert codes == ["PEP_REVIEW"]
+
+
+def test_clear_compliance_leaves_the_tier_alone():
+    clear = {"allow": True, "deny": [], "warn": []}
+    assert tier_from(CLEAN_ELIGIBILITY, ACTIVE_EMPLOYER, clear, clear) == ("APPROVE", [])
+
+
+def test_absent_compliance_leaves_the_tier_alone():
+    # OPA unreachable: the tier must not depend on the policy server being up.
+    assert tier_from(CLEAN_ELIGIBILITY, ACTIVE_EMPLOYER, None, None) == ("APPROVE", [])
+
+
+def test_screening_never_names_itself_to_the_customer():
+    # Telling someone screening stopped them is tipping off. The factor phrase
+    # for a screening code is the same generic one POLICY_OTHER uses.
+    assert factors_for(["SANCTIONS_MATCH"]) == ["your application details"]
+    assert factors_for(["PEP_REVIEW"]) == ["your application details"]
+    assert factors_for(["AML_PATTERN"]) == ["your application details"]
+
+
+def test_identity_checks_may_be_named():
+    assert factors_for(["KYC_PENDING"]) == ["the identity checks on your application"]
+    assert factors_for(["KYC_FAILED"]) == ["the identity checks on your application"]
+
+
+@pytest.mark.parametrize("message,code", [
+    ("Sanctions / watch-list match: PABLO ESCOBAR", "SANCTIONS_MATCH"),
+    ("Politically Exposed Person — enhanced due diligence required", "PEP_REVIEW"),
+    ("Suspicious pattern: 7 large round outflows in last 30 days", "AML_PATTERN"),
+    ("KYC status is FAILED", "KYC_FAILED"),
+    ("KYC status is PENDING — reviewer should verify before approval", "KYC_PENDING"),
+    ("ID document expired on 2020-01-01", "ID_EXPIRED"),
+    ("something nobody mapped", "POLICY_OTHER"),
+])
+def test_compliance_messages_map_to_stable_codes(message, code):
+    assert compliance_code(message) == code

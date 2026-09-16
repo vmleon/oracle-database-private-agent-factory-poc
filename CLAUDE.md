@@ -48,7 +48,7 @@ Customer → React SPA → Spring `ChatService` → PAF integration endpoint →
 
 `CHAT_FLOW` is **one manager agent with two sub-agent workers**, fed by five deterministic `banking-mcp` nodes. The manager holds no tools. Four nodes run _before_ it (`get_context`, `evaluate_eligibility_for_session`, `required_documents_for_session`, `verify_employer_for_session`) so every fact is computed server-side with no LLM in the loop; a fifth (`hitl_status_for_session`) runs after. The manager delegates to `Intake` (collects amount/term/purpose) or `Recommendation` (files the task).
 
-**The tier is not chosen by a model.** `banking-mcp/gate.py:tier_from()` is a pure function of the OPA eligibility result and the employer record. The worker reads the tier back and writes the customer's sentence within a disclosure policy — it may name a _factor_, never a number. See `paf/flows/CHAT_FLOW.md` for the full blueprint and the exact custom-instruction blocks.
+**The tier is not chosen by a model.** `banking-mcp/gate.py:tier_from()` is a pure function of the OPA eligibility result, the employer record and the KYC and AML findings — a compliance `deny` is a bar that forces `DECLINE`. The worker reads the tier back and writes the customer's sentence within a disclosure policy — it may name a _factor_, never a number. See `paf/flows/CHAT_FLOW.md` for the full blueprint and the exact custom-instruction blocks.
 
 ### Where to look
 

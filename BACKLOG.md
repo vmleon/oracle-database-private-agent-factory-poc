@@ -58,8 +58,8 @@ before it is called done — one green run verifies nothing here.
 documents drive the flow, the rate card prices every application it can, and
 `recommend_tier_for_session` evaluates KYC and AML into the evidence packet
 alongside the policy modules that produced it. The reviewer reads all of them on
-the task screen. None of them moves the tier — that stays a pure function of
-eligibility and the employer record.
+the task screen, and a compliance `deny` forces `DECLINE` — a sanctions match or
+a failed identity check is a legal bar rather than a signal to weigh.
 
 `decisioning.fair_lending` is the one left, and it is not simply uncalled:
 
