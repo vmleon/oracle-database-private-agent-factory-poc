@@ -15,6 +15,7 @@ from gate import (  # noqa: E402
     GATE_FAIL,
     GATE_OK,
     announces_a_decision,
+    unusable_application_fields,
     documents_payload,
     factors_for,
     gate_decision,
@@ -187,3 +188,39 @@ def test_missing_keys_default_to_approve():
 ])
 def test_reason_code(message, code):
     assert reason_code(message) == code
+
+
+# A field that is present but nonsensical is as good as absent: `amount /
+# term_months` runs inside the deterministic node every read path starts with.
+
+def test_a_complete_application_has_nothing_unusable():
+    assert unusable_application_fields(
+        {"amount_requested": 10000, "term_months": 24, "purpose": "Home"}) == []
+
+
+@pytest.mark.parametrize("term", [0, -6, 0.0])
+def test_a_non_positive_term_is_unusable(term):
+    assert unusable_application_fields(
+        {"amount_requested": 10000, "term_months": term, "purpose": "Home"}) \
+        == ["term_months"]
+
+
+@pytest.mark.parametrize("amount", [0, -5000])
+def test_a_non_positive_amount_is_unusable(amount):
+    assert unusable_application_fields(
+        {"amount_requested": amount, "term_months": 24, "purpose": "Home"}) \
+        == ["amount_requested"]
+
+
+def test_absent_fields_are_still_reported():
+    assert unusable_application_fields(
+        {"amount_requested": 10000, "term_months": None, "purpose": None}) \
+        == ["term_months", "purpose"]
+    assert unusable_application_fields(None) == \
+        ["amount_requested", "term_months", "purpose"]
+
+
+def test_a_zero_purpose_is_not_a_number_and_stays_usable():
+    # Only the fields a read path divides by are range-checked; a purpose is text.
+    assert unusable_application_fields(
+        {"amount_requested": 10000, "term_months": 24, "purpose": "0"}) == []

@@ -41,7 +41,8 @@ import httpx
 import oracledb
 from fastmcp import FastMCP
 
-from gate import documents_payload, factors_for, gate_decision, tier_from
+from gate import (documents_payload, factors_for, gate_decision, tier_from,
+                  unusable_application_fields)
 
 
 def _now_utc() -> datetime:
@@ -167,7 +168,6 @@ _OPEN_APPLICATION_SQL = """
 """
 
 _KYC_STALE_DAYS = 180
-_REQUIRED_APPLICATION_FIELDS = ("amount_requested", "term_months", "purpose")
 
 
 @mcp.tool()
@@ -231,6 +231,14 @@ def lookup_application(session_token: str) -> dict:
             column_names = [d[0].lower() for d in cur.description]
             result = dict(zip(column_names, app_row))
 
+            unusable = unusable_application_fields(result)
+            if unusable:
+                # Fail closed rather than divide: the caller gets a named reason
+                # instead of the turn dying inside the node with nothing to
+                # explain it.
+                print(f"[lookup_application] -> application_incomplete {unusable}", flush=True)
+                return {"error": "application_incomplete", "missing": unusable}
+
             monthly_salary = float(result["monthly_salary"])
             amount_requested = float(result["amount_requested"])
             term_months = int(result["term_months"])
@@ -284,7 +292,7 @@ def _get_context_impl(session_token: str) -> dict:
             derived = None
             if app_row is not None:
                 a = dict(zip([d[0].lower() for d in cur.description], app_row))
-                missing = [f for f in _REQUIRED_APPLICATION_FIELDS if a.get(f) is None]
+                missing = unusable_application_fields(a)
                 application = {
                     "id": int(a["application_id"]),
                     "status": a["status"],

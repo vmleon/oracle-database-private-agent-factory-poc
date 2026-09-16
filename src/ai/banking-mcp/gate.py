@@ -12,6 +12,12 @@ from typing import Any
 GATE_OK = "GATE_OK"
 GATE_FAIL = "GATE_FAIL"
 
+# What an application needs before anything can be derived from it.
+REQUIRED_APPLICATION_FIELDS = ("amount_requested", "term_months", "purpose")
+# Of those, the ones a read path divides by or multiplies out. Zero and negative
+# are as unusable as absent — `amount / term_months` runs on every read path.
+_POSITIVE_APPLICATION_FIELDS = ("amount_requested", "term_months")
+
 # The Recommendation worker writes its own sentence, so a decision turn is
 # recognised by the language a decision uses, not by one fixed string. The
 # worker also prefixes `[[DECISION tier=...]]`, which the backend strips before
@@ -51,6 +57,26 @@ def announces_a_decision(reply: str) -> bool:
     if DECISION_MARKER.search(text):
         return True
     return any(pattern.search(text) for pattern in DECISION_PATTERNS)
+
+
+def unusable_application_fields(application: dict[str, Any] | None) -> list[str]:
+    """The fields a read path cannot work with.
+
+    A field that is present but nonsensical is as good as absent: the
+    application is not ready to derive a payment from, and the agent should
+    collect the value again rather than the read path dividing by it. Guarding
+    on `is None` alone is what let a term of zero reach `amount / term_months`
+    inside the deterministic node every read path starts with.
+    """
+    row = application or {}
+    unusable: list[str] = []
+    for field in REQUIRED_APPLICATION_FIELDS:
+        value = row.get(field)
+        if value is None:
+            unusable.append(field)
+        elif field in _POSITIVE_APPLICATION_FIELDS and float(value) <= 0:
+            unusable.append(field)
+    return unusable
 
 
 def factors_for(codes: list[str] | None) -> list[str]:

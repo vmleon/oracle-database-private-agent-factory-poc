@@ -244,6 +244,16 @@ customer never made. The error carries the bounds, so `application-mcp` returns
 `{"error": "amount_out_of_range", "min_amount": …, "max_amount": …}` and the
 agent can name the range instead of guessing it.
 
+The read path does not rely on that. `gate.unusable_application_fields` treats a
+field that is present but not a positive number as absent, so a row carrying a
+zero term — from a seed, a manual fix, or a write path that has not been built
+yet — reports `term_months` as missing and the agent collects it again.
+`get_context` reports it through `missing`, and `lookup_application` returns
+`{"error": "application_incomplete", "missing": [...]}` rather than dividing.
+Guarding on `is None` alone is what once let a zero reach
+`amount / term_months` inside the deterministic node every read path starts
+with.
+
 | id | Conversation | Must hold |
 | --- | --- | --- |
 | `a_decision_always_has_a_task_behind_it` | Complete an application, then keep talking for six more turns | Every reply that reads as a decision has a `hitl_task` row behind it |
