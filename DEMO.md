@@ -1,6 +1,7 @@
 # Demo
 
-Prepared per [`CLOUD.md §12`](CLOUD.md#12-prepare-the-demo). Addresses:
+Prepared per [`CLOUD.md §12`](CLOUD.md#12-prepare-the-demo). One command
+before opening a browser, every line green:
 
 ```bash
 python manage.py info
@@ -8,123 +9,139 @@ python manage.py info
 
 **Customer** `https://<lb_ip>/` · **Reviewer** `https://<lb_ip>/backoffice` · self-signed, accept once.
 
-The queue is already busy: one case per scenario persona, two decisions in the
-history. Three customers are fresh, no application, no task. A turn takes
-20–60 s. Read the reply out loud: the model wrote the sentence, the database
-computed the decision, and no number ever reaches the customer.
+The reviewer queue is already busy. Three customers are fresh: no application,
+no task. Each holds a different conversation, the agent collects the
+application, files it, and the row appears in the queue. A turn takes 20–60 s.
 
-| | Customer | Lands as | Why |
-| --- | --- | --- | --- |
-| 1 | **Diana Marsh** | DECLINE | credit score below the floor |
-| 2 | **Tom Whitfield** | REVIEW | employer dormant in the registry, you decide |
-| 3 | **Grace Okafor** | APPROVE | clean file |
+Say it out loud once: the model writes every sentence, the database computes
+every decision, and no number ever reaches the customer.
 
-Same three lines for each, one per turn:
+---
 
-```
-Hi, I'd like to apply for a personal loan.
-```
+## 1. Diana Marsh → DECLINE
+
+**Customer tab** → log in as **Diana Marsh**. One line per turn, answer what it
+asks:
 
 ```
-12000 over 36 months, for a home renovation.
+Hi, I'm looking to borrow some money for a home renovation.
+```
+
+```
+Around 12000.
+```
+
+```
+36 months would suit me.
+```
+
+```
+Actually, could we make it 48 months instead?
+```
+
+```
+The home renovation I mentioned.
+```
+
+```
+Yes, please go ahead and submit it.
+```
+
+Reads: cannot go ahead as it stands, a specialist will be in touch, credit
+history named. No score, no floor.
+
+**Reviewer tab** → **Diana Marsh**, red, `SCORE_BELOW_FLOOR`. Decline.
+
+---
+
+## 2. Tom Whitfield → REVIEW
+
+**Customer tab** → log out → log in as **Tom Whitfield**:
+
+```
+Hello. I'd like a personal loan of 15000 over 48 months to buy a car.
+```
+
+```
+Before you submit, change the purpose to a used car, please.
+```
+
+```
+Yes, submit it.
+```
+
+Reads: a reviewer is taking a closer look at the employer. The registry record
+behind it is not named.
+
+**Reviewer tab** → **Tom Whitfield**, amber, `EMPLOYER_DORMANT`, the registry
+record dormant since 2021. Your call.
+
+---
+
+## 3. Grace Okafor → APPROVE
+
+**Customer tab** → log out → log in as **Grace Okafor**:
+
+```
+Hi! What do you need from me to apply for a loan?
+```
+
+```
+10000.
+```
+
+```
+24 months.
+```
+
+```
+I want to consolidate two credit cards.
 ```
 
 ```
 Yes, please submit it.
 ```
 
-If the third line is answered with a question about the amount, paste the
-second line again, then the third. Rehearsed: the second pass files it.
-
----
-
-## 1. Diana Marsh → DECLINE
-
-**Customer tab** → log in as **Diana Marsh** → the three lines.
-Reads: cannot go ahead as it stands, a specialist will be in touch, credit
-history named. No score, no floor.
-
-**Reviewer tab** → new row **Diana Marsh**, red → open.
-Recommendation, reasoning, `SCORE_BELOW_FLOOR`, employer record, required
-documents, **Tools called**.
-**Decline** (preselected) → comment → **Submit decision**.
-
----
-
-## 2. Tom Whitfield → REVIEW, your call
-
-**Customer tab** → log out → log in as **Tom Whitfield** → the three lines.
-Reads: a reviewer is taking a closer look, employer named. The registry record
-behind it is not.
-
-**Reviewer tab** → new row **Tom Whitfield**, amber → open.
-`EMPLOYER_DORMANT`, the registry record: dormant, last filed 2021.
-**Approve** or **Decline** → comment → **Submit decision**. The human decides.
-
----
-
-## 3. Grace Okafor → APPROVE
-
-**Customer tab** → log out → log in as **Grace Okafor** → the three lines.
 Reads: looks good, with the team for final checks.
 
-**Reviewer tab** → new row **Grace Okafor**, green → open.
-No deny, no warn, employer active. **Approve** (preselected) → comment →
-**Submit decision**.
+**Reviewer tab** → **Grace Okafor**, green, no deny, no warn. Approve.
 
-**Customer tab** → log out → log in as **Grace Okafor** again.
-Last message on her thread: the reviewer's outcome. Fixed text, same
-disclosure policy.
+**Customer tab** → log out → log in as **Grace Okafor** again. Last message on
+her thread: the reviewer's outcome.
 
 ---
 
-## Short on time: the backfill
+## If it wanders
 
-**Reviewer tab**, queue as it stands. Rows worth opening:
-
-- **Marlowe Loanshark**, red: `SANCTIONS_MATCH` and the matched entry. The
-  customer was told nothing. Tipping off is an offence.
-- **Nina FailedKyc**, red: `KYC_FAILED`. The customer was told, because it is
-  the one thing they can act on.
-- **Sam RoundNumbers**, amber: `AML_PATTERN`, six large round transfers out in
-  thirty days.
-- **Kyle DormantEmployer**, amber. **Eva LowScore**, red. **Mia Salaried**,
-  green.
-
-**Decisions**: Alice Salaried approved, David HighDti declined, each an
-immutable row.
-
----
-
-## Optional: the blockchain
-
-An update is rejected:
-
-```bash
-python manage.py cloud sql "UPDATE BANK_CORE.decision SET human_outcome='DECLINE' WHERE decision_id = (SELECT MAX(decision_id) FROM BANK_CORE.decision)"
-```
-
-So is a delete:
-
-```bash
-python manage.py cloud sql "DELETE FROM BANK_CORE.decision WHERE decision_id = (SELECT MAX(decision_id) FROM BANK_CORE.decision)"
-```
-
-Both: `ORA-05715: operation not allowed on the blockchain or immutable table`.
-Then the chain:
-
-```bash
-python manage.py cloud sql "DECLARE v NUMBER; BEGIN DBMS_BLOCKCHAIN_TABLE.VERIFY_ROWS(schema_name => 'BANK_CORE', table_name => 'DECISION', number_of_rows_verified => v, verify_signature => FALSE); DBMS_OUTPUT.PUT_LINE('rows cryptographically verified: ' || v); END;"
-```
-
----
-
-## If a turn fails
-
-_"We couldn't get a response"_ → send the same line again. Thread intact.
+- Asks for the amount again after the submit line: paste the amount line
+  again, then the submit line. Rehearsed; the second pass files it.
+- _"We couldn't get a response"_: send the same line again.
 
 > **Only if the bubble stays pending with no error** — reload the tab, then
 > send the line again.
 
-Not built, so not in the demo: the research agent, policy citations,
-similar-case lookup.
+---
+
+## Reference: who lands where
+
+| Customer | Tier | Why |
+| --- | --- | --- |
+| **Diana Marsh** | DECLINE | credit score below the floor |
+| **Tom Whitfield** | REVIEW | employer dormant in the registry |
+| **Grace Okafor** | APPROVE | clean file |
+| Alice Salaried, Mia Salaried | APPROVE | clean file |
+| Frank MidBand | REVIEW | credit score in the caution band |
+| Kyle DormantEmployer | REVIEW | employer dormant in the registry |
+| David HighDti | DECLINE | debt-to-income above the cap |
+| Eva LowScore | DECLINE | credit score below the floor |
+| Jane UnknownEmployer | DECLINE | employer not in the registry |
+| Iris UnusableDocs | DECLINE | document quality unusable |
+| Nina FailedKyc | DECLINE | identity checks failed, the check is named to her |
+| Marlowe Loanshark | DECLINE | on the sanctions list, nothing is named to him |
+| Omar PendingKyc | REVIEW | identity checks pending, the check is named |
+| Paula Statesman | REVIEW | politically exposed person, nothing is named |
+| Sam RoundNumbers | REVIEW | six large round transfers out in thirty days |
+
+The first three are the live demo. The rest are the backfill: one open case
+each in the queue, and Alice and David also in the decision history, approved
+and declined.

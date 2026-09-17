@@ -968,9 +968,21 @@ def _agent_readiness() -> list[tuple[bool, str, str]]:
     return checks
 
 
+_DB_PING = """
+import json, oracledb
+p = json.load(open("/home/opc/ansible_params.json"))
+con = oracledb.connect(user="ADMIN", password=p["adb_admin_password"], dsn=p["adb_service"],
+                       config_dir="/opt/paf-poc/wallet", wallet_location="/opt/paf-poc/wallet",
+                       wallet_password=p["wallet_password"])
+con.cursor().execute("SELECT 1 FROM dual")
+print("answering")
+"""
+
+
 @cli.command("info")
 def info() -> None:
-    """Print URLs, connection strings, and whether every tier has finished building."""
+    """Print URLs, connection strings, whether every tier has finished building,
+    whether the database answers, and how far the agent is wired."""
     _ensure_env()
     lb_ip = _tf_output("lb_ip")
     if not lb_ip:
@@ -1005,12 +1017,21 @@ def info() -> None:
         console.print(f"  [{colour}]{mark}[/{colour}] [cyan]{tier:<9}[/cyan] {note}")
 
     if all(colour == "green" for colour, _ in states.values()):
+        # One round trip as ADMIN over the bastion: the wallet, the private
+        # endpoint and the credentials the bootstrap wrote, all in one answer.
+        db = _ops_python(_DB_PING)
+        db_ok = db.returncode == 0 and "answering" in (db.stdout or "")
+        console.print("\n[bold]Database[/bold]")
+        console.print(f"  [{'green' if db_ok else 'red'}]{'\u2713' if db_ok else '\u00b7'}"
+                      f"[/{'green' if db_ok else 'red'}] [cyan]{'ADB':<18}[/cyan] "
+                      + ("answering as ADMIN over the bastion" if db_ok
+                         else "not answering — the wallet or the credentials on the bastion"))
         console.print("\n[bold]Agent[/bold]")
         checks = _agent_readiness()
         for ok, label, note in checks:
             mark, colour = ("\u2713", "green") if ok else ("\u00b7", "yellow")
             console.print(f"  [{colour}]{mark}[/{colour}] [cyan]{label:<18}[/cyan] {note}")
-        if all(ok for ok, _, _ in checks):
+        if db_ok and all(ok for ok, _, _ in checks):
             console.print("\n[green]The stack is ready.[/green] Next: "
                           "[cyan]python manage.py cloud test[/cyan]")
         else:

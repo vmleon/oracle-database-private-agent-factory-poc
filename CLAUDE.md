@@ -95,6 +95,8 @@ The entire grant matrix is `database/liquibase/020-client-grants.yaml`. Keep it 
 
 **A payload change reaches a running tier through `cloud redeploy`, not `cloud up`.** `/var/lib/paf-poc/bootstrap.ok` makes later boots a no-op, and Terraform keys payload objects by name, so `cloud up` uploads a new archive and changes nothing on the instance — the plan reads like a success. `cloud redeploy <tier>` clears the sentinel and re-runs that tier's play against the uploaded payload. Terraform variables are rendered into cloud-init at instance creation, so changing one still needs a rebuild.
 
+**The backend keeps its integration key across `cloud redeploy backend`; a rebuilt instance does not.** The play creates the key file only when it is absent, so a redeploy leaves it alone, while a new instance starts with an empty one and every chat turn fails on TLS until `paf push-key` delivers the key and PAF's certificate again. `info` reports which state the backend is in under Agent, so check it after either.
+
 ## Docs style
 
 The repo describes the **final state**, as if the current version is the only one that ever existed. No "previously", "no longer", "was X", no status markers, no dead-end retellings. When something is removed, delete its traces rather than annotating that it is gone. Iteration history and PAF war stories go in `issues/`, never in the docs.

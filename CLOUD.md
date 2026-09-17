@@ -270,8 +270,9 @@ python manage.py info
 ```
 
 Expect the load balancer address and the paths `/`, `/backoffice`, `/v1` and
-`/agentFactory`, all over HTTPS, followed by the readiness of all four tiers.
-The certificate is self-signed, so a browser warns once.
+`/agentFactory`, all over HTTPS, then the readiness of all four tiers, the
+database answering over the bastion, and every agent line green. The
+certificate is self-signed, so a browser warns once.
 
 ## 12. Prepare the demo
 
