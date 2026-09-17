@@ -31,6 +31,11 @@ public class ChatService {
             "Sorry — we couldn't process your application right now. Please try again in a moment.";
     private static final int MAX_PAF_ATTEMPTS = 3; // 1 try + 2 retries
 
+    // What the customer reads when the worker announced a decision but left no sentence
+    // outside the marker. The task row is what makes it true, and it names nothing.
+    static final String DECISION_FILED =
+            "Thank you. Your application is with our team for review, and we'll be in touch.";
+
     private final SessionService sessions;
     private final ChatMessageRepository messages;
     private final PafClient paf;
@@ -95,9 +100,16 @@ public class ChatService {
             // the turns where the agent answers and calls a tool in one step (issues/15), so
             // the guard on the delivery path lives here, where every reply passes.
             String reply = result.reply();
-            if (result.announcesDecision() && tasks.countByCustomerId(session.getCustomerId()) == 0) {
-                log.warn("turn {} announced a decision with no hitl_task behind it", turnId);
-                reply = PAF_APOLOGY;
+            if (result.announcesDecision()) {
+                if (tasks.countByCustomerId(session.getCustomerId()) == 0) {
+                    log.warn("turn {} announced a decision with no hitl_task behind it", turnId);
+                    reply = PAF_APOLOGY;
+                } else if (reply.isBlank()) {
+                    // The worker sometimes writes its sentence inside the marker, which the
+                    // strip then removes with it; an empty bubble is the wrong thing to show.
+                    log.warn("turn {} announced a decision with no sentence outside the marker", turnId);
+                    reply = DECISION_FILED;
+                }
             }
             String shown = Disclosure.screen(message, reply);
             if (!shown.equals(reply)) {

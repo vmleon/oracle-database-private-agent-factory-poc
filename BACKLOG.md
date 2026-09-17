@@ -14,31 +14,21 @@ Forty-three cases across four suites, run by `python manage.py cloud bench` in
 twenty to twenty-five minutes. Every case, persona and quality signal is in
 [`docs/TEST-BENCH.md`](docs/TEST-BENCH.md).
 
-It has already paid for itself: eight of the twelve findings it produced are
+It has already paid for itself: nine of the twelve findings it produced are
 fixed, and two of those — the sentinel that beat the server's own envelope, and
 a debt-to-income ratio answered as a bare number — were reachable by a customer
 typing one sentence. Asking it to cover the compliance work then turned up a
-ninth: screening vocabulary was not on the disclosure filter's banned list, so
+tenth: screening vocabulary was not on the disclosure filter's banned list, so
 nothing but a prompt stood between a sanctions finding and the customer.
 
-Four remain. Three sit behind an `xfail(strict=False)` with the assertion at
-full strength, so the day one starts holding the run says `XPASS`; the fourth is
-left red on purpose:
+Three remain, each behind an `xfail(strict=False)` with the assertion at full
+strength, so the day one starts holding the run says `XPASS`:
 
 - **A customer can still infer a value the policy protects.** Walking the amount
   down across four turns reads the cap off how encouraging the replies get,
   without a digit in any of them. `Disclosure` filters a reply; it cannot filter
   a sequence. Closing it means the worker not varying its tone with the amount at
   all, which costs the conversation something real.
-- **Turns sometimes produce no reply at all** — four across four runs, roughly
-  one turn in fifty, 300 seconds of silence with nothing durable written. The
-  backend's read timeout on the PAF call sits under that ceiling, so its log
-  names the cause of every lost turn: a read timeout is PAF taking too long,
-  anything else is the backend's own. It looked content-independent until the
-  *same* plain greeting from the *same* persona hung on two separate runs, which
-  is more than chance deserves. These cases are deliberately not `xfail`: a lost
-  turn should turn the bench red. §13.3 is what turns a cause into a fix, and
-  this is the finding most likely to embarrass a demo.
 - **The agent stops reading the turn and pushes toward submission.** Three cases
   watch for it and at least two catch it on every run. Prompt work on the Intake
   worker, and the least certain kind of fix here.
@@ -46,8 +36,8 @@ left red on purpose:
   runs of four. Nothing in the product decides which happens. The half that
   matters holds every time: the instruction is not obeyed and nothing leaks.
 
-Three of the four are intermittent, so a fix wants its case run several times
-before it is called done — one green run verifies nothing here.
+All three are intermittent, so a fix wants its case run several times before
+it is called done — one green run verifies nothing here.
 
 - **Decision.** Which are defects to fix and which are accepted PoC behaviour.
   The bisection leak is the one most likely to be accepted.

@@ -222,4 +222,20 @@ class ChatServiceTest {
 
         verify(tasks, never()).countByCustomerId(any());
     }
+
+    @Test
+    void runTurnReplacesADecisionWhoseSentenceWasSwallowedByTheMarker() {
+        when(sessions.resolve("sess_1")).thenReturn(session());
+        // The worker wrote its sentence inside the marker, so nothing is left once
+        // the marker is stripped; the task row says the truth is "it is filed".
+        when(paf.run(anyString())).thenReturn(new PafClient.Result("", "paf-room-1", true));
+        when(tasks.countByCustomerId(1L)).thenReturn(1L);
+
+        String turnId = service.startTurn("sess_1", "yes, submit it");
+
+        ArgumentCaptor<ChatMessage> captor = ArgumentCaptor.forClass(ChatMessage.class);
+        verify(messages, times(2)).save(captor.capture());
+        assertThat(captor.getAllValues().get(1).getBody()).isEqualTo(ChatService.DECISION_FILED);
+        verify(events).pushAgent(eq("sess_1"), eq(turnId), eq(ChatService.DECISION_FILED), eq("paf-room-1"));
+    }
 }

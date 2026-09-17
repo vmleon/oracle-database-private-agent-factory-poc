@@ -172,7 +172,7 @@ What works today on OCI — `manage.py cloud test` passes 11/11 against the depl
 
 What's next, in order — the detail lives in [`BACKLOG.md`](BACKLOG.md):
 
-1. **Close the four open conversation findings.** The adversarial bench holds three behind `xfail` and leaves the lost turn red on purpose. [`BACKLOG.md §1`](BACKLOG.md) · [`docs/TEST-BENCH.md`](docs/TEST-BENCH.md).
+1. **Close the three open conversation findings.** The adversarial bench holds them behind `xfail` with the assertions at full strength. [`BACKLOG.md §1`](BACKLOG.md) · [`docs/TEST-BENCH.md`](docs/TEST-BENCH.md).
 2. **Report the human outcome as its own field.** The customer's thread carries the reviewer's outcome; the status tool still reports `DECIDED` on a filed recommendation, and there is no progress message. [`BACKLOG.md §2`](BACKLOG.md).
 3. **Wire the fair-lending pre-flight** — typed, live and uncalled, with no patterns to match against. [`BACKLOG.md §3`](BACKLOG.md).
 4. **Stand up `RESEARCH_WORKFLOW`**, the backoffice research agent. Its read-only view set and database identity exist; the flow, the `/research/*` surface and the reviewer's research panel do not. [`BACKLOG.md §4`](BACKLOG.md).

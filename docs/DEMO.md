@@ -81,16 +81,12 @@ demo answers a question from the agent, answer one field at a time.
    the task in the backoffice to show the reviewer sees `SANCTIONS_MATCH` and
    the customer does not: naming it would be tipping off.
 
-## If a turn hangs
+## If a turn fails
 
-About one turn in fifty produces no reply. The pending bubble lives in the
-browser only, so:
+The customer tab shows "We couldn't get a response" when PAF took more than four
+minutes or answered in a shape the backend could not read. The thread is intact.
 
-1. Reload the customer tab. The bubble is gone and the thread is intact.
-2. Send the same message again.
+1. Send the same message again.
 
-The backend gives up on the hung call after four minutes and logs the cause; a
-retry does not wait for it.
-
-> **Only if the second attempt hangs too** — switch personas. The chat executor
-> has two threads and a hung turn holds one until the timeout.
+> **Only if the bubble stays pending with no error** — reload the tab, which
+> clears the pending bubble, and send the message again.

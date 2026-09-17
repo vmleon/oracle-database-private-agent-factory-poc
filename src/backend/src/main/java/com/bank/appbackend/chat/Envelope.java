@@ -57,6 +57,20 @@ public final class Envelope {
         return MARKERS.matcher(cleaned).replaceAll("").strip();
     }
 
+    private static String textOfActions(JsonNode actions) {
+        String submitted = null;
+        for (JsonNode action : actions) {
+            JsonNode parameters = action.path("parameters");
+            if ("talk_to_user".equals(action.path("name").asText()) && parameters.path("text").isTextual()) {
+                return parameters.get("text").asText();
+            }
+            if ("submit_result".equals(action.path("name").asText()) && parameters.path("tool_output").isTextual()) {
+                submitted = parameters.get("tool_output").asText();
+            }
+        }
+        return submitted;
+    }
+
     /** True when the raw reply carries the {@code [[DECISION ...]]} marker. */
     public static boolean announcesDecision(String rawReply) {
         return rawReply != null && DECISION.matcher(rawReply).find();
@@ -98,7 +112,15 @@ public final class Envelope {
         return stripMarkers(extractRawReply(root));
     }
 
-    /** The agent's reply as PAF returned it, markers and all. */
+    /**
+     * The agent's reply as PAF returned it, markers and all.
+     *
+     * <p>The reply field is normally a string. When the manager answers the customer
+     * directly, PAF sometimes delivers its action plan instead —
+     * {@code {"thought": …, "actions": [{"name": "talk_to_user", "parameters": {"text": …}}, …]}}
+     * — with the sentence inside the {@code talk_to_user} action, or failing that the
+     * {@code submit_result} one. Both are read here so that shape is a reply, not a 502.
+     */
     public static String extractRawReply(JsonNode root) {
         JsonNode data = root.has("data") ? root.get("data") : root;
         if (data.isTextual()) {
@@ -107,6 +129,14 @@ public final class Envelope {
         for (String field : REPLY_FIELDS) {
             if (data.hasNonNull(field) && data.get(field).isTextual()) {
                 return data.get(field).asText();
+            }
+        }
+        for (String field : REPLY_FIELDS) {
+            if (data.hasNonNull(field) && data.get(field).isObject()) {
+                String text = textOfActions(data.get(field).path("actions"));
+                if (text != null) {
+                    return text;
+                }
             }
         }
         throw new IllegalStateException(

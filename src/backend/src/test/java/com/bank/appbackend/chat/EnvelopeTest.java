@@ -211,4 +211,28 @@ class EnvelopeTest {
         assertThat(Envelope.announcesDecision("[[UPSERT ok]] How much?")).isFalse();
         assertThat(Envelope.announcesDecision(null)).isFalse();
     }
+
+    @Test
+    void extractReplyReadsTheSentenceOutOfAnActionObject() throws Exception {
+        // The manager's direct answer, delivered as its action plan rather than as text.
+        var root = mapper.readTree("{\"roomId\":\"r1\",\"message\":{\"thought\":\"no stage applies\","
+                + "\"actions\":[{\"name\":\"talk_to_user\",\"parameters\":{\"text\":\"Shall I go ahead?\"}},"
+                + "{\"name\":\"submit_result\",\"parameters\":{\"tool_output\":\"Shall I go ahead?\"}}]}}");
+        assertThat(Envelope.extractReply(root)).isEqualTo("Shall I go ahead?");
+    }
+
+    @Test
+    void extractReplyFallsBackToTheSubmittedResultOfAnActionObject() throws Exception {
+        var root = mapper.readTree("{\"message\":{\"actions\":[{\"name\":\"submit_result\","
+                + "\"parameters\":{\"tool_output\":\"[[DECISION tier=REVIEW]] It is with the team.\"}}]}}");
+        assertThat(Envelope.extractReply(root)).isEqualTo("It is with the team.");
+        assertThat(Envelope.announcesDecision(Envelope.extractRawReply(root))).isTrue();
+    }
+
+    @Test
+    void extractReplyStillThrowsOnAnActionObjectWithNoText() throws Exception {
+        var root = mapper.readTree("{\"message\":{\"actions\":[{\"name\":\"send_message\",\"parameters\":{}}]}}");
+        assertThatThrownBy(() -> Envelope.extractReply(root))
+                .isInstanceOf(IllegalStateException.class);
+    }
 }
