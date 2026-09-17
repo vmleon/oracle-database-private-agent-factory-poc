@@ -37,8 +37,15 @@ public class PafClient {
         this.agentId = agentId;
     }
 
-    /** Agent reply text plus PAF's own roomId (its conversation thread id); roomId may be null. */
-    public record Result(String reply, String pafRoomId) {
+    /**
+     * Agent reply text plus PAF's own roomId (its conversation thread id); roomId may be null.
+     * {@code announcesDecision} is read off the raw reply before its markers are stripped,
+     * because the text the customer sees no longer carries them.
+     */
+    public record Result(String reply, String pafRoomId, boolean announcesDecision) {
+        public Result(String reply, String pafRoomId) {
+            this(reply, pafRoomId, false);
+        }
     }
 
     /** Run CHAT_WORKFLOW with an already-enveloped message; returns the reply text and PAF roomId. */
@@ -50,14 +57,15 @@ public class PafClient {
             log.warn("PAF returned errorMessages (agentId={}): {}", agentId, errs);
             throw new ResponseStatusException(BAD_GATEWAY, "PAF returned errors: " + errs);
         }
-        String reply;
+        String raw;
         try {
-            reply = Envelope.extractReply(root);
+            raw = Envelope.extractRawReply(root);
         } catch (IllegalStateException e) {
             log.warn("PAF reply shape not recognized (agentId={}): {}", agentId, body, e);
             throw new ResponseStatusException(BAD_GATEWAY, "PAF reply shape not recognized", e);
         }
-        return new Result(reply, root.path("roomId").asText(null));
+        return new Result(Envelope.stripMarkers(raw), root.path("roomId").asText(null),
+                Envelope.announcesDecision(raw));
     }
 
     private String postRun(String envelopedMessage) {

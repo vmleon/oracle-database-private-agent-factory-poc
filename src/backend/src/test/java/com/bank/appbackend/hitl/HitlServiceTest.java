@@ -2,9 +2,12 @@ package com.bank.appbackend.hitl;
 
 import com.bank.appbackend.api.Dtos.DecisionRequest;
 import com.bank.appbackend.api.Dtos.DecisionResponse;
+import com.bank.appbackend.domain.ChatMessage;
+import com.bank.appbackend.domain.ChatMessageRepository;
 import com.bank.appbackend.domain.HitlRepository;
 import com.bank.appbackend.domain.HitlTaskRow;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
@@ -27,7 +30,8 @@ class HitlServiceTest {
 
     private final HitlRepository repo = mock(HitlRepository.class);
     private final ClaimQueue claims = mock(ClaimQueue.class);
-    private final HitlService service = new HitlService(repo, claims);
+    private final ChatMessageRepository messages = mock(ChatMessageRepository.class);
+    private final HitlService service = new HitlService(repo, claims, messages);
 
     @Test
     void decideClosesTaskAndWritesDecisionRow() {
@@ -86,6 +90,7 @@ class HitlServiceTest {
         return new HitlTaskRow() {
             public Long getTaskId() { return id; }
             public Long getApplicationId() { return 1L; }
+            public Long getCustomerId() { return 4L; }
             public String getCustomerName() { return "David HighDti"; }
             public BigDecimal getAmountRequested() { return new BigDecimal("20000"); }
             public Integer getTermMonths() { return 36; }
@@ -125,5 +130,45 @@ class HitlServiceTest {
 
         assertThat(service.claimNext("  ")).isNull();
         verify(claims).claimNext("Backoffice Reviewer");
+    }
+
+    @Test
+    void decideTellsTheCustomerTheOutcomeOnTheirThread() {
+        when(repo.findDetail(5L)).thenReturn(Optional.of(row(5L, "OPEN")));
+        when(repo.closeTask(5L, "APPROVE", "looks good", "Sam")).thenReturn(1);
+
+        service.decide(5L, new DecisionRequest("APPROVE", "looks good", "Sam"));
+
+        ArgumentCaptor<ChatMessage> captor = ArgumentCaptor.forClass(ChatMessage.class);
+        verify(messages).save(captor.capture());
+        ChatMessage m = captor.getValue();
+        assertThat(m.getSender()).isEqualTo("AGENT");
+        assertThat(m.getCustomerId()).isEqualTo(4L);
+        assertThat(m.getApplicationId()).isEqualTo(1L);
+        assertThat(m.getRoomId()).isEqualTo("room-cust-4");
+        assertThat(m.getBody()).isEqualTo(HitlService.APPROVED_MESSAGE);
+    }
+
+    @Test
+    void decideDeclineMessageNamesNoFigureAndNoReasonCode() {
+        when(repo.findDetail(5L)).thenReturn(Optional.of(row(5L, "OPEN")));
+        when(repo.closeTask(5L, "DECLINE", "DTI over cap", "Sam")).thenReturn(1);
+
+        service.decide(5L, new DecisionRequest("DECLINE", "DTI over cap", "Sam"));
+
+        ArgumentCaptor<ChatMessage> captor = ArgumentCaptor.forClass(ChatMessage.class);
+        verify(messages).save(captor.capture());
+        assertThat(captor.getValue().getBody()).isEqualTo(HitlService.DECLINED_MESSAGE);
+        assertThat(captor.getValue().getBody()).doesNotContain("DTI").doesNotMatch(".*\\d.*");
+    }
+
+    @Test
+    void decideOnAlreadyClosedTaskTellsTheCustomerNothing() {
+        when(repo.findDetail(5L)).thenReturn(Optional.of(row(5L, "CLOSED")));
+        when(repo.closeTask(eq(5L), any(), any(), any())).thenReturn(0);
+
+        assertThatThrownBy(() -> service.decide(5L, new DecisionRequest("APPROVE", "ok", "Sam")))
+                .isInstanceOf(ResponseStatusException.class);
+        verify(messages, never()).save(any());
     }
 }

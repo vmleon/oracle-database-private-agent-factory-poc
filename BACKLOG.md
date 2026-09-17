@@ -31,13 +31,14 @@ left red on purpose:
   a sequence. Closing it means the worker not varying its tone with the amount at
   all, which costs the conversation something real.
 - **Turns sometimes produce no reply at all** — four across four runs, roughly
-  one turn in fifty, 300 seconds of silence with nothing durable written, so a
-  PAF timeout and a backend exception look identical afterwards. It looked
-  content-independent until the *same* plain greeting from the *same* persona
-  hung on two separate runs, which is more than chance deserves. These cases are
-  deliberately not `xfail`: a lost turn should turn the bench red. §13.3 is what
-  turns the symptom into a cause, and this is the finding most likely to
-  embarrass a demo.
+  one turn in fifty, 300 seconds of silence with nothing durable written. The
+  backend's read timeout on the PAF call sits under that ceiling, so its log
+  names the cause of every lost turn: a read timeout is PAF taking too long,
+  anything else is the backend's own. It looked content-independent until the
+  *same* plain greeting from the *same* persona hung on two separate runs, which
+  is more than chance deserves. These cases are deliberately not `xfail`: a lost
+  turn should turn the bench red. §13.3 is what turns a cause into a fix, and
+  this is the finding most likely to embarrass a demo.
 - **The agent stops reading the turn and pushes toward submission.** Three cases
   watch for it and at least two catch it on every run. Prompt work on the Intake
   worker, and the least certain kind of fix here.
@@ -53,10 +54,10 @@ before it is called done — one green run verifies nothing here.
 
 ## 2. Tell the customer the outcome
 
-`docs/DESIGN.md §8` steps 11 and 12 promise that a status message and then the reviewer's final outcome are appended to the customer's `chat_message` thread. Neither happens: closing a task writes the blockchain row and appends nothing, and `hitl_status_for_session` reports `DECIDED` as soon as a _task exists_, which is the agent's recommendation being filed rather than a human deciding. There is also no progress message — the customer sees text only in reply to text they sent.
+Closing a task appends the reviewer's outcome to the customer's `chat_message` thread as one fixed `AGENT` sentence per outcome, under the disclosure policy: no figure, no reason code. Two halves of `docs/DESIGN.md §8` steps 11 and 12 are open: `hitl_status_for_session` reports `DECIDED` as soon as a _task exists_, which is the agent's recommendation being filed rather than a human deciding, and there is no progress message — the customer sees text only in reply to text they sent.
 
-- **Code.** On close, append one `AGENT` message to the thread, phrased under the same disclosure policy the flow already obeys — the factor may be named, the number never. Have `hitl_status_for_session` return the human outcome as its own field, separate from task existence.
-- **Decision.** How much a decline may disclose is the open question in `docs/DESIGN.md §12`; it gates the wording, not the mechanism.
+- **Code.** Have `hitl_status_for_session` return the human outcome as its own field, separate from task existence, and append the "we're reviewing your application" status message when the task is filed.
+- **Decision.** How much a decline may disclose is the open question in `docs/DESIGN.md §12`; it gates whether the decline sentence may name a factor.
 
 ## 3. Wire the fair-lending pre-flight
 
@@ -218,15 +219,3 @@ PAF's OTel tracing (Arize Phoenix / Comet Opik / Langfuse) captures spans for fl
 - **Code.** Optional: a trace-collector service (e.g. Phoenix or Langfuse) on the `ops` tier; otherwise no code.
 - **Docs.** Add an "enable tracing" recipe to `docs/TROUBLESHOOT.md` and an optional step in `CLOUD.md`. Note in `issues/04` / `issues/08` that tracing makes the conditions observable even though the messages/cap are unchanged.
 - **Guide steps.** PAF Settings → tracing provider → point at the collector, enable masking; show where a `CHAT_FLOW` run's per-tool spans land.
-
-### 13.4 Make the decision gate run on every turn — workaround for `issues/15`
-
-G3 — `hitl_status_for_session` and the Condition reading it — sits after the Agent node, and PAF only executes nodes downstream of an agent on the turns where the manager's LLM answers and calls a tool in the same step: measured at one turn in five. So the property it encodes, _never tell a customer their application is progressing unless the HITL task exists_, holds intermittently, and nothing distinguishes "the gate passed" from "the gate never ran".
-
-The decisioning is untouched by this — tier, reason codes, evidence and the `hitl_task` row are computed and committed server-side before any reply text exists. What is missing is the guard on the delivery path.
-
-A second, sharper reason to move it: the assert-wrap Prompt builds the gate's input by interpolating the worker's reply into a JSON string with no escaping, so a `"` or a line break anywhere in that reply yields `{"value": …}`, the MCP call fails argument validation, and the customer reads the apology on a perfectly good application. Enforcing the property outside the flow retires that hazard too, because the gate stops needing the reply text.
-
-- **Code.** Enforce it in `ChatService.runTurn`, which every reply passes through: when the reply carries a `[[DECISION …]]` marker, confirm a `hitl_task` row exists for the customer's application before showing it, and fall back to the apology otherwise. `HitlRepository` already reads that table. No flow change, no model involvement removed — the worker still writes the sentence.
-- **Docs.** Describe the check in `docs/DESIGN.md` next to the fail-secure error path, and note in `paf/flows/CHAT_FLOW.md` that G3 stays on the canvas as the flow-level statement of the same property.
-- **Guide steps.** None — invisible to the operator.

@@ -24,6 +24,10 @@ public final class Envelope {
     // Reasoning ("thinking") models emit a <think>…</think> monologue before the real
     // answer, and the chain-of-thought never reaches the customer. A properly paired
     // block is removed where it sits, so an answer either side of it survives.
+    // The marker the Recommendation worker emits once a task is filed. Case and inner
+    // whitespace are tolerated the way `gate.DECISION_MARKER` tolerates them, so the
+    // backend and the flow agree on what announces a decision.
+    private static final Pattern DECISION = Pattern.compile("(?i)\\[\\[\\s*DECISION\\b");
     private static final Pattern THINK_BLOCK = Pattern.compile("(?s)<think>.*?</think>\\s*");
     // The same models also emit the monologue with no opening tag at all. With no
     // pair to bound it, everything up to the LAST </think> goes: dropping too much is
@@ -51,6 +55,11 @@ public final class Envelope {
             cleaned = THINK_TAIL.matcher(cleaned).replaceFirst("");
         }
         return MARKERS.matcher(cleaned).replaceAll("").strip();
+    }
+
+    /** True when the raw reply carries the {@code [[DECISION ...]]} marker. */
+    public static boolean announcesDecision(String rawReply) {
+        return rawReply != null && DECISION.matcher(rawReply).find();
     }
 
     /**
@@ -86,13 +95,18 @@ public final class Envelope {
      * loudly (caller maps it to 502) instead of leaking a raw JSON blob into the chat.
      */
     public static String extractReply(JsonNode root) {
+        return stripMarkers(extractRawReply(root));
+    }
+
+    /** The agent's reply as PAF returned it, markers and all. */
+    public static String extractRawReply(JsonNode root) {
         JsonNode data = root.has("data") ? root.get("data") : root;
         if (data.isTextual()) {
-            return stripMarkers(data.asText());
+            return data.asText();
         }
         for (String field : REPLY_FIELDS) {
             if (data.hasNonNull(field) && data.get(field).isTextual()) {
-                return stripMarkers(data.get(field).asText());
+                return data.get(field).asText();
             }
         }
         throw new IllegalStateException(

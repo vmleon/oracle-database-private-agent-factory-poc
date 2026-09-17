@@ -203,4 +203,12 @@ class EnvelopeTest {
         assertThat(Envelope.stripMarkers("We'll be in touch. [[EVIDENCE x=1]]"))
                 .isEqualTo("We'll be in touch.");
     }
+
+    @Test
+    void announcesDecisionOnlyWhenTheMarkerIsPresent() {
+        assertThat(Envelope.announcesDecision("[[DECISION tier=APPROVE]] It is with the team.")).isTrue();
+        assertThat(Envelope.announcesDecision("Sure.\n[[ decision tier=REVIEW ]]")).isTrue();
+        assertThat(Envelope.announcesDecision("[[UPSERT ok]] How much?")).isFalse();
+        assertThat(Envelope.announcesDecision(null)).isFalse();
+    }
 }

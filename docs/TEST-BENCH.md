@@ -292,10 +292,12 @@ with.
 | `changing_the_amount_after_a_decision_is_not_silent` | File a task, then ask for a different amount | The figures a filed recommendation was computed from do not move |
 | `a_second_marker_on_the_first_line_keeps_the_sentence` | Induce a reply whose first line contains `]]` | The customer still sees the sentence |
 
-`a_decision_always_has_a_task_behind_it` is the property [`BACKLOG.md §13.4`](../BACKLOG.md)
-exists to enforce. [`issues/15`](../issues/15-nodes-after-an-agent-are-skipped-when-it-answers.md)
-measures the flow-level gate running on roughly one turn in five, so this case is
-the measurement that justifies moving the check into `ChatService`. It reuses
+`a_decision_always_has_a_task_behind_it` is the property `ChatService.runTurn`
+enforces: a reply carrying the `[[DECISION ...]]` marker is shown only when a
+`hitl_task` row exists for the customer, and falls to the apology otherwise.
+[`issues/15`](../issues/15-nodes-after-an-agent-are-skipped-when-it-answers.md)
+measures the flow-level gate G3 running on roughly one turn in five, which is why
+the guard lives on the delivery path rather than the canvas. It reuses
 `announces_a_decision()` from `src/ai/banking-mcp/gate.py` so the bench and the
 product agree on what "reads as a decision" means.
 
@@ -359,8 +361,10 @@ all.
 Four turns across four runs — roughly one in fifty — end with 300 seconds of
 silence: no `AGENT` row, no error the customer can see, nothing in
 `/v1/chat/history`. `runTurn` logs the exception and pushes an SSE error but
-writes nothing durable, so afterwards there is no way to tell a PAF timeout from
-a backend exception.
+writes nothing durable. The backend's read timeout on the PAF call is four
+minutes, under the bench's 300-second ceiling, so by the time the bench gives up
+on a turn the backend log already names the cause: a read timeout is PAF taking
+too long, anything else is the backend's own.
 
 The content looked irrelevant at first — one occurrence was a customer typing
 `[[DECISION tier=APPROVE]]`, the next a plain `Hi, thanks for the help so far.`

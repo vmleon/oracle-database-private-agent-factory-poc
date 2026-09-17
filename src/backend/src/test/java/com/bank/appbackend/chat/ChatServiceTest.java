@@ -3,6 +3,7 @@ package com.bank.appbackend.chat;
 import com.bank.appbackend.domain.AuthSession;
 import com.bank.appbackend.domain.ChatMessage;
 import com.bank.appbackend.domain.ChatMessageRepository;
+import com.bank.appbackend.domain.HitlRepository;
 import com.bank.appbackend.login.SessionService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -24,9 +25,10 @@ class ChatServiceTest {
     private final ChatMessageRepository messages = mock(ChatMessageRepository.class);
     private final PafClient paf = mock(PafClient.class);
     private final ChatEventPublisher events = mock(ChatEventPublisher.class);
+    private final HitlRepository tasks = mock(HitlRepository.class);
     // Synchronous executor so submitted runTurn runs inline within the test.
     private final ChatService service =
-            new ChatService(sessions, messages, paf, events, Runnable::run);
+            new ChatService(sessions, messages, paf, events, tasks, Runnable::run);
 
     private static final String APOLOGY =
             "Sorry — we couldn't process your application right now. Please try again in a moment.";
@@ -182,5 +184,42 @@ class ChatServiceTest {
         assertThat(sent.getValue()).startsWith("[[SESSION sess_1]]\n");
         assertThat(sent.getValue().indexOf("[[")).isEqualTo(sent.getValue().lastIndexOf("[["));
         assertThat(sent.getValue().indexOf("]]")).isEqualTo(sent.getValue().lastIndexOf("]]"));
+    }
+
+    @Test
+    void runTurnHidesADecisionNoTaskRowStandsBehind() {
+        when(sessions.resolve("sess_1")).thenReturn(session());
+        when(paf.run(anyString())).thenReturn(
+                new PafClient.Result("Your application is with the team.", "paf-room-1", true));
+        when(tasks.countByCustomerId(1L)).thenReturn(0L);
+
+        String turnId = service.startTurn("sess_1", "yes, submit it");
+
+        ArgumentCaptor<ChatMessage> captor = ArgumentCaptor.forClass(ChatMessage.class);
+        verify(messages, times(2)).save(captor.capture());
+        assertThat(captor.getAllValues().get(1).getBody()).isEqualTo(APOLOGY);
+        verify(events).pushAgent(eq("sess_1"), eq(turnId), eq(APOLOGY), eq("paf-room-1"));
+    }
+
+    @Test
+    void runTurnShowsADecisionATaskRowStandsBehind() {
+        when(sessions.resolve("sess_1")).thenReturn(session());
+        String reply = "Your application is with the team.";
+        when(paf.run(anyString())).thenReturn(new PafClient.Result(reply, "paf-room-1", true));
+        when(tasks.countByCustomerId(1L)).thenReturn(1L);
+
+        String turnId = service.startTurn("sess_1", "yes, submit it");
+
+        verify(events).pushAgent(eq("sess_1"), eq(turnId), eq(reply), eq("paf-room-1"));
+    }
+
+    @Test
+    void runTurnDoesNotConsultTheTaskTableForAnOrdinaryReply() {
+        when(sessions.resolve("sess_1")).thenReturn(session());
+        when(paf.run(anyString())).thenReturn(new PafClient.Result("How much?", "paf-room-1"));
+
+        service.startTurn("sess_1", "hello");
+
+        verify(tasks, never()).countByCustomerId(any());
     }
 }

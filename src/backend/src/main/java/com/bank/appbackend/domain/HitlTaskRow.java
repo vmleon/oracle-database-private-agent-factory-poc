@@ -7,6 +7,7 @@ import java.time.Instant;
 public interface HitlTaskRow {
     Long getTaskId();
     Long getApplicationId();
+    Long getCustomerId();
     String getCustomerName();
     BigDecimal getAmountRequested();
     Integer getTermMonths();

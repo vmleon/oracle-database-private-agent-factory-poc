@@ -53,12 +53,14 @@ public class PafClientConfig {
                 .setSslContext(sslContext.build())
                 .build();
         // A CHAT_FLOW turn runs several agents in sequence; long runs reach a few minutes and
-        // creep higher under load. The socket read timeout must sit well above that or the PAF
-        // call dies with "Read timed out" and the chat turn 502s. 8 min gives headroom.
+        // creep higher under load, so the socket read timeout sits above that. It also sits
+        // under the conversation bench's per-turn ceiling (TURN_TIMEOUT, 300 s), so a turn
+        // the bench gives up on has already been logged here with its cause, and a hung
+        // turn frees its executor thread before the next customer message queues behind it.
         var connectionManager = PoolingHttpClientConnectionManagerBuilder.create()
                 .setSSLSocketFactory(sslSocketFactory)
                 .setDefaultSocketConfig(SocketConfig.custom()
-                        .setSoTimeout(Timeout.ofMinutes(8))
+                        .setSoTimeout(Timeout.ofMinutes(4))
                         .build())
                 .build();
         // PafClient authenticates with a Bearer key and carries no session state, so disable

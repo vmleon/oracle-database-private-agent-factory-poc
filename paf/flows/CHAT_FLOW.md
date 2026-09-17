@@ -114,6 +114,8 @@ Each takes only `session_token`, resolves state through the same server-side rea
 
 `hitl_status_for_session` decides the gate server-side: `GATE_FAIL` on an invalid session, or on a reply that announces a decision — the `[[DECISION ...]]` marker, or the language a decision uses (`DECISION_PATTERNS` in `gate.py`) — with no HITL task recorded for the application; `GATE_OK` on every other turn on a valid session, whatever stage the application is at.
 
+G3 is the flow-level statement of that property, not its enforcement. PAF executes the nodes after an agent only on the turns where the agent answers and calls a tool in the same step ([`issues/15`](../../issues/15-nodes-after-an-agent-are-skipped-when-it-answers.md)), so `ChatService.runTurn` holds it on every reply: a reply carrying the `[[DECISION ...]]` marker is shown only when a `hitl_task` row exists for the customer, and falls to the apology otherwise.
+
 ### Ordering the assertion
 
 A Deterministic MCP node needs a `Tool input JSON`. Taking the token directly would let `hitl_status_for_session` sort **ahead** of the manager, since PAF derives control flow from a topological order over the drawn edges — and it would then read the database before the worker wrote to it. The assert-wrap Prompt takes both the token and the **manager's message**, so the node depends on the manager and runs after it — and the manager's message is exactly the reply text `hitl_status_for_session` needs to tell a decision sentence from a question.

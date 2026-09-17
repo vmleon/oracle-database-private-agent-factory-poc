@@ -4,6 +4,7 @@ import com.bank.appbackend.api.Dtos.ChatMessageView;
 import com.bank.appbackend.domain.AuthSession;
 import com.bank.appbackend.domain.ChatMessage;
 import com.bank.appbackend.domain.ChatMessageRepository;
+import com.bank.appbackend.domain.HitlRepository;
 import com.bank.appbackend.login.SessionService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,14 +35,17 @@ public class ChatService {
     private final ChatMessageRepository messages;
     private final PafClient paf;
     private final ChatEventPublisher events;
+    private final HitlRepository tasks;
     private final Executor chatExecutor;
 
     public ChatService(SessionService sessions, ChatMessageRepository messages, PafClient paf,
-                       ChatEventPublisher events, @Qualifier("chatExecutor") Executor chatExecutor) {
+                       ChatEventPublisher events, HitlRepository tasks,
+                       @Qualifier("chatExecutor") Executor chatExecutor) {
         this.sessions = sessions;
         this.messages = messages;
         this.paf = paf;
         this.events = events;
+        this.tasks = tasks;
         this.chatExecutor = chatExecutor;
     }
 
@@ -86,12 +90,21 @@ public class ChatService {
             // The disclosure policy is a rule here, not a request in a prompt: every
             // reply passes through this line on its way to both the thread and the
             // customer's screen, so a reply that breaks it reaches neither.
-            String shown = Disclosure.screen(message, result.reply());
-            if (!shown.equals(result.reply())) {
+            // A decision is only ever shown with a task row behind it. The flow states the
+            // same property in its final gate, but PAF runs the nodes after an agent only on
+            // the turns where the agent answers and calls a tool in one step (issues/15), so
+            // the guard on the delivery path lives here, where every reply passes.
+            String reply = result.reply();
+            if (result.announcesDecision() && tasks.countByCustomerId(session.getCustomerId()) == 0) {
+                log.warn("turn {} announced a decision with no hitl_task behind it", turnId);
+                reply = PAF_APOLOGY;
+            }
+            String shown = Disclosure.screen(message, reply);
+            if (!shown.equals(reply)) {
                 // The rule names only, never the text that broke them — a log line
                 // is the last place the protected value should end up.
                 log.warn("turn {} blocked by the disclosure policy: {}", turnId,
-                        Disclosure.violations(result.reply(), Disclosure.asksForAValue(message)));
+                        Disclosure.violations(reply, Disclosure.asksForAValue(message)));
             }
             save(session, roomId, "AGENT", shown, result.pafRoomId());
             events.pushAgent(token, turnId, shown, result.pafRoomId());

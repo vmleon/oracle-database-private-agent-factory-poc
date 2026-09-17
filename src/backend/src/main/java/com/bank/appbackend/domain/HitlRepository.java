@@ -31,6 +31,7 @@ public interface HitlRepository extends JpaRepository<HitlTask, Long> {
     @Query(value = """
             SELECT t.task_id            AS taskId,
                    t.application_id      AS applicationId,
+                   c.customer_id         AS customerId,
                    c.full_name           AS customerName,
                    la.amount_requested   AS amountRequested,
                    la.term_months        AS termMonths,
@@ -50,6 +51,16 @@ public interface HitlRepository extends JpaRepository<HitlTask, Long> {
              WHERE t.task_id = :taskId
             """, nativeQuery = true)
     Optional<HitlTaskRow> findDetail(@Param("taskId") Long taskId);
+
+    /** Tasks ever filed for this customer, whatever their state. By customer rather than
+     *  application because a session opened before intake carries no application id. */
+    @Query(value = """
+            SELECT COUNT(*)
+              FROM BANK_CORE.hitl_task t
+              JOIN BANK_CORE.loan_application la ON la.application_id = t.application_id
+             WHERE la.customer_id = :customerId
+            """, nativeQuery = true)
+    long countByCustomerId(@Param("customerId") Long customerId);
 
     @Modifying
     @Query(value = """
