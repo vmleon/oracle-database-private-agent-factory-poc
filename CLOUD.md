@@ -156,7 +156,7 @@ paste into it, and the commands that sit between the browser steps. Follow
 it top to bottom; its last line sends you back here to §9.
 
 Expect: PAF installed, both model configurations answering a test call, the
-data sources registered, and four MCP servers reporting connected.
+data sources registered, and two MCP servers reporting connected.
 
 ## 9. Load `CHAT_FLOW`
 

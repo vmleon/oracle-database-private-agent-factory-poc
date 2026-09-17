@@ -4,7 +4,7 @@ This is the build blueprint for the customer-facing workflow in PAF Agent Builde
 
 - **`Manager`** — the only Agent node in the graph. It holds **no tools**. It reads the server-computed facts in its prompt, decides whether the customer is still supplying loan details or is ready for a decision, and delegates to exactly one worker.
 - **`Intake`** (sub-agent) — collects the loan request (`amount` / `term_months` / `purpose`) through conversation, normalises the values, and writes the `DRAFT`. Tool: `application-mcp.upsert_application`.
-- **`Recommendation`** (sub-agent) — hands the session token to `create_hitl_task`, which computes the tier (`APPROVE` / `REVIEW` / `DECLINE`), its reason codes and the evidence packet server-side and records them; the worker reads the tier and its customer-safe `factors` back, and writes the customer's reply within the [disclosure policy](#customer-disclosure-policy). Tool: `hitl-mcp.create_hitl_task`.
+- **`Recommendation`** (sub-agent) — hands the session token to `create_hitl_task`, which computes the tier (`APPROVE` / `REVIEW` / `DECLINE`), its reason codes and the evidence packet server-side and records them; the worker reads the tier and its customer-safe `factors` back, and writes the customer's reply within the [disclosure policy](#customer-disclosure-policy). Tool: `application-mcp.create_hitl_task`.
 - **Deterministic nodes (no agent)** — `get_context`, `evaluate_eligibility_for_session`, `required_documents_for_session` and `verify_employer_for_session` run **before** the manager off one wired token chain; `hitl_status_for_session` runs **after** it and reads the database.
 
 Three principles shape the whole design:
@@ -27,7 +27,7 @@ For a customer chatting with the bank:
 
 1. **Intake.** If the customer has no open application (or one with missing fields), the manager delegates to `Intake`, which collects `amount` / `term_months` / `purpose` conversationally and writes a `DRAFT` via `upsert_application`.
 2. **Evidence.** Eligibility, the required-document set and the employer record are computed deterministically before the manager runs, from the DB values the token resolves to. No agent gathers evidence.
-3. **Recommendation.** Once the application is complete and the customer confirms, the manager delegates to `Recommendation`, which calls `hitl-mcp.create_hitl_task` exactly once with the token alone. The tier, its reason codes and the evidence are computed and recorded server-side; the worker writes the customer's reply from the tier and the `factors` it gets back, in its own words and within the [disclosure policy](#customer-disclosure-policy).
+3. **Recommendation.** Once the application is complete and the customer confirms, the manager delegates to `Recommendation`, which calls `application-mcp.create_hitl_task` exactly once with the token alone. The tier, its reason codes and the evidence are computed and recorded server-side; the worker writes the customer's reply from the tier and the `factors` it gets back, in its own words and within the [disclosure policy](#customer-disclosure-policy).
 4. **Assertion.** After the manager returns, `hitl_status_for_session` reads the database and the final gate decides whether the reply may be shown at all.
 
 No agent ever issues a binding decision to the customer: the human reviewer who picks up the HITL task does.
@@ -110,7 +110,7 @@ Each takes only `session_token`, resolves state through the same server-side rea
 | `hitl_status_for_session`          | reads the context, `BANK_CORE.hitl_task` and the manager's reply                          | `{gate, stage, task_id}`                                        |
 | `recommend_tier_for_session`       | applies the tier rule to the eligibility, employer, KYC and AML records             | `{tier, reasoning, factors, evidence}`                          |
 
-`recommend_tier_for_session` is the only one with no node on the canvas: `hitl-mcp.create_hitl_task` calls it server-side so the recorded decision never passes through a model. The rule is `tier_from()` in [`src/ai/banking-mcp/gate.py`](../../src/ai/banking-mcp/gate.py) — DECLINE on any eligibility, KYC or AML `deny` or an unregistered employer, REVIEW on any `warn` or a dormant one, APPROVE otherwise — and it is covered by host unit tests. Screening findings reach the customer only as the generic factor phrase: naming them would be tipping off.
+`recommend_tier_for_session` is the only one with no node on the canvas: `application-mcp.create_hitl_task` calls it server-side so the recorded decision never passes through a model. The rule is `tier_from()` in [`src/ai/banking-mcp/gate.py`](../../src/ai/banking-mcp/gate.py) — DECLINE on any eligibility, KYC or AML `deny` or an unregistered employer, REVIEW on any `warn` or a dormant one, APPROVE otherwise — and it is covered by host unit tests. Screening findings reach the customer only as the generic factor phrase: naming them would be tipping off.
 
 `hitl_status_for_session` decides the gate server-side: `GATE_FAIL` on an invalid session, or on a reply that announces a decision — the `[[DECISION ...]]` marker, or the language a decision uses (`DECISION_PATTERNS` in `gate.py`) — with no HITL task recorded for the application; `GATE_OK` on every other turn on a valid session, whatever stage the application is at.
 
@@ -334,7 +334,7 @@ flowchart LR
 
 Build the workers **before** the manager, so the `Sub-agents` wire has a source when you draw it.
 
-- **Drag** an Agent node, and drag **only** `application-mcp` (`upsert_application`) beside it. Leave the worker's own `Prompt` input unwired — a sub-agent contributes its instructions and its tools, nothing else.
+- **Drag** an Agent node, and drag one **MCP Server** node beside it: server `application-mcp`, **Allowed MCP tools** `upsert_application` only. Leave the worker's own `Prompt` input unwired — a sub-agent contributes its instructions and its tools, nothing else.
 - **Configure** — LLM `gen-model`, temperature `0.01`, `Agent description` exactly `Intake`, and paste these Custom Instructions:
 
 ```
@@ -372,12 +372,12 @@ RULES:
 
 ```mermaid
 flowchart LR
-    AM["application-mcp"] -->|Tools| SI["Intake"]
+    AM["application-mcp · upsert_application"] -->|Tools| SI["Intake"]
 ```
 
 ### Step 14 — `Recommendation` worker (+ its tool)
 
-- **Drag** an Agent node, and drag **only** `hitl-mcp` (`create_hitl_task`) beside it. This is the **only** agent that sees `hitl-mcp`. Leave its `Prompt` input unwired.
+- **Drag** an Agent node, and drag one **MCP Server** node beside it: server `application-mcp`, **Allowed MCP tools** `create_hitl_task` only. This is the **only** node that allows `create_hitl_task`, so no other agent can reach the side effect. Leave its `Prompt` input unwired.
 - **Configure** — LLM `gen-model`, temperature `0.01`, `Agent description` exactly `Recommendation`, and paste these Custom Instructions:
 
 ```
@@ -440,7 +440,7 @@ The policy those instructions restate is [Customer disclosure policy](#customer-
 
 ```mermaid
 flowchart LR
-    HM["hitl-mcp"] -->|Tools| SR["Recommendation"]
+    HM["application-mcp · create_hitl_task"] -->|Tools| SR["Recommendation"]
 ```
 
 ### Step 15 — Manager agent
@@ -625,8 +625,8 @@ Every wire is created in the steps above; this table is the post-build cross-che
 | Deterministic MCP (evaluate_eligibility_for_session).`Message` | Prompt (manager).`eligibility`                                                                           |
 | Deterministic MCP (required_documents_for_session).`Message`   | Prompt (manager).`documents`                                                                             |
 | Deterministic MCP (verify_employer_for_session).`Message`      | Prompt (manager).`employer`                                                                              |
-| MCP (application-mcp).`Tools`                                  | Intake.`Tools`                                                                                           |
-| MCP (hitl-mcp).`Tools`                                         | Recommendation.`Tools`                                                                                   |
+| MCP (application-mcp, `upsert_application`).`Tools`            | Intake.`Tools`                                                                                           |
+| MCP (application-mcp, `create_hitl_task`).`Tools`              | Recommendation.`Tools`                                                                                   |
 | Prompt (manager).`Prompt message`                              | Manager.`Prompt`                                                                                         |
 | Intake.`Agent`                                                 | Manager.`Sub-agents` _(writes the worker id into `subAgents`)_                                           |
 | Recommendation.`Agent`                                         | Manager.`Sub-agents` _(writes the worker id into `subAgents`)_                                           |

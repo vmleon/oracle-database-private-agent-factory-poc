@@ -56,8 +56,6 @@ locals {
   # Port per wrapper, matching the ports they listen on locally so the flow's
   # server URLs differ only in host.
   mcp_ports = {
-    opa         = 8500
-    hitl        = 8502
     banking     = 8503
     application = 8504
   }

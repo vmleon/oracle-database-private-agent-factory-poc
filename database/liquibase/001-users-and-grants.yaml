@@ -166,7 +166,7 @@ databaseChangeLog:
       id: 001-create-customer-agent-rw-client-adb
       author: paf-poc
       context: adb
-      # CHAT_FLOW's write path, reached by hitl-mcp and application-mcp. It
+      # CHAT_FLOW's write path, reached by application-mcp. It
       # holds EXECUTE on one package and no table privilege, so every write it
       # can perform is one the package chose to expose.
       changes:

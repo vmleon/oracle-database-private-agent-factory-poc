@@ -55,7 +55,7 @@ Four workload computes plus ADB and two load balancers. Models come from the man
 flowchart TB
     lb["OCI Load Balancer (public, HTTPS)"]
     front["frontend compute<br/>nginx: customer UI, backoffice UI"]
-    back["backend compute<br/>Spring Boot backend · OPA · Company Registry<br/>opa-mcp · hitl-mcp · banking-mcp · application-mcp"]
+    back["backend compute<br/>Spring Boot backend · OPA · Company Registry<br/>banking-mcp · application-mcp"]
     ilb["internal Load Balancer (TLS)<br/>one listener per MCP wrapper"]
     paf["paf compute<br/>PAF container"]
     genai["OCI Generative AI"]
@@ -106,7 +106,7 @@ Each tier directory under `deploy/ansible/` holds one entry playbook, always nam
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `ops` / `opstools`      | JDK 21, Liquibase + the Oracle JDBC driver, python-oracledb, the ADB wallet fetched through its PAR, the test harness; applies the changelog with `--contexts=adb,seed`                                                                                                              |
 | `frontend` / `webstack` | nginx serving both UI bundles at `/` and `/backoffice/`                                                                                                                                                                                                                              |
-| `backend` / `appstack`  | JDK 21, the Spring Boot service unit (connects as `BANK_CORE`), OPA + the Rego bundle, the Company Registry FastAPI unit (:8600), and the four MCP wrapper units (:8500 `opa-mcp`, :8502 `hitl-mcp`, :8503 `banking-mcp`, :8504 `application-mcp`), all reaching each other on `127.0.0.1` |
+| `backend` / `appstack`  | JDK 21, the Spring Boot service unit (connects as `BANK_CORE`), OPA + the Rego bundle, the Company Registry FastAPI unit (:8600), and the two MCP wrapper units (:8503 `banking-mcp`, :8504 `application-mcp`), all reaching each other on `127.0.0.1` |
 | `paf` / `pafstack`      | Podman, the PAF kit tarball fetched through its own PAR, image build, and the PAF service unit                                                                                                                                                                                       |
 
 ### 3.3 First-run flow

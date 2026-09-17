@@ -111,7 +111,7 @@ databaseChangeLog:
               GRANT SELECT ON BANK_CORE.hitl_task TO CUSTOMER_AGENT_RO
 
   # ------------------------------------------- CUSTOMER_AGENT_RW (chat) --
-  # hitl-mcp and application-mcp. One EXECUTE and nothing else: the package
+  # application-mcp. One EXECUTE and nothing else: the package
   # is definer's-rights, so every write this identity can reach is one
   # PKG_AGENT_TOOLS chose to expose, with its own token checks in front.
 

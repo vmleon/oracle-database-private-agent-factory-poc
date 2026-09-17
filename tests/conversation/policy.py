@@ -59,8 +59,6 @@ INTERNAL_NAMES = (
     "lookup_application",
     "banking-mcp",
     "application-mcp",
-    "hitl-mcp",
-    "opa-mcp",
     "CHAT_FLOW",
     "RegexExtractor",
     "Regex extractor",

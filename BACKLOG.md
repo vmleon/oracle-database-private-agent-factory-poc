@@ -51,7 +51,7 @@ Closing a task appends the reviewer's outcome to the customer's `chat_message` t
 
 ## 3. Wire the fair-lending pre-flight
 
-`opa-mcp` exposes seven typed policies. Six now run: eligibility and required
+`opa/packages/` holds seven Rego policies. Six run through `banking-mcp`: eligibility and required
 documents drive the flow, the rate card prices every application it can, and
 `recommend_tier_for_session` evaluates KYC and AML into the evidence packet
 alongside the policy modules that produced it. The reviewer reads all of them on
@@ -62,7 +62,7 @@ a failed identity check is a legal bar rather than a signal to weigh.
 
 - **It has no patterns to match against.** The policy only flags when a
   `monitored_patterns` entry matches both a protected attribute and the drafted
-  tier, and `opa-mcp` defaults that list to empty. Called today it returns
+  tier, and nothing supplies that list. Called today it returns
   `flag = false` every time — evidence that proves nothing. The patterns need a
   home, which is §6.
 - **It wants protected attributes on the customer-facing read path.**
@@ -90,8 +90,9 @@ are unimplemented.
 `research_profile` profile plus RAG over `policy_corpus`. Both are backlog items
 in their own right — §7 and §12 — and the profile itself has never been created,
 so the flow as designed cannot be built before them. A read-only MCP wrapper
-over the `research_v_*` views, shaped like `banking-mcp`, carries the same read
-scope without either. Which of the two the flow uses gates everything else here.
+over the `research_v_*` views — a third server, shaped like `banking-mcp` and
+logging in as `BACKOFFICE_AGENT_RO` — carries the same read scope without
+either. Which of the two the flow uses gates everything else here.
 
 - **Decision.** Select AI Bridge, which waits on §7 and §12, or a read-only MCP
   wrapper over the view set. Record the choice in `docs/DESIGN.md §11`.
@@ -180,7 +181,7 @@ replaces the certificate and nothing else.
 
 ## 12. Select AI as the cloud tool transport — on standby
 
-`docs/DESIGN.md §11` describes Select AI Tools reached through the Select AI Bridge node as the cloud-side equivalent of the MCP wrappers. The database is ready for it — `018` grants `PAF_PLATFORM` the four packages PAF checks for, and the resource principal is enabled — but `CHAT_FLOW` does not use it: the flow reads context through `banking-mcp.get_context` and calls `create_hitl_task` through `hitl-mcp`.
+`docs/DESIGN.md §11` describes Select AI Tools reached through the Select AI Bridge node as the cloud-side equivalent of the MCP wrappers. The database is ready for it — `018` grants `PAF_PLATFORM` the four packages PAF checks for, and the resource principal is enabled — but `CHAT_FLOW` does not use it: the flow reads context through `banking-mcp.get_context` and calls `create_hitl_task` through `application-mcp`.
 
 Adopting it is a flow redesign rather than a port. It reopens `issues/02` (SQL Query nodes ignore bind variables and fail open), and the deterministic nodes that make the current flow safe would have to be rebuilt and revalidated against a different tool surface.
 

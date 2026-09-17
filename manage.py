@@ -2157,12 +2157,11 @@ def paf_bootstrap() -> None:
     _print_run("python manage.py paf prepare")
 
     console.print("[bold]Step 7 — MCP servers[/bold]   (Admin → MCP Servers → Add MCP server)")
-    console.print("  Four registrations, [cyan]Direct[/cyan] authentication (no auth — they are reachable")
+    console.print("  Two registrations, [cyan]Direct[/cyan] authentication (no auth — they are reachable")
     console.print("  only inside the VCN). The flow references them by these names, so they")
     console.print("  must match.")
     mcp_urls = _tf_output_json("mcp_server_urls") or {}
-    for name, label in (("opa", "opa-mcp"), ("hitl", "hitl-mcp"),
-                        ("banking", "banking-mcp"), ("application", "application-mcp")):
+    for name, label in (("banking", "banking-mcp"), ("application", "application-mcp")):
         url = mcp_urls.get(name, "(apply deploy/tf/app to learn the address)")
         console.print(f"    [cyan]{label:<16}[/cyan] {url}")
     console.print("  [dim]Each should report connected, and its tools surface inside the Agent node.[/dim]\n")
@@ -2222,7 +2221,7 @@ def _stage_sources() -> None:
     ops_files = ANSIBLE_ROOT / "ops" / "roles" / "opstools" / "files"
     _stage(PROJECT_ROOT / "opa", backend_files / "opa")
     _stage(PROJECT_ROOT / "src" / "api" / "registry", backend_files / "registry")
-    for wrapper in ("opa-mcp", "hitl-mcp", "banking-mcp", "application-mcp"):
+    for wrapper in ("banking-mcp", "application-mcp"):
         _stage(PROJECT_ROOT / "src" / "ai" / wrapper, backend_files / "mcp" / wrapper)
     _stage(PROJECT_ROOT / "database" / "liquibase", ops_files / "database" / "liquibase")
     # The bastion is the only host that can reach both PAF and the database, so

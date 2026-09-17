@@ -1,16 +1,28 @@
-"""application-mcp — the write surface for conversational intake.
+"""application-mcp — CHAT_FLOW's write surface.
 
-Single tool: upsert_application(session_token, amount?, term_months?, purpose?)
-creates the customer's DRAFT loan application on first call and patches
-supplied fields after. customer_id is resolved from the opaque token inside
-the PL/SQL function (bind variables) — never from the chat message, so this
-cannot be steered to another customer's application (IDOR-safe, same boundary
-as banking-mcp.lookup_application / get_context).
+Two tools, one per worker:
+  - upsert_application(session_token, amount?, term_months?, purpose?) — the
+    Intake worker's tool. Creates the customer's DRAFT loan application on
+    first call and patches supplied fields after.
+  - create_hitl_task(session_token, explore_hints?) — the Recommendation
+    worker's tool, and the flow's only side effect. Records the
+    server-computed recommendation packet in BANK_CORE.hitl_task and enqueues
+    HITL_REQUEST in the same transaction.
+
+customer_id is resolved from the opaque token inside the PL/SQL functions
+(bind variables) — never from the chat message, so neither tool can be steered
+to another customer's application (same boundary as banking-mcp.get_context).
+
+Why MCP rather than a PAF SQL Query node: that node is read-only by design
+(docs/PAF.md §10); anything with side effects goes through MCP/REST.
 
 Connects as CUSTOMER_AGENT_RW, the client user for CHAT_FLOW's write path,
-which holds EXECUTE on BANK_TOOLS.PKG_AGENT_TOOLS and no table privilege;
-the package runs with definer's rights (BANK_TOOLS has INSERT/UPDATE on
-BANK_CORE.loan_application via changeset 012). Mirrors hitl-mcp.
+which holds EXECUTE on BANK_TOOLS.PKG_AGENT_TOOLS and no table privilege; the
+package runs with definer's rights (BANK_TOOLS has INSERT/UPDATE on
+BANK_CORE.loan_application via changeset 012, INSERT/SELECT on hitl_task and
+ENQUEUE on HITL_REQUEST via 007 + 009). Each Agent Builder MCP Server node
+that points here lists exactly one tool under "Allowed MCP tools", so a worker
+sees only its own.
 """
 
 from __future__ import annotations
@@ -18,11 +30,12 @@ from __future__ import annotations
 import json
 import os
 import re
+import uuid
 from datetime import datetime, timezone
 
 import httpx
 import oracledb
-from fastmcp import FastMCP
+from fastmcp import Client, FastMCP
 
 mcp = FastMCP("application-mcp")
 
@@ -43,6 +56,7 @@ def _connect():
 
 
 _AUDIT_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8090").rstrip("/") + "/v1/audit/tool-call"
+_BANKING_MCP_URL = os.getenv("BANKING_MCP_URL", "http://127.0.0.1:8503/mcp")
 
 
 def _now():
@@ -169,6 +183,121 @@ def _upsert_application_impl(
         raise
     print(f"[upsert_application] -> application_id={application_id}", flush=True)
     return {"application_id": application_id}
+
+
+async def _recommendation_packet(session_token: str) -> dict:
+    """The server-computed decision packet from banking-mcp: tier, reasoning and
+    the evidence the review portal renders. Returns an empty packet if it cannot
+    be reached — the caller then records nothing."""
+    try:
+        async with Client(_BANKING_MCP_URL) as client:
+            result = await client.call_tool(
+                "recommend_tier_for_session", {"session_token": session_token}
+            )
+        return json.loads(result.content[0].text)
+    except Exception as exc:  # noqa: BLE001 — fail closed, never write a guess
+        print(f"[create_hitl_task] recommendation lookup failed: {exc}", flush=True)
+        return {}
+
+
+@mcp.tool()
+async def create_hitl_task(
+    session_token: str,
+    explore_hints: str | None = None,
+) -> dict:
+    """Write the CHAT_FLOW recommendation packet to BANK_CORE.hitl_task and
+    enqueue HITL_REQUEST in the same transaction. Returns the new task_id
+    and the server-generated `agent_run_id`.
+
+    This is CHAT_FLOW's ONLY side-effect tool: every successful run ends
+    with exactly one call. The human reviewer (not the agent) closes the
+    task; that close is what writes the Blockchain `decision` row.
+
+    Everything recorded is computed server-side from the opaque session token:
+    the application, the recommendation tier, its reasoning and the evidence
+    packet. No agent names an application, chooses a tier or re-words a policy
+    message, so what the reviewer reads is what the policy actually returned.
+
+    The tier is returned to you with `factors` — the customer-safe words for
+    what the outcome turned on. Write the customer's reply from THOSE, never
+    from a tier or a factor you inferred yourself, and never quote a number,
+    threshold or reason code.
+
+    Argument extraction guidance for the LLM:
+      - session_token  — the opaque `sess_...` token from the manager's
+                         message. Copy it exactly; never invent one.
+      - explore_hints  — REVIEW-only: JSON string array of follow-up
+                         questions/checks the reviewer should examine.
+                         Pass null otherwise.
+
+    Note: `agent_run_id` is generated server-side as a UUID-4 and returned
+    in the response. The agent must NOT supply it — LLMs reliably
+    hallucinate non-hex strings (`a4b5c6d7-e8f9-g0h1-…`) when asked to
+    produce a UUID.
+    """
+    started = _now()
+    print(f"[create_hitl_task] called session_token={session_token!r}", flush=True)
+    agent_run_id = str(uuid.uuid4())
+    tool_input = {"explore_hints": explore_hints}
+
+    packet = await _recommendation_packet(session_token)
+    tier = packet.get("tier")
+    if tier in (None, "UNAVAILABLE"):
+        print(f"[create_hitl_task] -> no decision available (tier={tier})", flush=True)
+        out = {"error": "no_decision_available"}
+        _audit("create_hitl_task", "SKIPPED", started, _now(), tool_input, out,
+               session_token=session_token)
+        return out
+    recommendation = tier
+    reasoning = packet.get("reasoning") or ""
+    factors = packet.get("factors") or []
+    reason_codes = (packet.get("evidence") or {}).get("reason_codes") or []
+    evidence = json.dumps(packet.get("evidence"))
+
+    try:
+        with _connect() as conn:
+            with conn.cursor() as cur:
+                task_id = cur.callfunc(
+                    "BANK_TOOLS.PKG_AGENT_TOOLS.create_hitl_task",
+                    int,
+                    [
+                        session_token,
+                        recommendation,
+                        reasoning,
+                        explore_hints,
+                        evidence,
+                        agent_run_id,
+                    ],
+                )
+            conn.commit()
+    except oracledb.DatabaseError as exc:
+        # NO_DATA_FOUND inside the package: unknown/expired token, or the
+        # customer has no open application. Fail closed, and record the attempt.
+        print(f"[create_hitl_task] -> rejected: {exc}", flush=True)
+        out = {"error": "invalid_or_expired_session"}
+        _audit("create_hitl_task", "FAILED", started, _now(), tool_input, out,
+               session_token=session_token)
+        return out
+    out = {
+        "task_id": task_id,
+        "tier": recommendation,
+        "factors": factors,
+        "reason_codes": reason_codes,
+        "agent_run_id": agent_run_id,
+        "state": "OPEN",
+        "queue": "BANK_CORE.HITL_REQUEST",
+        "message": (
+            f"HITL task {task_id} recorded with tier {recommendation}; "
+            f"enqueued on HITL_REQUEST. Write the customer's reply for tier "
+            f"{recommendation}, naming only these factors: "
+            f"{factors or 'none — name no factor at all'}. Never mention a "
+            f"number, threshold, score, ratio, tier name or reason code."
+        ),
+    }
+    _audit("create_hitl_task", "SUCCESS", started, _now(), tool_input, out,
+           session_token=session_token)
+    print(f"[create_hitl_task] -> success task_id={task_id} agent_run_id={agent_run_id}", flush=True)
+    return out
 
 
 if __name__ == "__main__":

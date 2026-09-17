@@ -36,7 +36,7 @@ curl -s http://127.0.0.1:8181/v1/data/decisioning/eligibility -H 'content-type: 
 Expect `{"result":{"allow":false,"deny":[],"warn":["Credit score 642 in caution band (< 670)"]}}`.
 
 ```bash
-curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8500/mcp -X POST -d '{}' -H 'content-type: application/json'
+curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8503/mcp -X POST -d '{}' -H 'content-type: application/json'
 ```
 
 Expect a 4xx with a JSON-RPC error — FastMCP rejecting the body means the wrapper is up. A timeout or connection refused means it is not.
@@ -50,7 +50,7 @@ Expect 200. PAF reads that spec to expose `verify_employer` as a tool.
 On the `paf` compute — does PAF complete the TLS handshake with the internal load balancer against its own trust store?
 
 ```bash
-sudo podman exec paf curl -s -o /dev/null -w "%{http_code}\n" --cacert /mount/config/app/latest/certs/.agent-factory-ca/agent-factory-ca-bundle.pem https://<mcp_lb_ip>:8500/mcp -X POST -d '{}' -H 'content-type: application/json'
+sudo podman exec paf curl -s -o /dev/null -w "%{http_code}\n" --cacert /mount/config/app/latest/certs/.agent-factory-ca/agent-factory-ca-bundle.pem https://<mcp_lb_ip>:8503/mcp -X POST -d '{}' -H 'content-type: application/json'
 ```
 
 Expect a 4xx. `SSL certificate problem: self signed certificate` means the CA is not in the store — run `manage.py paf prepare`.
@@ -146,7 +146,7 @@ The wording points at reachability, but the failure is TLS verification. PAF's o
 python manage.py paf prepare
 ```
 
-Then re-run **Test connection** in the UI — the store is re-read per test, so no restart is needed. It applies to all four MCP servers at once, since they share the one listener certificate.
+Then re-run **Test connection** in the UI — the store is re-read per test, so no restart is needed. It applies to both MCP servers at once, since they share the one listener certificate.
 
 The tell that it's trust and not reachability: the curl in [Sanity-check curls](#sanity-check-curls-paf--tools--datasources) succeeds from inside the PAF container with `-k` and fails without it.
 
