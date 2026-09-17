@@ -1777,7 +1777,9 @@ def paf_link_flow() -> None:
     for name, before, after in changes:
         console.print(f"  [cyan]{name}[/cyan]: {before} → {after}")
     console.print(f"[green]✓[/green] Rebound {len(changes)} MCP node(s) in CHAT_FLOW.")
-    console.print("[dim]Publish the flow so the change reaches the integration endpoint.[/dim]")
+    console.print("\n[bold]Next:[/bold] open CHAT_FLOW in Agent Builder and [bold]Publish[/bold] it "
+                  "(CLOUD.md §9.3) — the endpoint serves only the published version — "
+                  "then [cyan]python manage.py paf api-key[/cyan].")
 
 
 @paf.command("gen-model")

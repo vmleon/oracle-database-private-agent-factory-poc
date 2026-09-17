@@ -160,8 +160,15 @@ data sources registered, and four MCP servers reporting connected.
 
 ## 9. Load `CHAT_FLOW`
 
-Import `paf/flows/CHAT_FLOW.paf` (password `WelcomeAmigo123!`) through
-Agent Builder → My Custom Flows → Import.
+Four steps, two in the browser and two on the command line. Each one is
+required, and the integration endpoint answers only after the last.
+
+### 9.1 Import
+
+Agent Builder → **My Custom Flows** → **Import** → `paf/flows/CHAT_FLOW.paf`,
+bundle password `WelcomeAmigo123!`.
+
+### 9.2 `link-flow`
 
 A bundle carries the MCP server ids of the install it came from, so rebind
 every MCP node by server name:
@@ -170,9 +177,20 @@ every MCP node by server name:
 python manage.py paf link-flow
 ```
 
-Publish the flow in Agent Builder — the integration endpoint only serves the
-published version, so publish after every edit. Then mint the key the backend
-calls it with:
+### 9.3 Publish
+
+Open `CHAT_FLOW` in Agent Builder and **Publish** it. An imported flow arrives
+unpublished, and the integration endpoint serves only the published version, so
+the next step has nothing to mint a key against until this is done. The same
+holds after every later edit to the flow: publish, or the endpoint keeps
+serving the version before it.
+
+`info` shows the state under Agent: `published — serving through the
+integration endpoint`.
+
+### 9.4 `api-key`
+
+Mint the key the backend calls the published flow with:
 
 ```bash
 python manage.py paf api-key
@@ -310,8 +328,9 @@ python manage.py cloud up
 python manage.py paf bootstrap
 ```
 
-The install sheet ends at PAF's UI; §9 onward — import, `link-flow`, publish,
-`api-key` — closes the loop. `manage.py info` says how far it has got.
+The install sheet ends at PAF's UI; §9 — import, `link-flow`, **publish**,
+`api-key`, each its own step — closes the loop. `manage.py info` says how far
+it has got.
 
 ## When something does not come up
 
