@@ -1,0 +1,96 @@
+databaseChangeLog:
+  # The live demo's three customers. None of them has an application, so the
+  # conversation collects one and files a new task while the audience watches;
+  # the end-to-end harness never drives them, and `cloud reset` drops whatever
+  # a rehearsal collected. One lands in each tier for one reason: a credit
+  # score below the floor, an employer the registry lists as dormant, and a
+  # clean file.
+  - changeSet:
+      id: 026-seed-diana-customer
+      author: paf-poc
+      context: seed
+      changes:
+        - sql:
+            sql: |-
+              INSERT INTO BANK_CORE.customer
+                (full_name, date_of_birth, residency, email, phone, kyc_status, kyc_updated_at)
+              VALUES
+                ('Diana Marsh', DATE '1988-04-19', 'RESIDENT',
+                 'diana@example.com', '+10000000026', 'PASSED', SYSTIMESTAMP)
+        - sql:
+            sql: |-
+              INSERT INTO BANK_CORE.customer_protected_attrs (customer_id, attrs)
+              SELECT customer_id, JSON('{"age_band":"30-39","gender":"F"}')
+                FROM BANK_CORE.customer WHERE full_name='Diana Marsh'
+        - sql:
+            sql: |-
+              INSERT INTO BANK_CORE.employment
+                (customer_id, employer_name, employment_type, monthly_salary, is_current)
+              SELECT customer_id, 'Acme Tech Ltd', 'SALARIED', 6200, 'Y'
+                FROM BANK_CORE.customer WHERE full_name='Diana Marsh'
+        - sql:
+            sql: |-
+              INSERT INTO BANK_CORE.credit_bureau_snapshot
+                (customer_id, snapshot_date, score, score_scale_min, score_scale_max)
+              SELECT customer_id, SYSDATE, 540, 300, 850
+                FROM BANK_CORE.customer WHERE full_name='Diana Marsh'
+
+  - changeSet:
+      id: 026-seed-tom-customer
+      author: paf-poc
+      context: seed
+      changes:
+        - sql:
+            sql: |-
+              INSERT INTO BANK_CORE.customer
+                (full_name, date_of_birth, residency, email, phone, kyc_status, kyc_updated_at)
+              VALUES
+                ('Tom Whitfield', DATE '1979-09-02', 'RESIDENT',
+                 'tom@example.com', '+10000000027', 'PASSED', SYSTIMESTAMP)
+        - sql:
+            sql: |-
+              INSERT INTO BANK_CORE.customer_protected_attrs (customer_id, attrs)
+              SELECT customer_id, JSON('{"age_band":"40-49","gender":"M"}')
+                FROM BANK_CORE.customer WHERE full_name='Tom Whitfield'
+        - sql:
+            sql: |-
+              INSERT INTO BANK_CORE.employment
+                (customer_id, employer_name, employment_type, monthly_salary, is_current)
+              SELECT customer_id, 'Phoenix Holdings Ltd', 'SALARIED', 6200, 'Y'
+                FROM BANK_CORE.customer WHERE full_name='Tom Whitfield'
+        - sql:
+            sql: |-
+              INSERT INTO BANK_CORE.credit_bureau_snapshot
+                (customer_id, snapshot_date, score, score_scale_min, score_scale_max)
+              SELECT customer_id, SYSDATE, 730, 300, 850
+                FROM BANK_CORE.customer WHERE full_name='Tom Whitfield'
+
+  - changeSet:
+      id: 026-seed-grace-customer
+      author: paf-poc
+      context: seed
+      changes:
+        - sql:
+            sql: |-
+              INSERT INTO BANK_CORE.customer
+                (full_name, date_of_birth, residency, email, phone, kyc_status, kyc_updated_at)
+              VALUES
+                ('Grace Okafor', DATE '1992-12-14', 'RESIDENT',
+                 'grace@example.com', '+10000000028', 'PASSED', SYSTIMESTAMP)
+        - sql:
+            sql: |-
+              INSERT INTO BANK_CORE.customer_protected_attrs (customer_id, attrs)
+              SELECT customer_id, JSON('{"age_band":"30-39","gender":"F"}')
+                FROM BANK_CORE.customer WHERE full_name='Grace Okafor'
+        - sql:
+            sql: |-
+              INSERT INTO BANK_CORE.employment
+                (customer_id, employer_name, employment_type, monthly_salary, is_current)
+              SELECT customer_id, 'Acme Tech Ltd', 'SALARIED', 6200, 'Y'
+                FROM BANK_CORE.customer WHERE full_name='Grace Okafor'
+        - sql:
+            sql: |-
+              INSERT INTO BANK_CORE.credit_bureau_snapshot
+                (customer_id, snapshot_date, score, score_scale_min, score_scale_max)
+              SELECT customer_id, SYSDATE, 742, 300, 850
+                FROM BANK_CORE.customer WHERE full_name='Grace Okafor'

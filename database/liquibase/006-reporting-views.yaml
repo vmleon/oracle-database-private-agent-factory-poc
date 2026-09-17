@@ -391,3 +391,25 @@ databaseChangeLog:
               LEFT JOIN BANK_CORE.employment e
                 ON e.customer_id = c.customer_id
                 AND e.is_current = 'Y'
+
+  # One row per customer with any large round-number transfer out in the last
+  # thirty days: the signal `decisioning.aml` reads for its suspicious-pattern
+  # rule. A count rather than the transactions, so the customer agent's read
+  # path sees a number and never a statement line.
+  - changeSet:
+      id: 006-create-chat-aml-signals
+      author: paf-poc
+      runOnChange: true
+      changes:
+        - sql:
+            sql: |-
+              CREATE OR REPLACE VIEW BANK_VIEWS.chat_v_aml_signals AS
+              SELECT a.customer_id,
+                     COUNT(*) AS large_round_outflows_30d
+                FROM BANK_CORE.account_transaction t
+                JOIN BANK_CORE.account a ON a.account_id = t.account_id
+               WHERE t.txn_type = 'TRANSFER_OUT'
+                 AND t.amount <= -1000
+                 AND MOD(t.amount, 1000) = 0
+                 AND t.txn_date >= TRUNC(SYSDATE) - 30
+               GROUP BY a.customer_id

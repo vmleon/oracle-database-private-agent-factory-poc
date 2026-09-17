@@ -183,6 +183,18 @@ def tier_from(eligibility: dict, employer: dict,
     return "APPROVE", codes
 
 
+def aml_input(customer: dict[str, Any]) -> dict[str, Any]:
+    """The OPA input for `decisioning.aml`, built from the customer context:
+    the name the screening lists are matched against, and the transaction
+    signal the suspicious-pattern rule reads."""
+    return {
+        "customer": {"full_name": customer.get("name")},
+        "transactions": {
+            "large_round_outflows_30d": int(customer.get("large_round_outflows_30d") or 0),
+        },
+    }
+
+
 def compliance_code(message: str) -> str:
     """Map a KYC or AML message to a stable reason code for the reviewer."""
     text = (message or "").lower()

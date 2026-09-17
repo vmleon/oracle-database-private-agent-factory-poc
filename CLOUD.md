@@ -227,8 +227,10 @@ reach both PAF and the database.
 It clears the reviewer queue, both chat histories, the login sessions and the
 tool traces first, so every scenario starts from the seeded state.
 
-Expect 11 passed: seven tier scenarios, and four security cases covering the
-fail-secure error path, the token-to-customer binding and prompt injection.
+Expect 17 passed: twelve tier scenarios, five of them on the compliance bar,
+four security cases covering the fail-secure error path, the token-to-customer
+binding and prompt injection, and a reviewer closing two cases through the
+backend, one approved and one declined.
 
 > **Optional — not part of a deployment from scratch.** Skip it and continue at
 > §11.
@@ -270,6 +272,46 @@ python manage.py info
 Expect the load balancer address and the paths `/`, `/backoffice`, `/v1` and
 `/agentFactory`, all over HTTPS, followed by the readiness of all four tiers.
 The certificate is self-signed, so a browser warns once.
+
+## 12. Prepare the demo
+
+[`DEMO.md`](DEMO.md) assumes the stack has been through this, in this order:
+
+```bash
+python manage.py cloud test
+```
+
+```bash
+python manage.py cloud bench
+```
+
+```bash
+python manage.py cloud reset
+```
+
+```bash
+python manage.py cloud test
+```
+
+The first two prove the stack: the scripted scenarios, then the conversation
+bench's edge cases through the chat backend. The reset and the final test are
+the backfill the demo opens on:
+
+- one open case per scenario persona in the reviewer queue, twelve rows across
+  all three tiers and the compliance bar;
+- two closed cases in the decision history, Alice approved and David declined,
+  each with the outcome on the customer's thread;
+- every other chat thread empty, because the harness talks to PAF directly.
+
+Three customers are never driven by the harness and start with no application:
+**Diana Marsh**, **Tom Whitfield** and **Grace Okafor**. The live demo collects
+an application for each in the chat and files a new row while the audience
+watches. `cloud reset` drops the applications a rehearsal collected for them,
+so a rehearsal is followed by the last two commands again.
+
+`BANK_CORE.decision` is a blockchain table declared `NO DELETE LOCKED`: its rows
+survive every reset, and the count growing across demos reads as history. An
+empty decision table means `cloud down` then `cloud up`, and nothing less.
 
 ## Teardown
 

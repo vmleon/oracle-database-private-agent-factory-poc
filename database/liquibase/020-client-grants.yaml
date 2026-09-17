@@ -87,6 +87,14 @@ databaseChangeLog:
               GRANT SELECT ON BANK_VIEWS.chat_v_application_document TO CUSTOMER_AGENT_RO
 
   - changeSet:
+      id: 020-grant-customer-agent-ro-aml-signals
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              GRANT SELECT ON BANK_VIEWS.chat_v_aml_signals TO CUSTOMER_AGENT_RO
+
+  - changeSet:
       id: 020-grant-customer-agent-ro-session-lookup
       author: paf-poc
       # auth_session resolves the opaque token to a customer, and hitl_task

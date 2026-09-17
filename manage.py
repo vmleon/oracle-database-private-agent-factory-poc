@@ -1432,6 +1432,11 @@ while True:
 # repeatable.
 INTAKE_PERSONAS = ("Carol Expat", "Liam NoApplication")
 
+# The live demo's customers. Seeded without an application so the chat collects
+# one in front of the audience; the harness never drives them, and `cloud reset`
+# drops what a rehearsal collected so the next run starts cold again.
+DEMO_PERSONAS = ("Diana Marsh", "Tom Whitfield", "Grace Okafor")
+
 
 def _reset_script(intake_personas: tuple = ()) -> str:
     """Clear the tables a run writes, as ADMIN over the bastion.
@@ -1490,13 +1495,15 @@ def cloud_reset() -> None:
     tool traces, so a test run or a demo starts from the seeded state.
 
     The seeded customers and their applications are untouched, so a customer
-    already processed can be run again. BANK_CORE.decision is left alone: it is a
+    already processed can be run again. The demo customers are the exception:
+    the application a rehearsal collected for them is dropped, so the next
+    conversation starts cold. BANK_CORE.decision is left alone: it is a
     blockchain table declared NO DELETE LOCKED, and outliving a reset is the
     property the demo exists to show.
     """
     _ensure_env()
     console.print(Panel.fit("[bold]Resetting the demo data[/bold]"))
-    result = _ops_python(_reset_script())
+    result = _ops_python(_reset_script(DEMO_PERSONAS))
     if result.returncode != 0:
         err = [l[l.index("ORA-"):] for l in (result.stderr or "").splitlines() if "ORA-" in l]
         console.print("[red]" + (err[0] if err else "Reset failed.") + "[/red]")
@@ -1509,14 +1516,19 @@ def cloud_reset() -> None:
         "auth_session": "login sessions",
         "decision_audit": "tool traces",
         "queue": "queued claims",
+        "intake": "demo applications",
     }
     kept = 0
+    intake = 0
     for line in (result.stdout or "").splitlines():
         name, _, count = line.rpartition(" ")
-        if name in labels:
+        if name == "intake":
+            intake += int(count)
+        elif name in labels:
             console.print(f"  [cyan]{labels[name]:<16}[/cyan] {count} removed")
         elif name == "decision":
             kept = count
+    console.print(f"  [cyan]{labels['intake']:<16}[/cyan] {intake} removed")
     console.print(f"[green]\u2713[/green] Queue and chats are clear.")
     console.print(
         f"[dim]  BANK_CORE.decision keeps its {kept} row(s) — a blockchain table declared "

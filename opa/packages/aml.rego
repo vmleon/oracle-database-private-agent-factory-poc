@@ -1,9 +1,9 @@
 # AML — sanctions / PEP / suspicious-pattern flags.
 #
-# Synthetic sanctions list is embedded here so the demo runs without
-# external data; production would load it via `data` (e.g. bundle from
-# the bank's compliance feed). Names are pre-uppercased to make the
-# substring match case-insensitive.
+# Synthetic sanctions and PEP lists are embedded here so the demo runs
+# without external data; production would load them via `data` (e.g. a
+# bundle from the bank's compliance feed). Names are pre-uppercased to
+# make the substring match case-insensitive.
 package decisioning.aml
 
 import future.keywords.in
@@ -24,11 +24,17 @@ deny contains msg if {
     msg := sprintf("Sanctions / watch-list match: %v", [entry])
 }
 
+pep_list := [
+    "PAULA STATESMAN",
+]
+
 # PEPs (Politically Exposed Persons) require enhanced due diligence,
 # not automatic rejection. Surface as a warn so the reviewer applies
 # institution-specific policy.
 warn contains msg if {
-    input.customer.pep == true
+    upper_name := upper(input.customer.full_name)
+    some entry in pep_list
+    contains(upper_name, entry)
     msg := "Politically Exposed Person — enhanced due diligence required"
 }
 

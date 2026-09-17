@@ -71,3 +71,9 @@ databaseChangeLog:
   - include:
       file: 024-seed-failed-kyc-persona.yaml
       relativeToChangelogFile: true
+  - include:
+      file: 025-seed-compliance-review-personas.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: 026-seed-demo-customers.yaml
+      relativeToChangelogFile: true

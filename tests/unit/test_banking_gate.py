@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src" / "ai" / "ban
 
 from gate import (  # noqa: E402
     GATE_FAIL,
+    aml_input,
     GATE_OK,
     announces_a_decision,
     unusable_application_fields,
@@ -299,3 +300,14 @@ def test_identity_checks_may_be_named():
 ])
 def test_compliance_messages_map_to_stable_codes(message, code):
     assert compliance_code(message) == code
+
+
+def test_aml_input_carries_the_name_and_the_outflow_count():
+    assert aml_input({"name": "Sam RoundNumbers", "large_round_outflows_30d": 6}) == {
+        "customer": {"full_name": "Sam RoundNumbers"},
+        "transactions": {"large_round_outflows_30d": 6},
+    }
+
+
+def test_aml_input_counts_no_outflows_as_zero():
+    assert aml_input({"name": "Alice Salaried"})["transactions"] == {"large_round_outflows_30d": 0}

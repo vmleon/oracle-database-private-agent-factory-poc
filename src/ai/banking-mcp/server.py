@@ -41,8 +41,8 @@ import httpx
 import oracledb
 from fastmcp import FastMCP
 
-from gate import (documents_payload, factors_for, gate_decision, tier_from,
-                  unusable_application_fields)
+from gate import (aml_input, documents_payload, factors_for, gate_decision,
+                  tier_from, unusable_application_fields)
 
 
 def _now_utc() -> datetime:
@@ -151,7 +151,10 @@ _PROFILE_SQL = """
            b.score                   AS credit_score,
            NVL((SELECT SUM(f.monthly_payment)
                   FROM BANK_VIEWS.chat_v_existing_facilities f
-                 WHERE f.customer_id = p.customer_id), 0) AS existing_monthly_debt
+                 WHERE f.customer_id = p.customer_id), 0) AS existing_monthly_debt,
+           NVL((SELECT s.large_round_outflows_30d
+                  FROM BANK_VIEWS.chat_v_aml_signals s
+                 WHERE s.customer_id = p.customer_id), 0) AS large_round_outflows_30d
       FROM BANK_VIEWS.chat_v_applicant_profile p
       LEFT JOIN BANK_VIEWS.chat_v_credit_bureau b ON b.customer_id = p.customer_id
      WHERE p.customer_id = :customer_id
@@ -329,6 +332,7 @@ def _get_context_impl(session_token: str) -> dict:
                     "kyc_status": p["kyc_status"],
                     "kyc_age_days": kyc_age_days,
                     "kyc_stale": kyc_stale,
+                    "large_round_outflows_30d": _i(p["large_round_outflows_30d"]),
                 },
                 "application": application,
                 "profile": {
@@ -484,16 +488,16 @@ def _kyc_impl(ctx: dict) -> dict | None:
 
 
 def _aml_impl(ctx: dict) -> dict | None:
-    """Sanctions and watch-list screening on the customer's name.
+    """Sanctions, watch-list and PEP screening on the customer's name, and the
+    suspicious-outflow pattern on their transactions.
 
-    `aml.rego` carries its own synthetic list, so this needs no table. The PEP
-    and suspicious-outflow rules read inputs the schema does not hold yet; a
-    missing input is undefined in Rego, so they stay silent rather than firing
-    on a guess."""
+    `aml.rego` carries its own synthetic screening lists, so the name needs no
+    table; the outflow count comes with the customer context, read from
+    `BANK_VIEWS.chat_v_aml_signals`."""
     customer = ctx.get("customer") or {}
     if not customer.get("name"):
         return None
-    return _compliance_impl("aml", {"customer": {"full_name": customer["name"]}})
+    return _compliance_impl("aml", aml_input(customer))
 
 
 def _policy_versions_impl() -> list[dict] | None:

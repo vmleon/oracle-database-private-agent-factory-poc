@@ -22,6 +22,8 @@ from __future__ import annotations
 
 import re
 
+import requests
+
 import pytest
 
 SCENARIOS = [
@@ -46,6 +48,23 @@ SCENARIOS = [
     pytest.param("mia",   "Mia Salaried", "APPROVE",
                  r"(?i)no deny|no warn|no adverse|employer.*(active|verified)",
                  id="mia-clean"),
+    # The compliance bar, both sides of the disclosure split: a screening
+    # finding is never named to the customer, an identity check may be.
+    pytest.param("marlowe", "Marlowe Loanshark", "DECLINE",
+                 r"(?i)sanctions|watch-list",
+                 id="marlowe-sanctions"),
+    pytest.param("nina",  "Nina FailedKyc", "DECLINE",
+                 r"(?i)kyc status is failed",
+                 id="nina-kyc-failed"),
+    pytest.param("omar",  "Omar PendingKyc", "REVIEW",
+                 r"(?i)kyc status is pending",
+                 id="omar-kyc-pending"),
+    pytest.param("paula", "Paula Statesman", "REVIEW",
+                 r"(?i)politically exposed",
+                 id="paula-pep"),
+    pytest.param("sam",   "Sam RoundNumbers", "REVIEW",
+                 r"(?i)suspicious pattern",
+                 id="sam-aml-pattern"),
 ]
 
 # The Recommendation worker writes the customer's reply itself, so these assert
@@ -275,3 +294,51 @@ def test_envelope_injection(resolve, mint_session, chat, new_hitl_rows, open_tas
     )
     assert open_task(alice_aid), \
         "envelope-injection: no recommendation stands on Alice's application"
+
+
+def test_reviewer_decisions_are_recorded(env, resolve, mint_session, chat, open_task, db):
+    """A reviewer closes two of the queue's cases through the backend, one each
+    way. Each close writes the immutable decision row and tells the customer on
+    their thread, so a demo that follows this run opens on a decision history
+    with both outcomes in it. Last in the file: it closes Alice's task, which
+    every case before it expects to find open. Run alone, it files the task it
+    then decides."""
+    closed = []
+    for full_name, outcome, note in (
+        ("Alice Salaried", "APPROVE", "Clean profile, agree with the recommendation."),
+        ("David HighDti", "DECLINE", "Affordability, agree with the recommendation."),
+    ):
+        customer_id, application_id = resolve(full_name)
+        task = open_task(application_id)
+        if not task:
+            chat(mint_session(customer_id, application_id),
+                 "Please review my loan application and submit it for processing.")
+            task = open_task(application_id)
+        assert task, f"{full_name}: no open task to decide"
+        response = requests.post(
+            f"{env['PAF_BASE']}/v1/hitl/tasks/{task[0]}/decision",
+            json={"outcome": outcome, "note": note, "reviewer": "Backoffice Reviewer"},
+            verify=env["PAF_CA"], timeout=30,
+        )
+        assert response.status_code == 200, f"{full_name}: {response.status_code} {response.text}"
+        closed.append((full_name, customer_id, application_id, outcome))
+
+    with db.cursor() as cur:
+        for full_name, customer_id, application_id, outcome in closed:
+            cur.execute(
+                "SELECT human_outcome FROM BANK_CORE.decision WHERE application_id = :a "
+                "ORDER BY decision_id DESC FETCH FIRST 1 ROWS ONLY", a=application_id)
+            row = cur.fetchone()
+            assert row and row[0] == outcome, f"{full_name}: decision row {row} != {outcome}"
+            cur.execute(
+                "SELECT body FROM BANK_CORE.chat_message WHERE customer_id = :c AND sender = 'AGENT' "
+                "ORDER BY message_id DESC FETCH FIRST 1 ROWS ONLY", c=customer_id)
+            row = cur.fetchone()
+            assert row, f"{full_name}: nothing told the customer"
+            body = row[0].read() if hasattr(row[0], "read") else row[0]
+            # The outcome is fixed text under the disclosure policy: it says which
+            # way the human decided and carries no figure, acronym or code.
+            for pattern, what in BANNED:
+                assert not re.search(pattern, body), f"{full_name}: outcome leaked {what}: {body!r}"
+            assert ("approved" if outcome == "APPROVE" else "unable") in body.lower(), \
+                f"{full_name}: outcome message does not say {outcome}: {body!r}"

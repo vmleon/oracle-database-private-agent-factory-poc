@@ -1,0 +1,184 @@
+databaseChangeLog:
+  # The review side of the compliance bar. Marlowe and Nina show the two hard
+  # bars; these three are clean in every respect a lender cares about and each
+  # carries exactly one compliance warning, so the REVIEW is attributable to it
+  # and nothing else. A pending identity check may be named to the customer;
+  # the screening findings may not.
+  - changeSet:
+      id: 025-seed-omar-customer
+      author: paf-poc
+      context: seed
+      changes:
+        - sql:
+            sql: |-
+              INSERT INTO BANK_CORE.customer
+                (full_name, date_of_birth, residency, email, phone, kyc_status, kyc_updated_at)
+              VALUES
+                ('Omar PendingKyc', DATE '1984-07-30', 'RESIDENT',
+                 'omar@example.com', '+10000000023', 'PENDING', SYSTIMESTAMP)
+        - sql:
+            sql: |-
+              INSERT INTO BANK_CORE.customer_protected_attrs (customer_id, attrs)
+              SELECT customer_id, JSON('{"age_band":"40-49","gender":"M"}')
+                FROM BANK_CORE.customer WHERE full_name='Omar PendingKyc'
+        - sql:
+            sql: |-
+              INSERT INTO BANK_CORE.employment
+                (customer_id, employer_name, employment_type, monthly_salary, is_current)
+              SELECT customer_id, 'Acme Tech Ltd', 'SALARIED', 6200, 'Y'
+                FROM BANK_CORE.customer WHERE full_name='Omar PendingKyc'
+        - sql:
+            sql: |-
+              INSERT INTO BANK_CORE.credit_bureau_snapshot
+                (customer_id, snapshot_date, score, score_scale_min, score_scale_max)
+              SELECT customer_id, SYSDATE, 730, 300, 850
+                FROM BANK_CORE.customer WHERE full_name='Omar PendingKyc'
+        - sql:
+            sql: |-
+              INSERT INTO BANK_CORE.loan_application
+                (customer_id, product_id, amount_requested, term_months, purpose,
+                 channel, status, submitted_at)
+              SELECT c.customer_id, p.product_id, 12000, 36, 'Home renovation',
+                     'CHAT', 'SUBMITTED', SYSTIMESTAMP
+                FROM BANK_CORE.customer c, BANK_CORE.product_catalog p
+               WHERE c.full_name='Omar PendingKyc' AND p.product_type='PERSONAL_LOAN'
+
+  - changeSet:
+      id: 025-seed-paula-customer
+      author: paf-poc
+      context: seed
+      changes:
+        - sql:
+            sql: |-
+              INSERT INTO BANK_CORE.customer
+                (full_name, date_of_birth, residency, email, phone, kyc_status, kyc_updated_at)
+              VALUES
+                ('Paula Statesman', DATE '1971-11-12', 'RESIDENT',
+                 'paula@example.com', '+10000000024', 'PASSED', SYSTIMESTAMP)
+        - sql:
+            sql: |-
+              INSERT INTO BANK_CORE.customer_protected_attrs (customer_id, attrs)
+              SELECT customer_id, JSON('{"age_band":"50-59","gender":"F"}')
+                FROM BANK_CORE.customer WHERE full_name='Paula Statesman'
+        - sql:
+            sql: |-
+              INSERT INTO BANK_CORE.employment
+                (customer_id, employer_name, employment_type, monthly_salary, is_current)
+              SELECT customer_id, 'Acme Tech Ltd', 'SALARIED', 6200, 'Y'
+                FROM BANK_CORE.customer WHERE full_name='Paula Statesman'
+        - sql:
+            sql: |-
+              INSERT INTO BANK_CORE.credit_bureau_snapshot
+                (customer_id, snapshot_date, score, score_scale_min, score_scale_max)
+              SELECT customer_id, SYSDATE, 730, 300, 850
+                FROM BANK_CORE.customer WHERE full_name='Paula Statesman'
+        - sql:
+            sql: |-
+              INSERT INTO BANK_CORE.loan_application
+                (customer_id, product_id, amount_requested, term_months, purpose,
+                 channel, status, submitted_at)
+              SELECT c.customer_id, p.product_id, 12000, 36, 'Home renovation',
+                     'CHAT', 'SUBMITTED', SYSTIMESTAMP
+                FROM BANK_CORE.customer c, BANK_CORE.product_catalog p
+               WHERE c.full_name='Paula Statesman' AND p.product_type='PERSONAL_LOAN'
+
+  - changeSet:
+      id: 025-seed-sam-customer
+      author: paf-poc
+      context: seed
+      changes:
+        - sql:
+            sql: |-
+              INSERT INTO BANK_CORE.customer
+                (full_name, date_of_birth, residency, email, phone, kyc_status, kyc_updated_at)
+              VALUES
+                ('Sam RoundNumbers', DATE '1990-03-05', 'RESIDENT',
+                 'sam@example.com', '+10000000025', 'PASSED', SYSTIMESTAMP)
+        - sql:
+            sql: |-
+              INSERT INTO BANK_CORE.customer_protected_attrs (customer_id, attrs)
+              SELECT customer_id, JSON('{"age_band":"30-39","gender":"M"}')
+                FROM BANK_CORE.customer WHERE full_name='Sam RoundNumbers'
+        - sql:
+            sql: |-
+              INSERT INTO BANK_CORE.employment
+                (customer_id, employer_name, employment_type, monthly_salary, is_current)
+              SELECT customer_id, 'Acme Tech Ltd', 'SALARIED', 6200, 'Y'
+                FROM BANK_CORE.customer WHERE full_name='Sam RoundNumbers'
+        - sql:
+            sql: |-
+              INSERT INTO BANK_CORE.credit_bureau_snapshot
+                (customer_id, snapshot_date, score, score_scale_min, score_scale_max)
+              SELECT customer_id, SYSDATE, 730, 300, 850
+                FROM BANK_CORE.customer WHERE full_name='Sam RoundNumbers'
+        - sql:
+            sql: |-
+              INSERT INTO BANK_CORE.loan_application
+                (customer_id, product_id, amount_requested, term_months, purpose,
+                 channel, status, submitted_at)
+              SELECT c.customer_id, p.product_id, 12000, 36, 'Home renovation',
+                     'CHAT', 'SUBMITTED', SYSTIMESTAMP
+                FROM BANK_CORE.customer c, BANK_CORE.product_catalog p
+               WHERE c.full_name='Sam RoundNumbers' AND p.product_type='PERSONAL_LOAN'
+
+  # Six large round-number transfers out inside thirty days: one more than the
+  # suspicious-pattern rule tolerates, on top of an ordinary salary credit.
+  - changeSet:
+      id: 025-seed-sam-account-and-outflows
+      author: paf-poc
+      context: seed
+      changes:
+        - sql:
+            sql: |-
+              INSERT INTO BANK_CORE.account (customer_id, account_type, currency, opened_at)
+              SELECT customer_id, 'CURRENT', 'USD', ADD_MONTHS(SYSDATE,-36)
+                FROM BANK_CORE.customer WHERE full_name='Sam RoundNumbers'
+        - sql:
+            sql: |-
+              INSERT INTO BANK_CORE.account_transaction
+                (account_id, txn_date, amount, currency, txn_type, description, balance_after)
+              SELECT a.account_id, TRUNC(SYSDATE)-28, 6200, 'USD', 'SALARY', 'Acme payroll', 38200
+                FROM BANK_CORE.account a JOIN BANK_CORE.customer c ON c.customer_id = a.customer_id
+               WHERE c.full_name='Sam RoundNumbers' AND a.account_type='CURRENT'
+        - sql:
+            sql: |-
+              INSERT INTO BANK_CORE.account_transaction
+                (account_id, txn_date, amount, currency, txn_type, description, balance_after)
+              SELECT a.account_id, TRUNC(SYSDATE)-26, -5000, 'USD', 'TRANSFER_OUT', 'Transfer out', 33200
+                FROM BANK_CORE.account a JOIN BANK_CORE.customer c ON c.customer_id = a.customer_id
+               WHERE c.full_name='Sam RoundNumbers' AND a.account_type='CURRENT'
+        - sql:
+            sql: |-
+              INSERT INTO BANK_CORE.account_transaction
+                (account_id, txn_date, amount, currency, txn_type, description, balance_after)
+              SELECT a.account_id, TRUNC(SYSDATE)-22, -5000, 'USD', 'TRANSFER_OUT', 'Transfer out', 28200
+                FROM BANK_CORE.account a JOIN BANK_CORE.customer c ON c.customer_id = a.customer_id
+               WHERE c.full_name='Sam RoundNumbers' AND a.account_type='CURRENT'
+        - sql:
+            sql: |-
+              INSERT INTO BANK_CORE.account_transaction
+                (account_id, txn_date, amount, currency, txn_type, description, balance_after)
+              SELECT a.account_id, TRUNC(SYSDATE)-17, -5000, 'USD', 'TRANSFER_OUT', 'Transfer out', 23200
+                FROM BANK_CORE.account a JOIN BANK_CORE.customer c ON c.customer_id = a.customer_id
+               WHERE c.full_name='Sam RoundNumbers' AND a.account_type='CURRENT'
+        - sql:
+            sql: |-
+              INSERT INTO BANK_CORE.account_transaction
+                (account_id, txn_date, amount, currency, txn_type, description, balance_after)
+              SELECT a.account_id, TRUNC(SYSDATE)-12, -5000, 'USD', 'TRANSFER_OUT', 'Transfer out', 18200
+                FROM BANK_CORE.account a JOIN BANK_CORE.customer c ON c.customer_id = a.customer_id
+               WHERE c.full_name='Sam RoundNumbers' AND a.account_type='CURRENT'
+        - sql:
+            sql: |-
+              INSERT INTO BANK_CORE.account_transaction
+                (account_id, txn_date, amount, currency, txn_type, description, balance_after)
+              SELECT a.account_id, TRUNC(SYSDATE)-7, -5000, 'USD', 'TRANSFER_OUT', 'Transfer out', 13200
+                FROM BANK_CORE.account a JOIN BANK_CORE.customer c ON c.customer_id = a.customer_id
+               WHERE c.full_name='Sam RoundNumbers' AND a.account_type='CURRENT'
+        - sql:
+            sql: |-
+              INSERT INTO BANK_CORE.account_transaction
+                (account_id, txn_date, amount, currency, txn_type, description, balance_after)
+              SELECT a.account_id, TRUNC(SYSDATE)-3, -5000, 'USD', 'TRANSFER_OUT', 'Transfer out', 8200
+                FROM BANK_CORE.account a JOIN BANK_CORE.customer c ON c.customer_id = a.customer_id
+               WHERE c.full_name='Sam RoundNumbers' AND a.account_type='CURRENT'
