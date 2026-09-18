@@ -41,7 +41,7 @@ import httpx
 import oracledb
 from fastmcp import FastMCP
 
-from gate import (aml_input, documents_payload, factors_for, gate_decision,
+from gate import (aml_input, amount_value, documents_payload, factors_for, gate_decision,
                   tier_from, unusable_application_fields)
 
 
@@ -299,7 +299,7 @@ def _get_context_impl(session_token: str) -> dict:
                 application = {
                     "id": int(a["application_id"]),
                     "status": a["status"],
-                    "amount_requested": _f(a["amount_requested"]),
+                    "amount_requested": amount_value(a["amount_requested"]),
                     "term_months": _i(a["term_months"]),
                     "product_type": a["product_type"],
                     "purpose": a["purpose"],

@@ -15,6 +15,7 @@ from gate import (  # noqa: E402
     GATE_FAIL,
     aml_input,
     GATE_OK,
+    amount_value,
     announces_a_decision,
     unusable_application_fields,
     documents_payload,
@@ -39,6 +40,16 @@ COLLECTING = {
 NO_APP = {"customer": {"residency": "resident"}, "application": None,
           "profile": {"employment_type": "salaried"}}
 BAD = {"error": "invalid_or_expired_session"}
+
+
+def test_amount_value_is_a_whole_number_when_the_amount_is_whole():
+    # The worker reads the amount back to the customer, and a decimal in a reply
+    # is a ratio to the disclosure screen, so a whole amount carries no ".0".
+    assert amount_value(10000) == 10000
+    assert amount_value(10000.0) == 10000
+    assert isinstance(amount_value(10000.0), int)
+    assert amount_value(1250.5) == 1250.5
+    assert amount_value(None) is None
 
 
 def test_documents_payload_builds_the_opa_input():

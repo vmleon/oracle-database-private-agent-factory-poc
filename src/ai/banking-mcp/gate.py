@@ -70,6 +70,19 @@ def announces_a_decision(reply: str) -> bool:
     return any(pattern.search(text) for pattern in DECISION_PATTERNS)
 
 
+def amount_value(v: Any) -> int | float | None:
+    """A money amount as the worker may read it back to the customer.
+
+    The worker echoes the amount from the manager's message, and the backend's
+    disclosure screen treats any decimal in a reply as a ratio, so a whole
+    amount is an int (10000, never 10000.0).
+    """
+    if v is None:
+        return None
+    f = float(v)
+    return int(f) if f.is_integer() else f
+
+
 def unusable_application_fields(application: dict[str, Any] | None) -> list[str]:
     """The fields a read path cannot work with.
 

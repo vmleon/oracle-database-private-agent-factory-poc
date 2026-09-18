@@ -95,7 +95,7 @@ Hi! What do you need from me to apply for a loan?
 ```
 
 ```
-I want to consolidate two credit cards.
+To consolidate two credit cards.
 ```
 
 ```
