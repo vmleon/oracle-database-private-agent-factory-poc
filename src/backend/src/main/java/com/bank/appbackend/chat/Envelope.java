@@ -119,7 +119,8 @@ public final class Envelope {
      * directly, PAF sometimes delivers its action plan instead —
      * {@code {"thought": …, "actions": [{"name": "talk_to_user", "parameters": {"text": …}}, …]}}
      * — with the sentence inside the {@code talk_to_user} action, or failing that the
-     * {@code submit_result} one. Both are read here so that shape is a reply, not a 502.
+     * {@code submit_result} one. The list is keyed {@code actions} or {@code tool_calls}
+     * depending on the turn. Both are read here so that shape is a reply, not a 502.
      */
     public static String extractRawReply(JsonNode root) {
         JsonNode data = root.has("data") ? root.get("data") : root;
@@ -133,7 +134,9 @@ public final class Envelope {
         }
         for (String field : REPLY_FIELDS) {
             if (data.hasNonNull(field) && data.get(field).isObject()) {
-                String text = textOfActions(data.get(field).path("actions"));
+                JsonNode plan = data.get(field);
+                JsonNode actions = plan.has("actions") ? plan.path("actions") : plan.path("tool_calls");
+                String text = textOfActions(actions);
                 if (text != null) {
                     return text;
                 }

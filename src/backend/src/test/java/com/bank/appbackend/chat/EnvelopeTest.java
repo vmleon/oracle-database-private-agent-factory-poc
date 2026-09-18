@@ -222,6 +222,14 @@ class EnvelopeTest {
     }
 
     @Test
+    void extractReplyReadsTheSentenceOutOfAToolCallsObject() throws Exception {
+        // The same plan with the list keyed tool_calls, as PAF also delivers it.
+        var root = mapper.readTree("{\"roomId\":\"r1\",\"message\":{\"thought\":\"no stage applies\","
+                + "\"tool_calls\":[{\"name\":\"talk_to_user\",\"parameters\":{\"text\":\"Shall I go ahead?\"}}]}}");
+        assertThat(Envelope.extractReply(root)).isEqualTo("Shall I go ahead?");
+    }
+
+    @Test
     void extractReplyFallsBackToTheSubmittedResultOfAnActionObject() throws Exception {
         var root = mapper.readTree("{\"message\":{\"actions\":[{\"name\":\"submit_result\","
                 + "\"parameters\":{\"tool_output\":\"[[DECISION tier=REVIEW]] It is with the team.\"}}]}}");
