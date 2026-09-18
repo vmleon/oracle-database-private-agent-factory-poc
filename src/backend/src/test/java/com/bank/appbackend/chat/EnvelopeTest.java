@@ -3,6 +3,8 @@ package com.bank.appbackend.chat;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -222,11 +224,16 @@ class EnvelopeTest {
     }
 
     @Test
-    void extractReplyReadsTheSentenceOutOfAToolCallsObject() throws Exception {
-        // The same plan with the list keyed tool_calls, as PAF also delivers it.
-        var root = mapper.readTree("{\"roomId\":\"r1\",\"message\":{\"thought\":\"no stage applies\","
-                + "\"tool_calls\":[{\"name\":\"talk_to_user\",\"parameters\":{\"text\":\"Shall I go ahead?\"}}]}}");
-        assertThat(Envelope.extractReply(root)).isEqualTo("Shall I go ahead?");
+    void extractReplyReadsTheSentenceWhateverKeyHoldsThePlan() throws Exception {
+        // The same plan as the model spells it on other turns: a list under tool_calls,
+        // a single object under function_call, or the call flattened into the plan.
+        for (String plan : List.of(
+                "\"tool_calls\":[{\"name\":\"talk_to_user\",\"parameters\":{\"text\":\"Shall I go ahead?\"}}]",
+                "\"function_call\":{\"name\":\"talk_to_user\",\"parameters\":{\"text\":\"Shall I go ahead?\"}}",
+                "\"tool\":\"talk_to_user\",\"parameters\":{\"text\":\"Shall I go ahead?\"}")) {
+            var root = mapper.readTree("{\"roomId\":\"r1\",\"message\":{\"thought\":\"no stage applies\"," + plan + "}}");
+            assertThat(Envelope.extractReply(root)).as(plan).isEqualTo("Shall I go ahead?");
+        }
     }
 
     @Test

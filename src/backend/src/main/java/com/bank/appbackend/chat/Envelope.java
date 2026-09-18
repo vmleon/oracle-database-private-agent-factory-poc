@@ -57,14 +57,21 @@ public final class Envelope {
         return MARKERS.matcher(cleaned).replaceAll("").strip();
     }
 
-    private static String textOfActions(JsonNode actions) {
+    /**
+     * The sentence inside a plan object, wherever the model put it. The plan names its
+     * call under {@code name} or {@code tool} and keeps it in a list, a nested object or
+     * the plan itself, so the tree is walked rather than a key looked up: the first
+     * {@code talk_to_user} text wins, a {@code submit_result} output is the fallback.
+     */
+    private static String textOfPlan(JsonNode plan) {
         String submitted = null;
-        for (JsonNode action : actions) {
-            JsonNode parameters = action.path("parameters");
-            if ("talk_to_user".equals(action.path("name").asText()) && parameters.path("text").isTextual()) {
+        for (JsonNode node : plan.findParents("parameters")) {
+            JsonNode parameters = node.get("parameters");
+            String call = node.hasNonNull("name") ? node.get("name").asText() : node.path("tool").asText();
+            if ("talk_to_user".equals(call) && parameters.path("text").isTextual()) {
                 return parameters.get("text").asText();
             }
-            if ("submit_result".equals(action.path("name").asText()) && parameters.path("tool_output").isTextual()) {
+            if ("submit_result".equals(call) && parameters.path("tool_output").isTextual() && submitted == null) {
                 submitted = parameters.get("tool_output").asText();
             }
         }
@@ -119,8 +126,8 @@ public final class Envelope {
      * directly, PAF sometimes delivers its action plan instead —
      * {@code {"thought": …, "actions": [{"name": "talk_to_user", "parameters": {"text": …}}, …]}}
      * — with the sentence inside the {@code talk_to_user} action, or failing that the
-     * {@code submit_result} one. The list is keyed {@code actions} or {@code tool_calls}
-     * depending on the turn. Both are read here so that shape is a reply, not a 502.
+     * {@code submit_result} one. The model spells the plan differently from turn to
+     * turn, so the sentence is found by walking it. That shape is a reply, not a 502.
      */
     public static String extractRawReply(JsonNode root) {
         JsonNode data = root.has("data") ? root.get("data") : root;
@@ -134,9 +141,7 @@ public final class Envelope {
         }
         for (String field : REPLY_FIELDS) {
             if (data.hasNonNull(field) && data.get(field).isObject()) {
-                JsonNode plan = data.get(field);
-                JsonNode actions = plan.has("actions") ? plan.path("actions") : plan.path("tool_calls");
-                String text = textOfActions(actions);
+                String text = textOfPlan(data.get(field));
                 if (text != null) {
                     return text;
                 }
