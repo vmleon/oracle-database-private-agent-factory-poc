@@ -57,6 +57,8 @@ class ResearchSummaryTest {
             "Decline this application.",
             "This warrants approval.",
             "This is a strong case for approval.",
+            "I would not recommend approving this application.",
+            "This case supports approval.",
     })
     void aVerdictIsRejected(String summary) {
         assertThat(ResearchSummary.verdicts(summary)).isNotEmpty();
@@ -79,6 +81,25 @@ class ResearchSummaryTest {
             "The exposure is reported on balance sheets.",
     })
     void aSuggestionThatNamesNoOutcomeIsAllowed(String summary) {
+        assertThat(ResearchSummary.verdicts(summary)).isEmpty();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "We recommend requesting a payslip before approval.",
+            "I suggest obtaining a payslip before approval.",
+    })
+    void anActionSuggestionNearAnOutcomeWordIsAllowed(String summary) {
+        assertThat(ResearchSummary.verdicts(summary)).isEmpty();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "- the record does not point to approval on its own",
+            "The data does not support approval.",
+            "The comparable cases never favour approval outright.",
+    })
+    void aDeniedLeanIsAllowed(String summary) {
         assertThat(ResearchSummary.verdicts(summary)).isEmpty();
     }
 

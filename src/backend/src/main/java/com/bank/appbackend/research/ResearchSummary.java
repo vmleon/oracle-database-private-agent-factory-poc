@@ -37,16 +37,25 @@ public final class ResearchSummary {
     private static final String OUTCOME =
             "(?:approv\\w*|declin\\w*|reject\\w*|den(?:y|ies|ied|ial))";
 
-    /** Same-sentence proximity: newlines are excluded so a subject on one line
-     *  cannot bind to a verb on the next. */
+    /** Same-sentence proximity: newlines and periods are excluded so a subject on
+     *  one line cannot bind to a verb on the next, or across a sentence boundary. */
     private static final String NEAR = "[^.\\n]{0,40}";
+
+    /** Proximity that stops at a gerund, so "recommend requesting a payslip before
+     *  approval" reads as recommending the payslip rather than the approval. */
+    private static final String NEAR_NO_ACTION = "(?:(?!\\b\\w+ing\\b)[^.\\n]){0,40}";
+
+    /** Proximity that stops at a negation, so "does not point to approval" is not
+     *  read as pointing to it. A denial of a lean is not a lean. */
+    private static final String NEAR_NO_NEGATION =
+            "(?:(?!\\b(?:not|never|no|nor|cannot|n't)\\b)[^.\\n]){0,40}";
 
     private static final List<Rule> VERDICTS = List.of(
             // "I would recommend approving", "We recommend declining",
             // "My recommendation is to decline".
             new Rule(Pattern.compile(
                     "(?i)\\b(?:i|we|my|our)\\b" + NEAR
-                            + "\\b(?:recommend\\w*|suggest\\w*|advis\\w*)\\b" + NEAR
+                            + "\\b(?:recommend\\w*|suggest\\w*|advis\\w*)\\b" + NEAR_NO_ACTION
                             + "\\b" + OUTCOME), "a recommendation"),
             new Rule(Pattern.compile(
                     "(?i)\\b(?:should|ought\\s+to|must)\\s+be\\s+" + OUTCOME), "a verdict"),
@@ -59,8 +68,8 @@ public final class ResearchSummary {
             // "The comparable cases favour approval", "the data supports decline".
             new Rule(Pattern.compile(
                     "(?i)\\b(?:evidence|data|record|cases?|facts?|analysis|profile|history)\\b"
-                            + NEAR + "\\b(?:supports?|favou?rs?|points?\\s+to|argues?\\s+for)\\b"
-                            + NEAR + "\\b" + OUTCOME), "a lean"),
+                            + NEAR_NO_NEGATION + "\\b(?:supports?|favou?rs?|points?\\s+to|argues?\\s+for)\\b"
+                            + NEAR_NO_NEGATION + "\\b" + OUTCOME), "a lean"),
             // A labelled conclusion line: "Recommendation: DECLINE", "Verdict - approve".
             new Rule(Pattern.compile(
                     "(?im)^\\s*(?:recommendation|verdict|conclusion|decision|outcome)"
