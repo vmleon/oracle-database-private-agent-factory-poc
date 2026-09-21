@@ -101,7 +101,7 @@ databaseChangeLog:
       # answers "has a task been recorded for this application" for the
       # decision gate. Both are table grants, which lets this identity read
       # more of each table than the lookup needs; replacing them with
-      # definer's-rights functions is BACKLOG.md §4.
+      # definer's-rights functions is BACKLOG.md §3.
       changes:
         - sql:
             sql: |-
@@ -183,8 +183,8 @@ databaseChangeLog:
             sql: |-
               GRANT SELECT, INSERT ON BANK_CORE.research_summary TO SVC_BACKEND
 
-  # research_audit was created in 003 and has never had a writer. UPDATE is
-  # here because the run id is stamped on after the fact — see Task 5.
+  # research_audit's writer stamps the run id onto its rows after the run
+  # completes, which is why UPDATE is granted alongside SELECT and INSERT.
   - changeSet:
       id: 020-grant-svc-backend-research-audit
       author: paf-poc

@@ -48,6 +48,8 @@ Customer → React SPA → Spring `ChatService` → PAF integration endpoint →
 
 `CHAT_FLOW` is **one manager agent with two sub-agent workers**, fed by five deterministic `banking-mcp` nodes. The manager holds no tools. Four nodes run _before_ it (`get_context`, `evaluate_eligibility_for_session`, `required_documents_for_session`, `verify_employer_for_session`) so every fact is computed server-side with no LLM in the loop; a fifth (`hitl_status_for_session`) runs after. The manager delegates to `Intake` (collects amount/term/purpose) or `Recommendation` (files the task).
 
+`RESEARCH_WORKFLOW` is the backoffice counterpart: one Agent node holding no tools, fed by five deterministic `research-mcp` nodes off one wired task id. `research-mcp` is the third database identity's flow — it connects as `BACKOFFICE_AGENT_RO`, `SELECT` only, no `EXECUTE`, no write grant, so the research agent is structurally unable to decide anything.
+
 **The tier is not chosen by a model.** `banking-mcp/gate.py:tier_from()` is a pure function of the OPA eligibility result, the employer record and the KYC and AML findings — a compliance `deny` is a bar that forces `DECLINE`. The worker reads the tier back and writes the customer's sentence within a disclosure policy — it may name a _factor_, never a number. See `paf/flows/CHAT_FLOW.md` for the full blueprint and the exact custom-instruction blocks.
 
 ### Where to look
@@ -58,7 +60,7 @@ Customer → React SPA → Spring `ChatService` → PAF integration endpoint →
 | What is not built yet                            | `BACKLOG.md` — every unimplemented design claim has a section |
 | PAF product defects hit during the build         | `issues/NN-*.md`                                              |
 | Deployment workarounds, symptom → cause → fix    | `docs/TROUBLESHOOT.md`                                        |
-| Flow build steps, node by node                   | `paf/flows/CHAT_FLOW.md`                                      |
+| Flow build steps, node by node                   | `paf/flows/CHAT_FLOW.md`, `paf/flows/RESEARCH_WORKFLOW.md`    |
 | Banking terms (DTI, PTI, KYC, AML)               | `docs/GLOSSARY.md`                                            |
 | What the conversation suite attacks              | `docs/TEST-BENCH.md`                                          |
 
