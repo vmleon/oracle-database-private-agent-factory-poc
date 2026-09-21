@@ -26,6 +26,15 @@ public class ResearchService {
 
     private static final Logger log = LoggerFactory.getLogger(ResearchService.class);
 
+    /**
+     * What the flow returns when its gate cannot resolve the case. It is not a case
+     * file, so it is never appended to the ledger — the ledger is append-only, and a
+     * transient wrapper outage must not leave a permanent non-summary row behind.
+     * `paf/flows/RESEARCH_WORKFLOW.md` Step 10 sets this as the gate's False Message;
+     * the two must agree.
+     */
+    static final String FLOW_UNAVAILABLE = "Research could not be completed for this case.";
+
     private final ResearchPafClient paf;
     private final JdbcTemplate jdbc;
 
@@ -54,6 +63,10 @@ public class ResearchService {
         // after this run began, so an earlier failed run's orphaned pending
         // rows for the same task are left alone rather than reclaimed.
         stampAuditTrail(taskId, runId, who, startedAt);
+        if (raw == null || raw.isBlank() || raw.startsWith(FLOW_UNAVAILABLE)) {
+            log.warn("research run {} for task {} produced no case file", runId, taskId);
+            return new ResearchView(taskId, ResearchSummary.BLOCKED, who, Instant.now(), null);
+        }
         String shown = ResearchSummary.screen(raw);
         if (!shown.equals(raw)) {
             // Name the rule, never the text that broke it.

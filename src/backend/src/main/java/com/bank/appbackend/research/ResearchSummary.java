@@ -57,6 +57,13 @@ public final class ResearchSummary {
                     "(?i)\\b(?:i|we|my|our)\\b" + NEAR
                             + "\\b(?:recommend\\w*|suggest\\w*|advis\\w*)\\b" + NEAR_NO_ACTION
                             + "\\b" + OUTCOME), "a recommendation"),
+            // "We recommend proceeding with the approval" — a nominalised outcome the
+            // gerund guard above deliberately steps over.
+            new Rule(Pattern.compile(
+                    "(?i)\\b(?:i|we|my|our)\\b" + NEAR
+                            + "\\b(?:recommend\\w*|suggest\\w*|advis\\w*)\\b[^.\\n]{0,40}"
+                            + "\\bthe\\s+(?:approval|declin\\w+|rejection|denial)\\b"),
+                    "a recommendation"),
             new Rule(Pattern.compile(
                     "(?i)\\b(?:should|ought\\s+to|must)\\s+be\\s+" + OUTCOME), "a verdict"),
             new Rule(Pattern.compile(

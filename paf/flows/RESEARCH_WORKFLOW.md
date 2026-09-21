@@ -222,6 +222,11 @@ Filters an unresolvable task id **once**, up front, so the agent never has to ha
 Research could not be completed for this case.
 ```
 
+> The Spring backend matches this exact text (`ResearchService.FLOW_UNAVAILABLE`) to
+> recognise a failed run and keep it out of the append-only `research_summary`
+> ledger. Changing this message here without changing that constant reopens the
+> gap it closes — a transient outage would permanently append a non-summary row.
+
 - Operator = `Regex match`; `Match Text` — a resolved case carries a `tier` key, an unresolvable one returns `{"error":"task_not_found"}`, which has none. **Match the bare key word, _not_ a quoted key** — the node escapes the inner quotes, so `"tier"` rejects every case:
 
 ```

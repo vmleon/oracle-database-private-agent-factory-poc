@@ -25,6 +25,7 @@ export function ResearchPanel({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    setView(null);
     getResearch(taskId)
       .then(setView)
       .catch(() => setError("Could not load earlier research."));

@@ -47,6 +47,11 @@ public class ResearchAuditService {
                 log.warn("research audit skipped: no task id (tool={})", req.toolName());
                 return;
             }
+            if (!taskExists(req.hitlTaskId())) {
+                log.warn("research audit skipped: task {} does not resolve (tool={})",
+                        req.hitlTaskId(), req.toolName());
+                return;
+            }
             String pending = pendingRunId(req.hitlTaskId());
             Long durationMs = (req.startedAt() != null && req.endedAt() != null)
                     ? Duration.between(req.startedAt(), req.endedAt()).toMillis()
@@ -74,5 +79,16 @@ public class ResearchAuditService {
 
     private static Timestamp toTimestamp(Instant i) {
         return i == null ? null : Timestamp.from(i);
+    }
+
+    // Unlike /v1/audit/tool-call, which resolves the session from its own token,
+    // this endpoint takes hitlTaskId straight from the request body. This is the
+    // cheap check that keeps a bad id from landing a row against a case that was
+    // never under review.
+    private boolean taskExists(Long hitlTaskId) {
+        Integer count = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM BANK_CORE.hitl_task WHERE task_id = ?",
+                Integer.class, hitlTaskId);
+        return count != null && count > 0;
     }
 }

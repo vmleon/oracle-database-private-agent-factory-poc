@@ -10,9 +10,12 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Internal collector for the per-tool CHAT_WORKFLOW and RESEARCH_WORKFLOW audit trails.
+ * Collector for the per-tool CHAT_WORKFLOW and RESEARCH_WORKFLOW audit trails.
  * The MCP tool wrappers POST here after each call; the backend (which owns APP) writes
- * the row. Reachable only inside the tier.
+ * the row. The collectors are internal in intent — the MCP wrappers are their only
+ * meant caller — but the load balancer routes the whole {@code /v1} surface, this
+ * endpoint included, from the public front door, and none of it is authenticated
+ * in this PoC.
  */
 @RestController
 @RequestMapping("/v1/audit")

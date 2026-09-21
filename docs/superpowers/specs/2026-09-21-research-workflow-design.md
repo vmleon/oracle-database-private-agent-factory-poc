@@ -76,7 +76,7 @@ A third MCP server at `src/ai/research-mcp/`, shaped like `banking-mcp`, logging
 
 `recommendation_for_task` is the case under review rather than research, and it feeds G0 the way `get_context` does in `CHAT_FLOW` — an unresolvable task fails the gate before the agent runs.
 
-**Matching is banded, not vector.** `similar_cases_for_task` matches `case_history` on amount, DTI, PTI and credit-score bands and reports the outcomes. It cannot match on reason codes: `case_history.outcome_reason` is prose, not codes. `case_embedding` stays unused — structural matching answers "how did we handle cases like this" with plain SQL and no embedding pass.
+**Matching is banded, not vector.** `similar_cases_for_task` matches `case_history` on amount, DTI and credit-score bands and reports the outcomes. It cannot match on reason codes: `case_history.outcome_reason` is prose, not codes. `case_embedding` stays unused — structural matching answers "how did we handle cases like this" with plain SQL and no embedding pass.
 
 The band-matching logic lives in `src/ai/research-mcp/match.py`, free of `fastmcp` and `oracledb` so it is unit-testable on the host, exactly as `gate.py` is for `banking-mcp`.
 
@@ -149,7 +149,7 @@ The agent's instructions ask it to name no outcome. This is what holds it. Host-
 | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `tests/unit`     | band matching in `match.py` — which cases are comparable, and that an incomplete case yields none                                                                                |
 | `./gradlew test` | `ResearchSummary.screen` accepts an organised summary and rejects every verdict phrasing; the service writes one `research_summary` row per run and none on a rejected summary   |
-| `npm test`       | the panel renders a stored summary without re-running, and its pending state                                                                                                     |
+| `npm test`       | `researchState` — the panel's pure idle/running/ready state helper                                                                                                               |
 | `cloud test`     | end to end: file a `REVIEW` task, run research, assert one `research_summary` row, five `research_audit` rows under one `research_run_id`, and that the summary names no outcome |
 | Playground       | five deterministic nodes run once each; the agent makes zero tool calls                                                                                                          |
 

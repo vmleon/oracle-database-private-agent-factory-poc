@@ -256,8 +256,8 @@ python manage.py paf api-key
 
 Expect: `PAF_RESEARCH_AGENT_ID` and `PAF_RESEARCH_API_KEY` in `.env` beside
 CHAT_FLOW's pair, and a restarted `paf-poc-backend` holding both. The same
-command mints a fresh key for CHAT_FLOW too — keys are meant to be replaced by
-re-running `api-key`, so this is expected, not a regression.
+command mints a fresh key for CHAT_FLOW too — `api-key` replaces both flows'
+keys together.
 
 Check where the sequence stands at any point:
 
@@ -265,7 +265,7 @@ Check where the sequence stands at any point:
 python manage.py info
 ```
 
-It now reports both flows under Agent, each with its own imported / published
+It reports both flows under Agent, each with its own imported / published
 / MCP nodes linked / key minted / key delivered line.
 
 ## 11. `cloud test`

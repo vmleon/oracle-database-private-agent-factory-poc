@@ -67,6 +67,21 @@ class ResearchServiceTest {
     }
 
     @Test
+    void aFlowUnavailableResultIsNeverAppendedToTheLedger() {
+        // The reachable path: a task that resolves, but the flow's gate could not
+        // resolve the case (research-mcp restarting, an ADB blip, a wrapper error
+        // without the word "tier"). This text is not a case file and must never
+        // become a permanent row in the append-only ledger.
+        when(paf.run(anyString())).thenReturn(ResearchService.FLOW_UNAVAILABLE);
+        when(jdbc.queryForObject(anyString(), eq(Long.class), any())).thenReturn(7L);
+
+        ResearchView view = service.run(42L, "Backoffice Reviewer");
+
+        assertThat(view.summary()).isEqualTo(ResearchSummary.BLOCKED);
+        verify(jdbc, never()).update(contains("research_summary"), any(), any(), any(), any(), any());
+    }
+
+    @Test
     void anUnknownTaskIsNotResearched() {
         when(jdbc.queryForObject(anyString(), eq(Long.class), any())).thenReturn(null);
 

@@ -59,6 +59,8 @@ class ResearchSummaryTest {
             "This is a strong case for approval.",
             "I would not recommend approving this application.",
             "This case supports approval.",
+            "We recommend proceeding with the approval.",
+            "I would suggest going ahead with the declination.",
     })
     void aVerdictIsRejected(String summary) {
         assertThat(ResearchSummary.verdicts(summary)).isNotEmpty();
