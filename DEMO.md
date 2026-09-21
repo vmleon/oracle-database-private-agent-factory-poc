@@ -36,11 +36,7 @@ Around 12000.
 ```
 
 ```
-Actually, could we make it 48 months instead?
-```
-
-```
-The home renovation I mentioned.
+The purpose is a home renovation
 ```
 
 ```
@@ -60,10 +56,6 @@ history named. No score, no floor.
 
 ```
 Hello. I'd like a personal loan of 15000 over 48 months to buy a car.
-```
-
-```
-Before you submit, change the purpose to a used car, please.
 ```
 
 ```
@@ -124,23 +116,23 @@ her thread: the reviewer's outcome.
 
 ## Reference: who lands where
 
-| Customer | Tier | Why |
-| --- | --- | --- |
-| **Diana Marsh** | DECLINE | credit score below the floor |
-| **Tom Whitfield** | REVIEW | employer dormant in the registry |
-| **Grace Okafor** | APPROVE | clean file |
-| Alice Salaried, Mia Salaried | APPROVE | clean file |
-| Frank MidBand | REVIEW | credit score in the caution band |
-| Kyle DormantEmployer | REVIEW | employer dormant in the registry |
-| David HighDti | DECLINE | debt-to-income above the cap |
-| Eva LowScore | DECLINE | credit score below the floor |
-| Jane UnknownEmployer | DECLINE | employer not in the registry |
-| Iris UnusableDocs | DECLINE | document quality unusable |
-| Nina FailedKyc | DECLINE | identity checks failed, the check is named to her |
-| Marlowe Loanshark | DECLINE | on the sanctions list, nothing is named to him |
-| Omar PendingKyc | REVIEW | identity checks pending, the check is named |
-| Paula Statesman | REVIEW | politically exposed person, nothing is named |
-| Sam RoundNumbers | REVIEW | six large round transfers out in thirty days |
+| Customer                     | Tier    | Why                                               |
+| ---------------------------- | ------- | ------------------------------------------------- |
+| **Diana Marsh**              | DECLINE | credit score below the floor                      |
+| **Tom Whitfield**            | REVIEW  | employer dormant in the registry                  |
+| **Grace Okafor**             | APPROVE | clean file                                        |
+| Alice Salaried, Mia Salaried | APPROVE | clean file                                        |
+| Frank MidBand                | REVIEW  | credit score in the caution band                  |
+| Kyle DormantEmployer         | REVIEW  | employer dormant in the registry                  |
+| David HighDti                | DECLINE | debt-to-income above the cap                      |
+| Eva LowScore                 | DECLINE | credit score below the floor                      |
+| Jane UnknownEmployer         | DECLINE | employer not in the registry                      |
+| Iris UnusableDocs            | DECLINE | document quality unusable                         |
+| Nina FailedKyc               | DECLINE | identity checks failed, the check is named to her |
+| Marlowe Loanshark            | DECLINE | on the sanctions list, nothing is named to him    |
+| Omar PendingKyc              | REVIEW  | identity checks pending, the check is named       |
+| Paula Statesman              | REVIEW  | politically exposed person, nothing is named      |
+| Sam RoundNumbers             | REVIEW  | six large round transfers out in thirty days      |
 
 The first three are the live demo. The rest are the backfill: one open case
 each in the queue, and Alice and David also in the decision history, approved

@@ -21,6 +21,10 @@ Environment=BACKEND_URL=http://{{ self_host }}:8090
 Environment=OPA_URL=http://127.0.0.1:8181
 Environment=REGISTRY_URL=http://{{ self_host }}:8600
 Environment=BANKING_MCP_URL=http://127.0.0.1:8503/mcp
+# PAF opens an MCP session per tool call and per tool discovery and leaves most
+# of their SSE streams open, so a wrapper's open sockets climb with sustained
+# use. The systemd default soft limit of 1024 is reached within a few test runs.
+LimitNOFILE=65536
 ExecStart={{ app_dir }}/mcp/{{ item.name }}/venv/bin/python server.py
 Restart=on-failure
 RestartSec=10
