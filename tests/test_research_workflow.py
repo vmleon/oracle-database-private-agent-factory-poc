@@ -35,13 +35,20 @@ VERDICTS = ("i recommend", "my recommendation", "on balance",
 
 @pytest.fixture
 def open_review_task(db):
-    """The newest task still awaiting a human decision."""
+    """The oldest task still awaiting a human decision.
+
+    Oldest rather than newest because a research run appends to an append-only
+    ledger and the reviewer's panel renders a stored summary on load: a suite
+    that targets the newest case leaves it pre-filled, and the demo loses the
+    run it exists to show. The oldest open case is the seeded backfill nobody
+    presents from.
+    """
     with db.cursor() as cur:
         cur.execute("""
             SELECT task_id, application_id
               FROM BANK_CORE.hitl_task
              WHERE state <> 'CLOSED'
-             ORDER BY task_id DESC
+             ORDER BY task_id
              FETCH FIRST 1 ROW ONLY
         """)
         row = cur.fetchone()
