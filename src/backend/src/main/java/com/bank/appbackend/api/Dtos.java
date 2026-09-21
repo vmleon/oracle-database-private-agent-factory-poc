@@ -78,6 +78,19 @@ public final class Dtos {
                                 String toolInput, String toolOutput) {
     }
 
+    /** Posted by research-mcp after each RESEARCH_WORKFLOW tool call. */
+    public record ResearchAudit(Long hitlTaskId, String toolName,
+                                String status, Instant startedAt, Instant endedAt,
+                                String toolInput, String toolOutput) {
+    }
+
+    public record ResearchRequest(String reviewer) {
+    }
+
+    public record ResearchView(Long taskId, String summary, String reviewer,
+                               Instant createdAt, String researchRunId) {
+    }
+
     public record DecisionView(Long decisionId, Long applicationId, String customerName,
                                java.math.BigDecimal amountRequested, Integer termMonths, String purpose,
                                String humanOutcome, String humanUser, String humanNote, Instant decidedAt,

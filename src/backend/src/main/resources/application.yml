@@ -29,6 +29,9 @@ paf:
   trust-cert: ${PAF_TRUST_CERT:}
   api-key: ${PAF_API_KEY:}
   agent-id: ${PAF_AGENT_ID:}
+  research:
+    agent-id: ${PAF_RESEARCH_AGENT_ID:}
+    api-key: ${PAF_RESEARCH_API_KEY:}
 
 session:
   ttl-hours: ${SESSION_TTL_HOURS:8}
