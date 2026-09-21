@@ -138,3 +138,31 @@ export function getDecision(decisionId: number): Promise<DecisionView> {
     json<DecisionView>(r),
   );
 }
+
+export interface ResearchView {
+  taskId: number;
+  summary: string;
+  reviewer: string;
+  createdAt: string | null;
+  researchRunId: string | null;
+}
+
+/** The stored summary for a task, or null when research has never been run. */
+export async function getResearch(
+  taskId: number,
+): Promise<ResearchView | null> {
+  const r = await fetch(`/v1/research/tasks/${taskId}`);
+  if (r.status === 204) return null;
+  return json<ResearchView>(r);
+}
+
+export function runResearch(
+  taskId: number,
+  reviewer: string,
+): Promise<ResearchView> {
+  return fetch(`/v1/research/tasks/${taskId}/run`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reviewer }),
+  }).then((r) => json<ResearchView>(r));
+}

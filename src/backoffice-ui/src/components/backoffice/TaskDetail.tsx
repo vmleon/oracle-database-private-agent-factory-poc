@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Badge, EvidencePanel, recommendationTone } from "./EvidencePanel";
 import { RequestSummary } from "./RequestSummary";
+import { ResearchPanel } from "./ResearchPanel";
 import { ToolTrace } from "./ToolTrace";
 
 // PoC: a single backoffice reviewer, no login. Recorded as human_user.
@@ -96,6 +97,8 @@ export function TaskDetail({
           <EvidencePanel raw={task.agentEvidence} />
         </div>
       )}
+
+      <ResearchPanel taskId={taskId} reviewer={REVIEWER} />
 
       {error && (
         <p className="mb-4 rounded bg-decline/10 p-3 text-sm text-decline">
