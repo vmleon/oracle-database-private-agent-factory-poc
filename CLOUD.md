@@ -156,7 +156,7 @@ paste into it, and the commands that sit between the browser steps. Follow
 it top to bottom; its last line sends you back here to §9.
 
 Expect: PAF installed, both model configurations answering a test call, the
-data sources registered, and two MCP servers reporting connected.
+data sources registered, and three MCP servers reporting connected.
 
 ## 9. Load `CHAT_FLOW`
 
@@ -185,7 +185,7 @@ the next step has nothing to mint a key against until this is done. The same
 holds after every later edit to the flow: publish, or the endpoint keeps
 serving the version before it.
 
-`info` shows the state under Agent: `published — serving through the
+`info` shows the state under Agent: `CHAT_FLOW published — serving through the
 integration endpoint`.
 
 ### 9.4 `api-key`
@@ -215,7 +215,60 @@ python manage.py info
 It reports the four tiers and then the agent: imported, published, MCP nodes
 linked, key minted, key delivered.
 
-## 10. `cloud test`
+## 10. Load `RESEARCH_WORKFLOW`
+
+Four steps, mirroring §9. The backoffice case research panel reaches this flow
+only after the last one.
+
+### 10.1 Import
+
+Agent Builder → **My Custom Flows** → **Import** →
+`paf/flows/RESEARCH_WORKFLOW.paf`, bundle password `WelcomeAmigo123!`.
+
+### 10.2 `link-flow`
+
+A bundle carries the MCP server ids of the install it came from, so rebind
+every MCP node by server name:
+
+```bash
+python manage.py paf link-flow
+```
+
+This rebinds every imported flow, CHAT_FLOW included — re-running it here is a
+no-op for a flow that is already linked.
+
+### 10.3 Publish
+
+Open `RESEARCH_WORKFLOW` in Agent Builder and **Publish** it. An imported flow
+arrives unpublished, and the integration endpoint serves only the published
+version, so the next step has nothing to mint a key against until this is done.
+
+`info` shows the state under Agent: `RESEARCH_WORKFLOW published — serving
+through the integration endpoint`.
+
+### 10.4 `api-key`
+
+Mint the key the backend calls the published flow with:
+
+```bash
+python manage.py paf api-key
+```
+
+Expect: `PAF_RESEARCH_AGENT_ID` and `PAF_RESEARCH_API_KEY` in `.env` beside
+CHAT_FLOW's pair, and a restarted `paf-poc-backend` holding both. The same
+command mints a fresh key for CHAT_FLOW too — keys are meant to be replaced by
+re-running `api-key`, so this is expected, not a regression.
+
+Check where the sequence stands at any point:
+
+```bash
+python manage.py info
+```
+
+It now reports both flows under Agent, each with its own imported / published
+/ MCP nodes linked / key minted / key delivered line.
+
+## 11. `cloud test`
 
 ```bash
 python manage.py cloud test
@@ -233,7 +286,7 @@ binding and prompt injection, and a reviewer closing two cases through the
 backend, one approved and one declined.
 
 > **Optional — not part of a deployment from scratch.** Skip it and continue at
-> §11.
+> §12.
 >
 > `cloud test` proves the pipeline computes the right tier on one scripted turn.
 > The **conversation bench** attacks the product instead: it signs in as a
@@ -263,7 +316,7 @@ backend, one approved and one declined.
 > personas created. It does not restore a seeded application an earlier run
 > edited.
 
-## 11. `info`
+## 12. `info`
 
 ```bash
 python manage.py info
@@ -274,7 +327,7 @@ Expect the load balancer address and the paths `/`, `/backoffice`, `/v1` and
 database answering over the bastion, and every agent line green. The
 certificate is self-signed, so a browser warns once.
 
-## 12. Prepare the demo
+## 13. Prepare the demo
 
 [`DEMO.md`](DEMO.md) assumes the stack has been through this, in this order:
 
@@ -371,9 +424,9 @@ python manage.py cloud up
 python manage.py paf bootstrap
 ```
 
-The install sheet ends at PAF's UI; §9 — import, `link-flow`, **publish**,
-`api-key`, each its own step — closes the loop. `manage.py info` says how far
-it has got.
+The install sheet ends at PAF's UI; §9 and §10 — import, `link-flow`,
+**publish**, `api-key`, each its own step, once per flow — close the loop.
+`manage.py info` says how far it has got.
 
 ## When something does not come up
 

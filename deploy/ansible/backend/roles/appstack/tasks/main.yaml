@@ -181,6 +181,6 @@
 # balancer or its sibling tiers.
 - name: Open the tier's ports
   ansible.builtin.command: firewall-cmd --permanent --add-port={{ item }}/tcp
-  loop: [8090, 8600, 8503, 8504]
+  loop: [8090, 8600, 8503, 8504, 8505]
   changed_when: true
   notify: Reload firewalld

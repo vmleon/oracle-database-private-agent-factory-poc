@@ -4,11 +4,13 @@ wallet_dir: /opt/paf-poc/wallet
 opa_version: "1.0.0"
 opa_url: "https://openpolicyagent.org/downloads/v{{ opa_version }}/opa_linux_amd64_static"
 
-# The two MCP wrappers, on the ports the flow's server URLs use. The identity
+# The three MCP wrappers, on the ports the flows' server URLs use. The identity
 # each one connects with follows the audience it serves: CHAT_FLOW's read path
 # holds only the customer-safe views as CUSTOMER_AGENT_RO, and its write path
-# holds EXECUTE on one package as CUSTOMER_AGENT_RW. The grant behind each is
-# in Liquibase 020-client-grants.yaml.
+# holds EXECUTE on one package as CUSTOMER_AGENT_RW. RESEARCH_WORKFLOW's read
+# path holds the backoffice-safe views as BACKOFFICE_AGENT_RO. The grant
+# behind each is in Liquibase 020-client-grants.yaml.
 mcp_services:
   - { name: banking-mcp, port: 8503, db_user: CUSTOMER_AGENT_RO, db_password_var: db_customer_ro_password }
   - { name: application-mcp, port: 8504, db_user: CUSTOMER_AGENT_RW, db_password_var: db_customer_rw_password }
+  - { name: research-mcp, port: 8505, db_user: BACKOFFICE_AGENT_RO, db_password_var: db_backoffice_ro_password }

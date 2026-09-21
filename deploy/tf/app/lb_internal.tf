@@ -58,6 +58,7 @@ locals {
   mcp_ports = {
     banking     = 8503
     application = 8504
+    research    = 8505
   }
 }
 

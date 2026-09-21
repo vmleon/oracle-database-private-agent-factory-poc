@@ -286,8 +286,20 @@ def _paf_session() -> requests.Session:
     return session
 
 
-def _discover_chat_flow_id(session: requests.Session) -> str:
-    """Resolve CHAT_FLOW's agent id by name."""
+# The two flows PAF serves, each imported, linked, published and keyed in its
+# own CLOUD.md section (§9 for CHAT_FLOW, §10 for RESEARCH_WORKFLOW). Every
+# command that iterates this list skips a flow it cannot find rather than
+# failing, because the two are set up as separate steps and one is routinely
+# absent while the other is being worked on.
+FLOWS = (
+    # (flow name, .env agent-id key, .env api-key key, CLOUD.md section, PAF key label)
+    ("CHAT_FLOW", "PAF_AGENT_ID", "PAF_API_KEY", "9", "application-backend"),
+    ("RESEARCH_WORKFLOW", "PAF_RESEARCH_AGENT_ID", "PAF_RESEARCH_API_KEY", "10", "research-backend"),
+)
+
+
+def _find_flow_id(session: requests.Session, flow_name: str) -> str | None:
+    """Resolve a flow's agent id by name, or None if it is not imported yet."""
     r = session.get(f"{_paf_base_url()}/agentFactory/v1/agents", timeout=30)
     if r.status_code != 200:
         console.print(f"[red]Could not list agents: HTTP {r.status_code}.[/red]\n{r.text[:300]}")
@@ -296,15 +308,11 @@ def _discover_chat_flow_id(session: requests.Session) -> str:
     data = body.get("data") if isinstance(body, dict) else body
     agents = data.get("items", []) if isinstance(data, dict) else data
     for agent in agents or []:
-        if agent.get("name") == "CHAT_FLOW":
+        if agent.get("name") == flow_name:
             agent_id = agent.get("agentId") or agent.get("agent_id")
             if agent_id:
                 return str(agent_id)
-    console.print(
-        "[red]CHAT_FLOW not found in PAF's agent list.[/red] "
-        "Import and publish it per paf/flows/CHAT_FLOW.md."
-    )
-    sys.exit(1)
+    return None
 
 
 @click.group()
@@ -917,54 +925,60 @@ def _agent_readiness() -> list[tuple[bool, str, str]]:
         body = r.json()
         data = body.get("data") if isinstance(body, dict) else body
         agents = data.get("items", []) if isinstance(data, dict) else data
-        entry = next((a for a in agents or [] if a.get("name") == "CHAT_FLOW"), None)
     except Exception:  # noqa: BLE001 — info must never fail on a half-built stack
-        return checks + [(False, "CHAT_FLOW", "could not list agents")]
+        for flow_name, *_ in FLOWS:
+            checks.append((False, flow_name, "could not list agents"))
+        return checks
 
-    if entry is None:
-        return checks + [(False, "CHAT_FLOW", "not imported — CLOUD.md §9")]
-    checks.append((True, "CHAT_FLOW", "imported"))
+    live = None  # fetched once, lazily, only if some flow is imported
+    for flow_name, agent_id_env, api_key_env, section, _ in FLOWS:
+        entry = next((a for a in agents or [] if a.get("name") == flow_name), None)
+        if entry is None:
+            checks.append((False, flow_name, f"not imported — CLOUD.md §{section}"))
+            continue
+        checks.append((True, flow_name, "imported"))
 
-    agent_id = str(entry.get("agentId") or "")
-    published = bool(entry.get("published"))
-    checks.append((published, "published",
-                   "serving through the integration endpoint" if published
-                   else "imported flows arrive unpublished — publish it in Agent Builder"))
+        agent_id = str(entry.get("agentId") or "")
+        published = bool(entry.get("published"))
+        checks.append((published, f"{flow_name} published",
+                       "serving through the integration endpoint" if published
+                       else "imported flows arrive unpublished — publish it in Agent Builder"))
 
-    # Linked means every MCP node points at a server id this install issued.
-    try:
-        rec = session.get(f"{base}/agentFactory/v1/agents/{agent_id}", timeout=30).json()
-        graph = (rec.get("data", rec) or {}).get("data")
-        live = set(_live_mcp_source_ids(session).values())
-        fields = list(_iter_server_source_fields(graph)) if isinstance(graph, dict) else []
-        bound = [f for f in fields if f.get("value") in live]
-        checks.append((bool(fields) and len(bound) == len(fields), "MCP nodes linked",
-                       f"{len(bound)}/{len(fields)} bound to this install"
-                       if fields else "no MCP nodes found in the graph"))
-    except SystemExit:
-        checks.append((False, "MCP nodes linked", "could not list MCP servers"))
-    except Exception:  # noqa: BLE001
-        checks.append((False, "MCP nodes linked", "could not read the flow graph"))
+        # Linked means every MCP node points at a server id this install issued.
+        try:
+            rec = session.get(f"{base}/agentFactory/v1/agents/{agent_id}", timeout=30).json()
+            graph = (rec.get("data", rec) or {}).get("data")
+            if live is None:
+                live = set(_live_mcp_source_ids(session).values())
+            fields = list(_iter_server_source_fields(graph)) if isinstance(graph, dict) else []
+            bound = [f for f in fields if f.get("value") in live]
+            checks.append((bool(fields) and len(bound) == len(fields), f"{flow_name} MCP nodes",
+                           f"{len(bound)}/{len(fields)} bound to this install"
+                           if fields else "no MCP nodes found in the graph"))
+        except SystemExit:
+            checks.append((False, f"{flow_name} MCP nodes", "could not list MCP servers"))
+        except Exception:  # noqa: BLE001
+            checks.append((False, f"{flow_name} MCP nodes", "could not read the flow graph"))
 
-    minted = bool(os.getenv("PAF_AGENT_ID")) and bool(os.getenv("PAF_API_KEY"))
-    checks.append((minted, "integration key",
-                   "minted into .env" if minted else "not minted — paf api-key"))
+        minted = bool(os.getenv(agent_id_env)) and bool(os.getenv(api_key_env))
+        checks.append((minted, f"{flow_name} key",
+                       "minted into .env" if minted else "not minted — paf api-key"))
 
-    if minted:
-        # The env file is 0600 and root-owned, so reading it needs sudo, and the
-        # agent id is interpolated here rather than read from the remote shell,
-        # where it does not exist. The certificate is half of the same delivery.
-        agent_id = os.environ["PAF_AGENT_ID"]
-        result = _backend_ssh(
-            f"sudo grep -q {shlex.quote(agent_id)} /etc/paf-poc-backend.env "
-            f"2>/dev/null && test -s {BACKEND_PAF_CERT} "
-            "&& echo delivered || echo stale"
-        )
-        out = (result.stdout or "") + (result.stderr or "")
-        delivered = "delivered" in out
-        checks.append((delivered, "key delivered",
-                       "the backend holds this key and PAF's certificate" if delivered
-                       else "the backend does not have it — paf push-key"))
+        if minted:
+            # The env file is 0600 and root-owned, so reading it needs sudo, and the
+            # agent id is interpolated here rather than read from the remote shell,
+            # where it does not exist. The certificate is half of the same delivery.
+            env_agent_id = os.environ[agent_id_env]
+            result = _backend_ssh(
+                f"sudo grep -q {shlex.quote(env_agent_id)} /etc/paf-poc-backend.env "
+                f"2>/dev/null && test -s {BACKEND_PAF_CERT} "
+                "&& echo delivered || echo stale"
+            )
+            out = (result.stdout or "") + (result.stderr or "")
+            delivered = "delivered" in out
+            checks.append((delivered, f"{flow_name} key delivered",
+                           "the backend holds this key and PAF's certificate" if delivered
+                           else "the backend does not have it — paf push-key"))
     return checks
 
 
@@ -1036,7 +1050,8 @@ def info() -> None:
                           "[cyan]python manage.py cloud test[/cyan]")
         else:
             console.print("\n[yellow]The tiers are up; the agent is not wired yet.[/yellow] "
-                          "Follow [cyan]python manage.py paf bootstrap[/cyan] and CLOUD.md §9.")
+                          "Follow [cyan]python manage.py paf bootstrap[/cyan] and CLOUD.md §9 "
+                          "(then §10 for RESEARCH_WORKFLOW).")
     else:
         console.print(
             "\n[yellow]Not ready yet.[/yellow] Cloud-init retries every 60s; re-run "
@@ -1741,30 +1756,19 @@ def _iter_server_source_fields(node):
             yield from _iter_server_source_fields(value)
 
 
-@paf.command("link-flow")
-def paf_link_flow() -> None:
-    """Bind each MCP tool node in CHAT_FLOW to the right MCP server.
-
-    A flow stores its MCP servers as numeric source ids, which depend on the
-    order the servers were registered. This rebinds every node by server name,
-    so the flow works whatever ids this instance assigned. Run after importing
-    the flow, and again after re-registering any MCP server.
-    """
-    _ensure_env()
-    session = _paf_session()
-    agent_id = _discover_chat_flow_id(session)
-
+def _link_flow(session: requests.Session, flow_name: str, agent_id: str, section: str) -> None:
+    """Rebind one flow's MCP tool nodes by server name. See `paf link-flow`."""
     r = session.get(f"{_paf_base_url()}/agentFactory/v1/agents/{agent_id}", timeout=30)
     if r.status_code != 200:
-        console.print(f"[red]Could not read the flow: HTTP {r.status_code}.[/red]\n{r.text[:300]}")
+        console.print(f"[red]Could not read {flow_name}: HTTP {r.status_code}.[/red]\n{r.text[:300]}")
         sys.exit(1)
     payload = r.json()
     record = payload.get("data", payload)
     graph = record.get("data")
     if not isinstance(graph, dict):
         console.print(
-            "[red]The flow has no visual graph to rebind.[/red] "
-            "Import it per paf/flows/CHAT_FLOW.md first."
+            f"[red]{flow_name} has no visual graph to rebind.[/red] "
+            f"Import it per paf/flows/{flow_name}.md first."
         )
         sys.exit(1)
 
@@ -1787,14 +1791,15 @@ def paf_link_flow() -> None:
 
     if unknown:
         console.print(
-            f"[red]These MCP servers are not registered:[/red] {', '.join(sorted(unknown))}\n"
+            f"[red]{flow_name} references MCP servers that are not registered:[/red] "
+            f"{', '.join(sorted(unknown))}\n"
             f"Registered: {', '.join(sorted(live)) or '(none)'}\n"
             "Register them per `paf bootstrap` step 8, then re-run."
         )
         sys.exit(1)
 
     if not changes:
-        console.print("[green]✓[/green] Every MCP node already points at the right server.")
+        console.print(f"[green]✓[/green] {flow_name}: every MCP node already points at the right server.")
         return
 
     r = session.put(
@@ -1804,15 +1809,46 @@ def paf_link_flow() -> None:
         timeout=60,
     )
     if r.status_code != 200:
-        console.print(f"[red]Could not save the flow: HTTP {r.status_code}.[/red]\n{r.text[:500]}")
+        console.print(f"[red]Could not save {flow_name}: HTTP {r.status_code}.[/red]\n{r.text[:500]}")
         sys.exit(1)
 
     for name, before, after in changes:
         console.print(f"  [cyan]{name}[/cyan]: {before} → {after}")
-    console.print(f"[green]✓[/green] Rebound {len(changes)} MCP node(s) in CHAT_FLOW.")
-    console.print("\n[bold]Next:[/bold] open CHAT_FLOW in Agent Builder and [bold]Publish[/bold] it "
-                  "(CLOUD.md §9.3) — the endpoint serves only the published version — "
+    console.print(f"[green]✓[/green] Rebound {len(changes)} MCP node(s) in {flow_name}.")
+    console.print(f"\n[bold]Next:[/bold] open {flow_name} in Agent Builder and [bold]Publish[/bold] it "
+                  f"(CLOUD.md §{section}.3) — the endpoint serves only the published version — "
                   "then [cyan]python manage.py paf api-key[/cyan].")
+
+
+@paf.command("link-flow")
+def paf_link_flow() -> None:
+    """Bind each MCP tool node in every imported flow to the right MCP server.
+
+    A flow stores its MCP servers as numeric source ids, which depend on the
+    order the servers were registered. This rebinds every node by server name,
+    so the flow works whatever ids this instance assigned. Run after importing
+    a flow, and again after re-registering any MCP server. CHAT_FLOW and
+    RESEARCH_WORKFLOW are imported in separate steps (CLOUD.md §9, §10), so a
+    flow not imported yet is skipped rather than failing the command.
+    """
+    _ensure_env()
+    session = _paf_session()
+
+    found_any = False
+    for flow_name, _, _, section, _ in FLOWS:
+        agent_id = _find_flow_id(session, flow_name)
+        if agent_id is None:
+            console.print(f"[dim]{flow_name} is not imported yet — skipping (CLOUD.md §{section}).[/dim]")
+            continue
+        found_any = True
+        _link_flow(session, flow_name, agent_id, section)
+
+    if not found_any:
+        console.print(
+            "[red]No flow is imported yet.[/red] Import CHAT_FLOW per CLOUD.md §9 "
+            "(and RESEARCH_WORKFLOW per §10), then re-run."
+        )
+        sys.exit(1)
 
 
 @paf.command("gen-model")
@@ -1861,54 +1897,86 @@ def paf_gen_model() -> None:
 
 @paf.command("api-key")
 @click.option("--no-push", is_flag=True,
-              help="Mint into .env without delivering it to the backend tier.")
+              help="Mint into .env without delivering to the backend tier.")
 def paf_api_key(no_push: bool) -> None:
-    """Mint CHAT_FLOW's integration key and hand it to the backend.
+    """Mint an integration key for every published flow and hand them to the backend.
 
-    Writes PAF_AGENT_ID and PAF_API_KEY, then delivers both to the backend tier
-    and restarts it — a key that is minted but not delivered leaves the customer
-    chat UI unable to reach the agent while `cloud test` still passes, because
-    the harness calls the integration endpoint directly.
+    Writes PAF_AGENT_ID/PAF_API_KEY for CHAT_FLOW and PAF_RESEARCH_AGENT_ID/
+    PAF_RESEARCH_API_KEY for RESEARCH_WORKFLOW, then delivers whichever pair
+    was minted to the backend tier in one pass and restarts it — a key that is
+    minted but not delivered leaves the corresponding UI unable to reach its
+    agent while `cloud test` still passes, because the harness calls the
+    integration endpoint directly. CHAT_FLOW and RESEARCH_WORKFLOW are
+    imported in separate steps (CLOUD.md §9, §10), so a flow not imported yet
+    is skipped rather than failing the command.
 
-    The flow must be published first: PAF refuses to run an unpublished workflow
-    through an integration key. Keys last at most 90 days; re-run to replace one.
+    Each flow must be published first: PAF refuses to run an unpublished
+    workflow through an integration key. Keys last at most 90 days; re-run to
+    replace one.
     """
     _ensure_env()
     session = _paf_session()
-    agent_id = _discover_chat_flow_id(session)
-    r = session.post(
-        f"{_paf_base_url()}/agentFactory/v1/integrations/agents/{agent_id}/keys",
-        headers={"Origin": _paf_base_url()},
-        json={"name": "application-backend"},
-        timeout=30,
-    )
-    if r.status_code != 201:
+
+    minted_any = False
+    failures = []
+    for flow_name, agent_id_env, api_key_env, section, key_name in FLOWS:
+        agent_id = _find_flow_id(session, flow_name)
+        if agent_id is None:
+            console.print(f"[dim]{flow_name} is not imported yet — skipping (CLOUD.md §{section}).[/dim]")
+            continue
+        r = session.post(
+            f"{_paf_base_url()}/agentFactory/v1/integrations/agents/{agent_id}/keys",
+            headers={"Origin": _paf_base_url()},
+            json={"name": key_name},
+            timeout=30,
+        )
+        if r.status_code != 201:
+            console.print(
+                f"[red]{flow_name} key creation failed: HTTP {r.status_code}[/red]\n{r.text[:500]}"
+            )
+            failures.append(flow_name)
+            continue
+        body = r.json()
+        key = body.get("key")
+        if not key:
+            console.print(f"[red]PAF returned no key value for {flow_name}.[/red] {body}")
+            failures.append(flow_name)
+            continue
+        _write_env_key(agent_id_env, agent_id)
+        _write_env_key(api_key_env, key)
+        minted_any = True
         console.print(
-            f"[red]Key creation failed: HTTP {r.status_code}[/red]\n{r.text[:500]}"
+            f"[green]✓[/green] {flow_name}: key minted for agent [cyan]{agent_id}[/cyan] "
+            f"(prefix [cyan]{body.get('keyPrefix', '')}[/cyan]), expires "
+            f"[cyan]{body.get('expiresAt', 'in 90 days')}[/cyan]."
+        )
+        console.print(f"[dim]  {agent_id_env} and {api_key_env} written to .env.[/dim]")
+
+    if not minted_any and not failures:
+        console.print(
+            "[red]No flow is imported yet.[/red] Import CHAT_FLOW per CLOUD.md §9 "
+            "(and RESEARCH_WORKFLOW per §10), then re-run."
         )
         sys.exit(1)
-    body = r.json()
-    key = body.get("key")
-    if not key:
-        console.print(f"[red]PAF returned no key value.[/red] {body}")
-        sys.exit(1)
-    _write_env_key("PAF_AGENT_ID", agent_id)
-    _write_env_key("PAF_API_KEY", key)
-    console.print(
-        f"[green]✓[/green] Key minted for agent [cyan]{agent_id}[/cyan] "
-        f"(prefix [cyan]{body.get('keyPrefix', '')}[/cyan]), expires "
-        f"[cyan]{body.get('expiresAt', 'in 90 days')}[/cyan]."
-    )
-    console.print("[dim]  PAF_AGENT_ID and PAF_API_KEY written to .env.[/dim]")
 
-    # The backend never learns the key from a deploy: its unit template does not
-    # reference either value and Terraform does not pass them, because neither
-    # exists until the flow is published. Delivery is this hop, or nothing.
-    if no_push:
-        console.print("[dim]  Not delivered (--no-push). The harness reads .env directly; "
-                      "the chat UI needs [cyan]paf push-key[/cyan].[/dim]")
-        return
-    if not _deliver_key():
+    # A key that is minted but not delivered leaves .env ahead of what the
+    # backend holds, so every key this run wrote is delivered before the
+    # command can exit on a later flow's failure — never abandoned mid-loop.
+    # The backend never learns a key from a deploy: its unit template does not
+    # reference any of them and Terraform does not pass them, because none
+    # exist until the flow is published. Delivery is this hop, or nothing.
+    delivered_ok = True
+    if minted_any:
+        if no_push:
+            console.print("[dim]  Not delivered (--no-push). The harness reads .env directly; "
+                          "the UI needs [cyan]paf push-key[/cyan].[/dim]")
+        else:
+            delivered_ok = _deliver_key()
+
+    if failures:
+        console.print(f"[red]Failed to mint a key for:[/red] {', '.join(failures)}")
+        sys.exit(1)
+    if not delivered_ok:
         sys.exit(1)
 
 
@@ -1974,12 +2042,16 @@ def _paf_certificate() -> str | None:
 
 
 def _deliver_key() -> bool:
-    """Hand the backend tier what it needs to call CHAT_FLOW, and restart it.
+    """Hand the backend tier what each flow needs, and restart it once.
 
-    Three values that do not exist until PAF is installed and the flow is
-    published, long after the tier built itself: PAF_AGENT_ID, PAF_API_KEY, and
-    the certificate PAF serves, which the backend verifies the hop against. The
-    unit reads them from /etc/paf-poc-backend.env, which the play creates empty.
+    Values that do not exist until PAF is installed and a flow is published,
+    long after the tier built itself: an agent id and an integration key per
+    flow, and the certificate PAF serves, which the backend verifies the hop
+    against. The unit reads them from /etc/paf-poc-backend.env, which the play
+    creates empty. CHAT_FLOW's pair is required — the backend cannot run at
+    all without it; RESEARCH_WORKFLOW's pair is delivered when it has been
+    minted and left out otherwise, which its own `${PAF_RESEARCH_AGENT_ID:}`
+    default in application.yml tolerates.
     """
     for key in ("PAF_AGENT_ID", "PAF_API_KEY"):
         if not os.getenv(key):
@@ -1993,23 +2065,31 @@ def _deliver_key() -> bool:
     if pem is None:
         return False
 
-    # The certificate lands before the variable that names it, so a failure here
+    env_lines = [
+        f"PAF_AGENT_ID={os.environ['PAF_AGENT_ID']}",
+        f"PAF_API_KEY={os.environ['PAF_API_KEY']}",
+    ]
+    if os.getenv("PAF_RESEARCH_AGENT_ID") and os.getenv("PAF_RESEARCH_API_KEY"):
+        env_lines.append(f"PAF_RESEARCH_AGENT_ID={os.environ['PAF_RESEARCH_AGENT_ID']}")
+        env_lines.append(f"PAF_RESEARCH_API_KEY={os.environ['PAF_RESEARCH_API_KEY']}")
+    env_lines.append(f"PAF_TRUST_CERT={BACKEND_PAF_CERT}")
+    env_block = "\n".join(env_lines)
+
+    # The certificate lands before the variables that name it, so a failure here
     # never leaves the unit pointing at a file that is not there.
     script = f"""set -e
 sudo tee {BACKEND_PAF_CERT} > /dev/null <<'PEM'
 {pem}PEM
 sudo chmod 0644 {BACKEND_PAF_CERT}
 sudo tee /etc/paf-poc-backend.env > /dev/null <<'ENVF'
-PAF_AGENT_ID={os.environ['PAF_AGENT_ID']}
-PAF_API_KEY={os.environ['PAF_API_KEY']}
-PAF_TRUST_CERT={BACKEND_PAF_CERT}
+{env_block}
 ENVF
 sudo chmod 0600 /etc/paf-poc-backend.env
 sudo systemctl restart paf-poc-backend
 sleep 4
 systemctl is-active paf-poc-backend
 """
-    console.print(f"Handing the key to [cyan]{_backend_host()}[/cyan] through the bastion")
+    console.print(f"Handing the key(s) to [cyan]{_backend_host()}[/cyan] through the bastion")
     result = _backend_ssh(script)
     out = ((result.stderr or "") + (result.stdout or "")).strip()
     if "not found" in out:
@@ -2026,12 +2106,14 @@ systemctl is-active paf-poc-backend
     console.print(f"[green]\u2713[/green] Backend restarted with agent {os.environ['PAF_AGENT_ID']}")
     console.print("[dim]  Verifying PAF's certificate on every turn.[/dim]")
     console.print("[dim]  The customer chat UI reaches CHAT_FLOW from here on.[/dim]")
+    if os.getenv("PAF_RESEARCH_AGENT_ID") and os.getenv("PAF_RESEARCH_API_KEY"):
+        console.print("[dim]  The backoffice case research panel reaches RESEARCH_WORKFLOW from here on.[/dim]")
     return True
 
 
 @paf.command("push-key")
 def paf_push_key() -> None:
-    """Re-deliver the integration key and PAF's certificate to the backend tier.
+    """Re-deliver every minted integration key and PAF's certificate to the backend tier.
 
     `paf api-key` already delivers what it mints. This repeats the delivery on
     its own — after the backend tier is rebuilt or redeployed, or when
@@ -2059,7 +2141,7 @@ def paf_bootstrap() -> None:
     admin_user = os.getenv("PAF_ADMIN_USER", "")
 
     console.print("This sheet walks the whole PAF install, browser steps and commands")
-    console.print("alike, in order. It ends by handing you back to CLOUD.md §9.\n")
+    console.print("alike, in order. It ends by handing you back to CLOUD.md §9 (then §10).\n")
 
     if lb_ip:
         console.print(f"Open the installer:\n  [cyan]https://{lb_ip}/agentFactory/installation[/cyan]\n"
@@ -2157,16 +2239,17 @@ def paf_bootstrap() -> None:
     _print_run("python manage.py paf prepare")
 
     console.print("[bold]Step 7 — MCP servers[/bold]   (Admin → MCP Servers → Add MCP server)")
-    console.print("  Two registrations, [cyan]Direct[/cyan] authentication (no auth — they are reachable")
-    console.print("  only inside the VCN). The flow references them by these names, so they")
+    console.print("  Three registrations, [cyan]Direct[/cyan] authentication (no auth — they are reachable")
+    console.print("  only inside the VCN). Each flow references its servers by these names, so they")
     console.print("  must match.")
     mcp_urls = _tf_output_json("mcp_server_urls") or {}
-    for name, label in (("banking", "banking-mcp"), ("application", "application-mcp")):
+    for name, label in (("banking", "banking-mcp"), ("application", "application-mcp"), ("research", "research-mcp")):
         url = mcp_urls.get(name, "(apply deploy/tf/app to learn the address)")
         console.print(f"    [cyan]{label:<16}[/cyan] {url}")
     console.print("  [dim]Each should report connected, and its tools surface inside the Agent node.[/dim]\n")
 
-    console.print("[bold]Done here.[/bold] Continue at [cyan]CLOUD.md §9 — Load CHAT_FLOW[/cyan].")
+    console.print("[bold]Done here.[/bold] Continue at [cyan]CLOUD.md §9 — Load CHAT_FLOW[/cyan], "
+                  "then [cyan]§10 — Load RESEARCH_WORKFLOW[/cyan].")
     console.print(
         "\n[yellow]Note:[/yellow] API automation for these UI steps is intentionally out of "
         "scope (Playwright-style driving is fragile across PAF versions)."
@@ -2221,7 +2304,7 @@ def _stage_sources() -> None:
     ops_files = ANSIBLE_ROOT / "ops" / "roles" / "opstools" / "files"
     _stage(PROJECT_ROOT / "opa", backend_files / "opa")
     _stage(PROJECT_ROOT / "src" / "api" / "registry", backend_files / "registry")
-    for wrapper in ("banking-mcp", "application-mcp"):
+    for wrapper in ("banking-mcp", "application-mcp", "research-mcp"):
         _stage(PROJECT_ROOT / "src" / "ai" / wrapper, backend_files / "mcp" / wrapper)
     _stage(PROJECT_ROOT / "database" / "liquibase", ops_files / "database" / "liquibase")
     # The bastion is the only host that can reach both PAF and the database, so
