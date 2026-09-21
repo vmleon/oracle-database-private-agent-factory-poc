@@ -35,6 +35,16 @@ public class ResearchService {
      */
     static final String FLOW_UNAVAILABLE = "Research could not be completed for this case.";
 
+    /**
+     * How many times one research request asks the agent for a case file.
+     *
+     * <p>The agent's instructions ask it not to state an outcome and a model sometimes
+     * does anyway, most readily on a case whose answer looks obvious. A rejected
+     * summary is never stored or shown, so a second pass costs one generation and
+     * turns most rejections into a usable case file without weakening the rule.
+     */
+    private static final int MAX_ATTEMPTS = 2;
+
     private final ResearchPafClient paf;
     private final JdbcTemplate jdbc;
 
@@ -53,26 +63,34 @@ public class ResearchService {
         }
         String runId = UUID.randomUUID().toString();
         Instant startedAt = Instant.now();
-        // The task id is the flow's only input, and PAF accepts no input beyond
-        // the chat message, so it travels in-band exactly as the session token
-        // does on the customer path.
-        String raw = paf.run("[[TASK " + taskId + "]]");
-        // The wrapper wrote its trail while the run was in flight, with no way
-        // to know the run id. Stamp it now, so the summary row and the tool
-        // calls that produced it share one key. Scoped to rows started at or
-        // after this run began, so an earlier failed run's orphaned pending
-        // rows for the same task are left alone rather than reclaimed.
-        stampAuditTrail(taskId, runId, who, startedAt);
-        if (raw == null || raw.isBlank() || raw.startsWith(FLOW_UNAVAILABLE)) {
-            log.warn("research run {} for task {} produced no case file", runId, taskId);
-            return new ResearchView(taskId, ResearchSummary.BLOCKED, who, Instant.now(), null);
+        String shown = null;
+        for (int attempt = 1; attempt <= MAX_ATTEMPTS && shown == null; attempt++) {
+            // The task id is the flow's only input, and PAF accepts no input beyond
+            // the chat message, so it travels in-band exactly as the session token
+            // does on the customer path.
+            String raw = paf.run("[[TASK " + taskId + "]]");
+            if (raw == null || raw.isBlank() || raw.startsWith(FLOW_UNAVAILABLE)) {
+                log.warn("research run {} for task {} produced no case file on attempt {}",
+                        runId, taskId, attempt);
+                continue;
+            }
+            String screened = ResearchSummary.screen(raw);
+            if (!screened.equals(raw)) {
+                // Name the rule, never the text that broke it.
+                log.warn("research run {} for task {} stated an outcome on attempt {}: {}",
+                        runId, taskId, attempt, ResearchSummary.verdicts(raw));
+                continue;
+            }
+            shown = screened;
         }
-        String shown = ResearchSummary.screen(raw);
-        if (!shown.equals(raw)) {
-            // Name the rule, never the text that broke it.
-            log.warn("research run {} for task {} stated an outcome: {}",
-                    runId, taskId, ResearchSummary.verdicts(raw));
-            return new ResearchView(taskId, shown, who, Instant.now(), null);
+        // The wrapper wrote its trail while the run was in flight, with no way to know
+        // the run id, and every attempt belongs to this one request. Stamp once, after
+        // the last of them, so the summary row and all the tool calls behind it share
+        // one key. Scoped to rows started at or after this run began, so an earlier
+        // failed run's orphaned pending rows for the same task are left alone.
+        stampAuditTrail(taskId, runId, who, startedAt);
+        if (shown == null) {
+            return new ResearchView(taskId, ResearchSummary.BLOCKED, who, Instant.now(), null);
         }
         jdbc.update("""
                 INSERT INTO BANK_CORE.research_summary

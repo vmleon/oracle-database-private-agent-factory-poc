@@ -17,6 +17,7 @@ import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -78,6 +79,39 @@ class ResearchServiceTest {
         ResearchView view = service.run(42L, "Backoffice Reviewer");
 
         assertThat(view.summary()).isEqualTo(ResearchSummary.BLOCKED);
+        verify(jdbc, never()).update(contains("research_summary"), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void aSecondAttemptIsMadeWhenTheFirstStatesAnOutcome() {
+        // A model that concludes on one pass often does not on the next, and a
+        // rejected summary was never stored, so the retry costs only a generation.
+        when(paf.run(anyString()))
+                .thenReturn("Recommendation: DECLINE")
+                .thenReturn(ORGANISED);
+        when(jdbc.queryForObject(anyString(), eq(Long.class), any())).thenReturn(7L);
+
+        ResearchView view = service.run(42L, "Backoffice Reviewer");
+
+        assertThat(view.summary()).isEqualTo(ORGANISED);
+        assertThat(view.researchRunId()).isNotBlank();
+        verify(paf, times(2)).run(anyString());
+        verify(jdbc).update(contains("research_summary"), eq(7L), eq(42L),
+                eq(view.researchRunId()), eq("Backoffice Reviewer"), eq(ORGANISED));
+    }
+
+    @Test
+    void twoRejectionsGiveUpWithoutPersisting() {
+        // The rule is not weakened by the retry: a summary that concludes twice is
+        // still shown to nobody and stored nowhere.
+        when(paf.run(anyString())).thenReturn("Recommendation: DECLINE");
+        when(jdbc.queryForObject(anyString(), eq(Long.class), any())).thenReturn(7L);
+
+        ResearchView view = service.run(42L, "Backoffice Reviewer");
+
+        assertThat(view.summary()).isEqualTo(ResearchSummary.BLOCKED);
+        assertThat(view.researchRunId()).isNull();
+        verify(paf, times(2)).run(anyString());
         verify(jdbc, never()).update(contains("research_summary"), any(), any(), any(), any(), any());
     }
 
