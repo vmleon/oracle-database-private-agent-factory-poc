@@ -81,6 +81,17 @@ def _clob(value):
     return value.read() if hasattr(value, "read") else value
 
 
+def _json(value, default):
+    """Decode a JSON-column value that oracledb may hand back as an already
+    materialized dict/list, or as a LOB/str that still needs json.loads."""
+    if value is None:
+        return default
+    if isinstance(value, (dict, list)):
+        return value
+    text = _clob(value)
+    return json.loads(text) if text else default
+
+
 def _f(v):
     return None if v is None else float(v)
 
@@ -168,19 +179,21 @@ def recommendation_for_task(task_id: int) -> dict:
     with _connect() as conn:
         with conn.cursor() as cur:
             task = _task_row(cur, task_id)
-    if task is None:
-        _audit("recommendation_for_task", "FAILED", started, _now_utc(),
-               {"task_id": task_id}, _NOT_FOUND, task_id=task_id)
-        print("[recommendation_for_task] -> task_not_found", flush=True)
-        return _NOT_FOUND
-    evidence = json.loads(_clob(task["agent_evidence"]) or "{}")
+            if task is None:
+                _audit("recommendation_for_task", "FAILED", started, _now_utc(),
+                       {"task_id": task_id}, _NOT_FOUND, task_id=task_id)
+                print("[recommendation_for_task] -> task_not_found", flush=True)
+                return _NOT_FOUND
+            evidence = _json(task["agent_evidence"], {})
+            reasoning = _clob(task["agent_reasoning"])
+            explore_hints = _json(task["agent_explore_hints"], None)
     out = {
         **_echo(task),
         "tier": task["agent_recommendation"],
-        "reasoning": _clob(task["agent_reasoning"]),
+        "reasoning": reasoning,
         "reason_codes": evidence.get("reason_codes") or [],
         "evidence": evidence,
-        "explore_hints": json.loads(_clob(task["agent_explore_hints"]) or "null"),
+        "explore_hints": explore_hints,
         "amount": _f(task["amount_requested"]),
         "term_months": _i(task["term_months"]),
         "purpose": task["purpose"],
@@ -211,7 +224,7 @@ def similar_cases_for_task(task_id: int) -> dict:
                 _audit("similar_cases_for_task", "FAILED", started, _now_utc(),
                        {"task_id": task_id}, _NOT_FOUND, task_id=task_id)
                 return _NOT_FOUND
-            evidence = json.loads(_clob(task["agent_evidence"]) or "{}")
+            evidence = _json(task["agent_evidence"], {})
             derived = evidence.get("derived") or {}
             subject = {
                 "amount": _f(task["amount_requested"]),
