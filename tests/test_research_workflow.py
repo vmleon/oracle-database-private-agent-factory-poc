@@ -8,8 +8,20 @@ non-contiguous and are never hardcoded.
 """
 from __future__ import annotations
 
+import os
+
 import pytest
 import requests
+
+# `manage.py paf api-key` only mints PAF_RESEARCH_AGENT_ID once RESEARCH_WORKFLOW
+# is imported and published, so its absence is the same "not configured yet"
+# signal manage.py itself uses (FLOWS in manage.py) — the whole file skips
+# rather than failing `cloud test` before that manual step is done.
+pytestmark = pytest.mark.skipif(
+    not os.getenv("PAF_RESEARCH_AGENT_ID"),
+    reason="RESEARCH_WORKFLOW is not configured; build and publish it per "
+           "CLOUD.md §10, then run `manage.py paf api-key`.",
+)
 
 # The four headings the agent is instructed to produce.
 SECTIONS = ("THE CASE", "SUPPORTS APPROVING", "ARGUES AGAINST", "NOT ESTABLISHED")
