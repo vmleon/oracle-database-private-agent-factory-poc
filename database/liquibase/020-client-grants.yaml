@@ -101,7 +101,7 @@ databaseChangeLog:
       # answers "has a task been recorded for this application" for the
       # decision gate. Both are table grants, which lets this identity read
       # more of each table than the lookup needs; replacing them with
-      # definer's-rights functions is BACKLOG.md §12.
+      # definer's-rights functions is BACKLOG.md §4.
       changes:
         - sql:
             sql: |-

@@ -137,7 +137,7 @@ def documents_payload(context: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def gate_decision(
-    context: dict[str, Any], task_id: int | None, reply: str = ""
+    context: dict[str, Any], task: dict[str, Any] | None, reply: str = ""
 ) -> dict[str, Any]:
     """Decide whether this turn is safe to show the customer.
 
@@ -145,18 +145,30 @@ def gate_decision(
     when no HITL task exists for the application — the case where a customer
     would be told their application is progressing with nothing recorded.
     Every other turn on a valid session passes; `stage` reports where the
-    application stands.
+    application stands and `outcome` carries the human's answer.
+
+    A filed task is the agent's recommendation reaching the queue, which is
+    not a decision: `UNDER_REVIEW` until a reviewer closes it with an outcome,
+    `DECIDED` with that outcome once they have. `outcome` is the reviewer's
+    and nobody else's, so it is null on every other stage.
     """
     if context.get("error"):
-        return {"gate": GATE_FAIL, "stage": "INVALID_SESSION", "task_id": None}
-    if task_id is not None:
-        return {"gate": GATE_OK, "stage": "DECIDED", "task_id": task_id}
+        return _stage(GATE_FAIL, "INVALID_SESSION")
+    if task:
+        outcome = task.get("human_outcome")
+        stage = "DECIDED" if outcome else "UNDER_REVIEW"
+        return _stage(GATE_OK, stage, task.get("task_id"), outcome)
     if announces_a_decision(reply):
-        return {"gate": GATE_FAIL, "stage": "DECISION_NOT_RECORDED", "task_id": None}
+        return _stage(GATE_FAIL, "DECISION_NOT_RECORDED")
     application = context.get("application") or {}
     if not application or application.get("missing"):
-        return {"gate": GATE_OK, "stage": "COLLECTING", "task_id": None}
-    return {"gate": GATE_OK, "stage": "AWAITING_DECISION", "task_id": None}
+        return _stage(GATE_OK, "COLLECTING")
+    return _stage(GATE_OK, "AWAITING_DECISION")
+
+
+def _stage(gate: str, stage: str, task_id: int | None = None,
+           outcome: str | None = None) -> dict[str, Any]:
+    return {"gate": gate, "stage": stage, "task_id": task_id, "outcome": outcome}
 
 def tier_from(eligibility: dict, employer: dict,
               kyc: dict | None = None, aml: dict | None = None) -> tuple[str, list[str]]:

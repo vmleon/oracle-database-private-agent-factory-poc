@@ -55,6 +55,28 @@ describe("chatReducer", () => {
     expect(next.sending).toBe(false);
   });
 
+  it("a second agent event on the same turn appends a follow-up bubble", () => {
+    // The turn that files the application pushes the worker's reply and then the
+    // fixed status line; the second must not be dropped on the resolved placeholder.
+    const { state } = withPendingTurn();
+    const replied = chatReducer(state, {
+      type: "agent",
+      event: { turnId: "t1", reply: "Sent to our team.", pafRoomId: "r1" },
+    });
+    const next = chatReducer(replied, {
+      type: "agent",
+      event: { turnId: "t1", reply: "We're reviewing your application.", pafRoomId: "r1" },
+    });
+    expect(next.messages).toHaveLength(3);
+    expect(next.messages[2]).toMatchObject({
+      sender: "AGENT",
+      body: "We're reviewing your application.",
+      pending: false,
+    });
+    expect(new Set(next.messages.map((m) => m.id)).size).toBe(3);
+    expect(next.sending).toBe(false);
+  });
+
   it("ignores an agent event whose turnId does not match a pending turn", () => {
     const { state } = withPendingTurn();
     const next = chatReducer(state, {

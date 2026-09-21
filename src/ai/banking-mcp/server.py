@@ -170,6 +170,16 @@ _OPEN_APPLICATION_SQL = """
      FETCH FIRST 1 ROW ONLY
 """
 
+# The application's latest task, with the reviewer's close-out. The state and
+# the outcome are what separate a filed recommendation from a human decision.
+_LATEST_TASK_SQL = """
+    SELECT task_id, state, human_outcome
+      FROM BANK_CORE.hitl_task
+     WHERE application_id = :a
+     ORDER BY task_id DESC
+     FETCH FIRST 1 ROW ONLY
+"""
+
 _KYC_STALE_DAYS = 180
 
 
@@ -720,40 +730,38 @@ def recommend_tier_for_session(session_token: str) -> dict:
 @mcp.tool()
 def hitl_status_for_session(session_token: str, reply: str = "") -> dict:
     """Deterministic turn check: token (+ the manager's reply) in ->
-    {"gate", "stage", "task_id"} out.
+    {"gate", "stage", "task_id", "outcome"} out.
 
     Reads the context and the HITL queue and reports where the application
-    stands: still collecting, awaiting a decision, or complete with a task
-    recorded. `gate` fails on an invalid session, and fails when `reply`
-    announces a decision (one of the customer-facing decision sentences) but
-    no HITL task is recorded for the application — the case where a customer
-    would be told their application is progressing with nothing recorded.
-    Every other turn on a valid session passes. `stage` carries the rest for
-    observability. The flow's final gate matches the bare word in `gate`,
-    because a Deterministic MCP node escapes the inner quotes of its JSON
-    envelope.
+    stands: still collecting, awaiting a decision, under review with the
+    agent's recommendation filed, or decided by a human. `gate` fails on an
+    invalid session, and fails when `reply` announces a decision (one of the
+    customer-facing decision sentences) but no HITL task is recorded for the
+    application — the case where a customer would be told their application is
+    progressing with nothing recorded. Every other turn on a valid session
+    passes. `stage` carries the rest for observability, and `outcome` is the
+    reviewer's answer — null until a human closes the task. The flow's final
+    gate matches the bare word in `gate`, because a Deterministic MCP node
+    escapes the inner quotes of its JSON envelope.
     """
     started = _now_utc()
     print(f"[hitl_status_for_session] called session_token={session_token!r}", flush=True)
     ctx = _get_context_impl(session_token)
-    task_id = None
+    task = None
     application = ctx.get("application") or {}
     application_id = application.get("id") if application else None
     if application_id is not None:
         with _connect() as conn:
             with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT MAX(task_id) FROM BANK_CORE.hitl_task WHERE application_id = :a",
-                    a=int(application_id),
-                )
+                cur.execute(_LATEST_TASK_SQL, a=int(application_id))
                 row = cur.fetchone()
-                if row and row[0] is not None:
-                    task_id = int(row[0])
-    out = gate_decision(ctx, task_id, reply)
+                if row is not None:
+                    task = {"task_id": int(row[0]), "state": row[1], "human_outcome": row[2]}
+    out = gate_decision(ctx, task, reply)
     _audit("hitl_status_for_session", "SUCCESS", started, _now_utc(),
            {"application_id": application_id}, out, session_token=session_token)
     print(f"[hitl_status_for_session] -> gate={out['gate']} stage={out['stage']} "
-          f"task_id={out['task_id']}", flush=True)
+          f"task_id={out['task_id']} outcome={out['outcome']}", flush=True)
     return out
 
 

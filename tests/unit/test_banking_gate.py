@@ -66,43 +66,77 @@ def test_documents_payload_is_none_when_the_application_is_not_complete(ctx):
     assert documents_payload(ctx) is None
 
 
+# A task the agent filed, and the same task once a human has closed it. The
+# stage tells them apart; `outcome` carries the human's answer and nothing else.
+FILED = {"task_id": 42, "state": "OPEN", "human_outcome": None}
+CLAIMED = {"task_id": 42, "state": "IN_REVIEW", "human_outcome": None}
+APPROVED = {"task_id": 42, "state": "CLOSED", "human_outcome": "APPROVE"}
+DECLINED = {"task_id": 42, "state": "CLOSED", "human_outcome": "DECLINE"}
+
+
 def test_gate_fails_on_an_invalid_session():
-    assert gate_decision(BAD, None) == {"gate": GATE_FAIL, "stage": "INVALID_SESSION", "task_id": None}
+    assert gate_decision(BAD, None) == {
+        "gate": GATE_FAIL, "stage": "INVALID_SESSION", "task_id": None, "outcome": None,
+    }
 
 
 @pytest.mark.parametrize("ctx", [COLLECTING, NO_APP], ids=["collecting", "no-app"])
 def test_gate_passes_a_collecting_turn_with_no_decision(ctx):
-    assert gate_decision(ctx, None) == {"gate": GATE_OK, "stage": "COLLECTING", "task_id": None}
+    assert gate_decision(ctx, None) == {
+        "gate": GATE_OK, "stage": "COLLECTING", "task_id": None, "outcome": None,
+    }
 
 
-def test_gate_passes_a_complete_application_with_a_recorded_decision():
-    assert gate_decision(COMPLETE, 42) == {"gate": GATE_OK, "stage": "DECIDED", "task_id": 42}
+@pytest.mark.parametrize("task", [FILED, CLAIMED], ids=["open", "in-review"])
+def test_a_filed_recommendation_is_under_review_and_carries_no_outcome(task):
+    # The agent filing its recommendation is not a human deciding.
+    assert gate_decision(COMPLETE, task) == {
+        "gate": GATE_OK, "stage": "UNDER_REVIEW", "task_id": 42, "outcome": None,
+    }
+
+
+@pytest.mark.parametrize("task,outcome", [(APPROVED, "APPROVE"), (DECLINED, "DECLINE")],
+                         ids=["approved", "declined"])
+def test_a_closed_task_reports_the_human_outcome(task, outcome):
+    assert gate_decision(COMPLETE, task) == {
+        "gate": GATE_OK, "stage": "DECIDED", "task_id": 42, "outcome": outcome,
+    }
+
+
+def test_a_task_closed_without_an_outcome_is_not_a_decision():
+    # EXPIRED, or a close that recorded no answer: there is no outcome to report.
+    closed_blank = {"task_id": 42, "state": "EXPIRED", "human_outcome": None}
+    assert gate_decision(COMPLETE, closed_blank) == {
+        "gate": GATE_OK, "stage": "UNDER_REVIEW", "task_id": 42, "outcome": None,
+    }
 
 
 def test_gate_passes_a_complete_application_awaiting_a_decision():
     assert gate_decision(COMPLETE, None) == {
-        "gate": GATE_OK, "stage": "AWAITING_DECISION", "task_id": None,
+        "gate": GATE_OK, "stage": "AWAITING_DECISION", "task_id": None, "outcome": None,
     }
 
 
 def test_gate_rejects_a_decision_sentence_with_no_recorded_task():
     reply = "Looks strong — it's with our team for final approval; we'll confirm shortly."
     assert gate_decision(COMPLETE, None, reply) == {
-        "gate": GATE_FAIL, "stage": "DECISION_NOT_RECORDED", "task_id": None,
+        "gate": GATE_FAIL, "stage": "DECISION_NOT_RECORDED", "task_id": None, "outcome": None,
     }
 
 
 def test_gate_passes_a_question_with_no_recorded_task():
     reply = "Please confirm: 18000 over 36 months for home improvement. Shall I submit it?"
     assert gate_decision(COMPLETE, None, reply) == {
-        "gate": GATE_OK, "stage": "AWAITING_DECISION", "task_id": None,
+        "gate": GATE_OK, "stage": "AWAITING_DECISION", "task_id": None, "outcome": None,
     }
 
 
 def test_gate_passes_a_decision_sentence_when_the_task_exists():
+    # The fail-closed rule is "announced a decision with nothing recorded", so a
+    # filed task passes the gate whether or not a human has answered yet.
     reply = "Before we can proceed, a specialist needs to review this in detail."
-    assert gate_decision(COMPLETE, 42, reply) == {
-        "gate": GATE_OK, "stage": "DECIDED", "task_id": 42,
+    assert gate_decision(COMPLETE, FILED, reply) == {
+        "gate": GATE_OK, "stage": "UNDER_REVIEW", "task_id": 42, "outcome": None,
     }
 
 

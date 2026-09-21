@@ -107,12 +107,12 @@ Each takes only `session_token`, resolves state through the same server-side rea
 | `evaluate_eligibility_for_session` | builds the OPA `applicant` from the DB-derived age/income/score/dti/pti             | `{allow, deny, warn}`                                           |
 | `required_documents_for_session`   | evaluates `decisioning.required_documents` from product/employment/residency/amount | `{required, amount_band, rationale}`                            |
 | `verify_employer_for_session`      | reads `profile.employer_name` and calls the company registry                        | `{name, registered, trading_status}`                            |
-| `hitl_status_for_session`          | reads the context, `BANK_CORE.hitl_task` and the manager's reply                          | `{gate, stage, task_id}`                                        |
+| `hitl_status_for_session`          | reads the context, `BANK_CORE.hitl_task` and the manager's reply                          | `{gate, stage, task_id, outcome}`                               |
 | `recommend_tier_for_session`       | applies the tier rule to the eligibility, employer, KYC and AML records             | `{tier, reasoning, factors, evidence}`                          |
 
 `recommend_tier_for_session` is the only one with no node on the canvas: `application-mcp.create_hitl_task` calls it server-side so the recorded decision never passes through a model. The rule is `tier_from()` in [`src/ai/banking-mcp/gate.py`](../../src/ai/banking-mcp/gate.py) — DECLINE on any eligibility, KYC or AML `deny` or an unregistered employer, REVIEW on any `warn` or a dormant one, APPROVE otherwise — and it is covered by host unit tests. Screening findings reach the customer only as the generic factor phrase: naming them would be tipping off.
 
-`hitl_status_for_session` decides the gate server-side: `GATE_FAIL` on an invalid session, or on a reply that announces a decision — the `[[DECISION ...]]` marker, or the language a decision uses (`DECISION_PATTERNS` in `gate.py`) — with no HITL task recorded for the application; `GATE_OK` on every other turn on a valid session, whatever stage the application is at.
+`hitl_status_for_session` decides the gate server-side: `GATE_FAIL` on an invalid session, or on a reply that announces a decision — the `[[DECISION ...]]` marker, or the language a decision uses (`DECISION_PATTERNS` in `gate.py`) — with no HITL task recorded for the application; `GATE_OK` on every other turn on a valid session, whatever stage the application is at. `stage` separates the agent filing its recommendation (`UNDER_REVIEW`) from a reviewer closing the task (`DECIDED`), and `outcome` carries that reviewer's answer and nothing else.
 
 G3 is the flow-level statement of that property, not its enforcement. PAF executes the nodes after an agent only on the turns where the agent answers and calls a tool in the same step ([`issues/15`](../../issues/15-nodes-after-an-agent-are-skipped-when-it-answers.md)), so `ChatService.runTurn` holds it on every reply: a reply carrying the `[[DECISION ...]]` marker is shown only when a `hitl_task` row exists for the customer, and falls to the apology otherwise.
 
@@ -551,7 +551,7 @@ Whether a decision was recorded is a database fact, so the flow reads it rather 
 
 - **Drag** a fifth `Deterministic MCP tool` node.
 - **Configure** — MCP server `banking-mcp`, MCP tool `hitl_status_for_session`.
-- **Wire** — Type Convert (assert)'s **`JSON`** output → `Tool input JSON`. Its `Message` carries `{gate, stage, task_id}`.
+- **Wire** — Type Convert (assert)'s **`JSON`** output → `Tool input JSON`. Its `Message` carries `{gate, stage, task_id, outcome}`.
 
 ```mermaid
 flowchart LR

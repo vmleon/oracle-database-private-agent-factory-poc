@@ -173,17 +173,16 @@ What works today on OCI — `manage.py cloud test` passes 11/11 against the depl
 What's next, in order — the detail lives in [`BACKLOG.md`](BACKLOG.md):
 
 1. **Close the three open conversation findings.** The adversarial bench holds them behind `xfail` with the assertions at full strength. [`BACKLOG.md §1`](BACKLOG.md) · [`docs/TEST-BENCH.md`](docs/TEST-BENCH.md).
-2. **Report the human outcome as its own field.** The customer's thread carries the reviewer's outcome; the status tool still reports `DECIDED` on a filed recommendation, and there is no progress message. [`BACKLOG.md §2`](BACKLOG.md).
-3. **Wire the fair-lending pre-flight** — typed, live and uncalled, with no patterns to match against. [`BACKLOG.md §3`](BACKLOG.md).
-4. **Stand up `RESEARCH_WORKFLOW`**, the backoffice research agent. Its read-only view set and database identity exist; the flow, the `/research/*` surface and the reviewer's research panel do not. [`BACKLOG.md §4`](BACKLOG.md).
-5. **Narrow the customer read path's session lookup.** `CUSTOMER_AGENT_RO` can select every row of `auth_session`, so a prompt injection against the chat agent reaches more than the one token it was handed. [`BACKLOG.md §5`](BACKLOG.md).
-6. **One source of truth for the thresholds**, so parameter history stops being a table that never receives a row. [`BACKLOG.md §6`](BACKLOG.md).
-7. **Policy retrieval and the citations it would produce.** `policy_corpus` exists and is empty. [`BACKLOG.md §7`](BACKLOG.md).
+2. **Wire the fair-lending pre-flight** — typed, live and uncalled, with no patterns to match against. [`BACKLOG.md §2`](BACKLOG.md).
+3. **Stand up `RESEARCH_WORKFLOW`**, the backoffice research agent. Its read-only view set and database identity exist; the flow, the `/research/*` surface and the reviewer's research panel do not. [`BACKLOG.md §3`](BACKLOG.md).
+4. **Narrow the customer read path's session lookup.** `CUSTOMER_AGENT_RO` can select every row of `auth_session`, so a prompt injection against the chat agent reaches more than the one token it was handed. [`BACKLOG.md §4`](BACKLOG.md).
+5. **One source of truth for the thresholds**, so parameter history stops being a table that never receives a row. [`BACKLOG.md §5`](BACKLOG.md).
+6. **Policy retrieval and the citations it would produce.** `policy_corpus` exists and is empty. [`BACKLOG.md §6`](BACKLOG.md).
 
-Then: policy retrieval and citations, document collection, similar-case lookup, and the fair-lending producer — [`BACKLOG.md §8`–`§11`](BACKLOG.md).
+Then: document collection, similar-case lookup, and the fair-lending producer — [`BACKLOG.md §7`–`§9`](BACKLOG.md).
 
 Two known constraints not in the "next" list because they're decided, and one hop waiting on a spike:
 
-- **Select AI is parked.** `CHAT_FLOW` reads through the `banking-mcp` wrappers; the database is registered as a data source and the grants are in place, but no flow node uses Select AI. Adopting it is a flow redesign, tracked in [`BACKLOG.md §13`](BACKLOG.md).
-- **The load balancer's hop to PAF is unverified.** Encrypted but unauthenticated, and it is the only backend set that speaks TLS at all — the rest of the VCN is plaintext by design. Closing it needs a second apply and a spike on OCI's certificate matching, tracked in [`BACKLOG.md §12`](BACKLOG.md).
+- **Select AI is parked.** `CHAT_FLOW` reads through the `banking-mcp` wrappers; the database is registered as a data source and the grants are in place, but no flow node uses Select AI. Adopting it is a flow redesign, tracked in [`BACKLOG.md §11`](BACKLOG.md).
+- **The load balancer's hop to PAF is unverified.** Encrypted but unauthenticated, and it is the only backend set that speaks TLS at all — the rest of the VCN is plaintext by design. Closing it needs a second apply and a spike on OCI's certificate matching, tracked in [`BACKLOG.md §10`](BACKLOG.md).
 - **Auth is out of scope.** Both UIs use a mock login (customer dropdown / role dropdown). The audience system is assumed to provide SSO in production.

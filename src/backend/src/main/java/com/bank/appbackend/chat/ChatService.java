@@ -36,6 +36,12 @@ public class ChatService {
     static final String DECISION_FILED =
             "Thank you. Your application is with our team for review, and we'll be in touch.";
 
+    // What the thread carries once the application reaches the review queue, on the turn
+    // that puts it there. Fixed text under the same disclosure policy the worker's own
+    // sentence obeys, so the record of where the application stands is the same every
+    // time whatever wording the model chose above it.
+    static final String UNDER_REVIEW = "We're reviewing your application.";
+
     private final SessionService sessions;
     private final ChatMessageRepository messages;
     private final PafClient paf;
@@ -65,9 +71,9 @@ public class ChatService {
         AuthSession session = sessions.resolve(token);
         String roomId = roomId(session);
         // Sanitize before the thread sees it, not on the way out to PAF. The thread is
-        // replayed — by the history endpoint today and by the outcome message to come —
-        // so storing the raw text would keep an injection alive for whatever reads it
-        // next. `Envelope.build` sanitizes again downstream and is idempotent, which
+        // replayed by the history endpoint, and carries the status and outcome messages
+        // the customer reads when they come back, so storing the raw text would keep an
+        // injection alive for whatever reads it next. `Envelope.build` sanitizes again downstream and is idempotent, which
         // keeps it the one guaranteed choke point rather than a second opinion.
         String clean = Envelope.sanitize(message);
         if (!clean.equals(message)) {
@@ -85,6 +91,10 @@ public class ChatService {
     /** Background worker: call PAF (with apology-retry), persist the reply, push it over SSE. */
     void runTurn(String token, String message, AuthSession session, String roomId, String turnId) {
         try {
+            // Read before the turn, because the tool that files the task runs during it:
+            // a count that went up is what makes this the turn the application entered
+            // the queue, rather than any later turn that talks about it.
+            long tasksBefore = tasks.countByCustomerId(session.getCustomerId());
             String enveloped = Envelope.build(token, message);
             PafClient.Result result = paf.run(enveloped);
             // Belt-and-suspenders retry (see PAF_APOLOGY): inert once the deployed flow loads
@@ -100,15 +110,20 @@ public class ChatService {
             // the turns where the agent answers and calls a tool in one step (issues/15), so
             // the guard on the delivery path lives here, where every reply passes.
             String reply = result.reply();
+            boolean filedThisTurn = false;
             if (result.announcesDecision()) {
-                if (tasks.countByCustomerId(session.getCustomerId()) == 0) {
+                long tasksNow = tasks.countByCustomerId(session.getCustomerId());
+                if (tasksNow == 0) {
                     log.warn("turn {} announced a decision with no hitl_task behind it", turnId);
                     reply = PAF_APOLOGY;
-                } else if (reply.isBlank()) {
-                    // The worker sometimes writes its sentence inside the marker, which the
-                    // strip then removes with it; an empty bubble is the wrong thing to show.
-                    log.warn("turn {} announced a decision with no sentence outside the marker", turnId);
-                    reply = DECISION_FILED;
+                } else {
+                    filedThisTurn = tasksNow > tasksBefore;
+                    if (reply.isBlank()) {
+                        // The worker sometimes writes its sentence inside the marker, which the
+                        // strip then removes with it; an empty bubble is the wrong thing to show.
+                        log.warn("turn {} announced a decision with no sentence outside the marker", turnId);
+                        reply = DECISION_FILED;
+                    }
                 }
             }
             String shown = Disclosure.screen(message, reply);
@@ -120,6 +135,10 @@ public class ChatService {
             }
             save(session, roomId, "AGENT", shown, result.pafRoomId());
             events.pushAgent(token, turnId, shown, result.pafRoomId());
+            if (filedThisTurn) {
+                save(session, roomId, "AGENT", UNDER_REVIEW, result.pafRoomId());
+                events.pushAgent(token, turnId, UNDER_REVIEW, result.pafRoomId());
+            }
         } catch (RuntimeException e) {
             log.warn("chat turn {} failed", turnId, e);
             events.pushError(token, turnId, "We couldn't get a response. Please try again.");

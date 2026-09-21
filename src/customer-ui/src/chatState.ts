@@ -55,7 +55,26 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       const idx = state.messages.findIndex(
         (m) => m.pending && m.turnId === action.event.turnId,
       );
-      if (idx === -1) return state;
+      if (idx === -1) {
+        // A turn can push more than one message: the turn that files the application
+        // sends the worker's reply and then the fixed status line. With the
+        // placeholder already resolved, the follow-up is a new bubble. An event for a
+        // turn this client never sent stays ignored.
+        if (!state.messages.some((m) => m.turnId === action.event.turnId)) return state;
+        const followUp: Message = {
+          id: `m${state.seq}`,
+          sender: "AGENT",
+          body: action.event.reply,
+          pending: false,
+          failed: false,
+          turnId: action.event.turnId,
+        };
+        return {
+          messages: [...state.messages, followUp],
+          sending: false,
+          seq: state.seq + 1,
+        };
+      }
       const messages = state.messages.slice();
       messages[idx] = {
         ...messages[idx],
