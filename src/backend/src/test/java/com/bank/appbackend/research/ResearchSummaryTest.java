@@ -49,16 +49,48 @@ class ResearchSummaryTest {
             "The case leans towards declining.",
             "The evidence supports approving this case.",
             "You should approve this application.",
+            "I would recommend approving this application.",
+            "We recommend declining.",
+            "The comparable cases favor approval.",
+            "The data supports decline.",
+            "Recommendation: DECLINE",
+            "Decline this application.",
+            "This warrants approval.",
+            "This is a strong case for approval.",
     })
     void aVerdictIsRejected(String summary) {
         assertThat(ResearchSummary.verdicts(summary)).isNotEmpty();
         assertThat(ResearchSummary.screen(summary)).isEqualTo(ResearchSummary.BLOCKED);
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "Approve.",
+            "Decline.",
+    })
+    void aBareVerdictOnItsOwnLineIsRejected(String summary) {
+        assertThat(ResearchSummary.screen(summary)).isEqualTo(ResearchSummary.BLOCKED);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "I suggest re-verifying the employer record.",
+            "We should request a recent payslip.",
+            "The exposure is reported on balance sheets.",
+    })
+    void aSuggestionThatNamesNoOutcomeIsAllowed(String summary) {
+        assertThat(ResearchSummary.verdicts(summary)).isEmpty();
+    }
+
     @Test
     void aVerdictBuriedInAnOtherwiseGoodSummaryIsStillRejected() {
         String withLean = ORGANISED + "\nON BALANCE\n- I recommend approving.\n";
         assertThat(ResearchSummary.screen(withLean)).isEqualTo(ResearchSummary.BLOCKED);
+    }
+
+    @Test
+    void theOrganisedSummaryStillPasses() {
+        assertThat(ResearchSummary.screen(ORGANISED)).isEqualTo(ORGANISED);
     }
 
     @Test

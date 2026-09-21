@@ -30,22 +30,51 @@ public final class ResearchSummary {
             "Research could not be completed for this case. The evidence is on this screen; "
             + "the decision is yours to make.";
 
+    /**
+     * The words a verdict names. A summary that suggests gathering more evidence
+     * names none of them, which is what separates it from one that concludes.
+     */
+    private static final String OUTCOME =
+            "(?:approv\\w*|declin\\w*|reject\\w*|den(?:y|ies|ied|ial))";
+
+    /** Same-sentence proximity: newlines are excluded so a subject on one line
+     *  cannot bind to a verb on the next. */
+    private static final String NEAR = "[^.\\n]{0,40}";
+
     private static final List<Rule> VERDICTS = List.of(
-            new Rule(Pattern.compile("(?i)\\bI\\s+(recommend|suggest|advise)\\b"), "a recommendation"),
-            new Rule(Pattern.compile("(?i)\\bmy\\s+recommendation\\b"), "a recommendation"),
+            // "I would recommend approving", "We recommend declining",
+            // "My recommendation is to decline".
             new Rule(Pattern.compile(
-                    "(?i)\\b(should|ought\\s+to)\\s+be\\s+(approved|declined|rejected)\\b"),
-                    "a verdict"),
+                    "(?i)\\b(?:i|we|my|our)\\b" + NEAR
+                            + "\\b(?:recommend\\w*|suggest\\w*|advis\\w*)\\b" + NEAR
+                            + "\\b" + OUTCOME), "a recommendation"),
             new Rule(Pattern.compile(
-                    "(?i)\\byou\\s+should\\s+(approve|decline|reject)\\b"), "a verdict"),
+                    "(?i)\\b(?:should|ought\\s+to|must)\\s+be\\s+" + OUTCOME), "a verdict"),
+            new Rule(Pattern.compile(
+                    "(?i)\\byou\\s+should\\s+" + OUTCOME), "a verdict"),
+            // A summary that leans has concluded, whatever it leans toward.
             new Rule(Pattern.compile("(?i)\\bleans?\\s+towards?\\b"), "a lean"),
-            new Rule(Pattern.compile("(?i)\\bon\\s+balance\\b"), "a lean"),
+            // A balance sheet is a document, not a conclusion.
+            new Rule(Pattern.compile("(?i)\\bon\\s+balance\\b(?!\\s+sheet)"), "a lean"),
+            // "The comparable cases favour approval", "the data supports decline".
             new Rule(Pattern.compile(
-                    "(?i)\\bevidence\\s+(supports|favou?rs|points\\s+to)\\s+"
-                            + "(approving|declining|approval|decline|rejection)\\b"),
-                    "a lean"),
+                    "(?i)\\b(?:evidence|data|record|cases?|facts?|analysis|profile|history)\\b"
+                            + NEAR + "\\b(?:supports?|favou?rs?|points?\\s+to|argues?\\s+for)\\b"
+                            + NEAR + "\\b" + OUTCOME), "a lean"),
+            // A labelled conclusion line: "Recommendation: DECLINE", "Verdict - approve".
             new Rule(Pattern.compile(
-                    "(?i)\\bpoints\\s+to\\s+(approval|approving|decline|declining)\\b"), "a lean")
+                    "(?im)^\\s*(?:recommendation|verdict|conclusion|decision|outcome)"
+                            + "\\s*[:\\-—]\\s*\\S"), "a verdict"),
+            // A line that is nothing but the verdict.
+            new Rule(Pattern.compile(
+                    "(?im)^\\s*" + OUTCOME + "\\b\\s*[.!]?\\s*$"), "a verdict"),
+            // "Decline this application", "approve the loan".
+            new Rule(Pattern.compile(
+                    "(?i)\\b" + OUTCOME + "\\s+th(?:is|e)\\s+"
+                            + "(?:application|case|loan|request)\\b"), "a verdict"),
+            new Rule(Pattern.compile("(?i)\\bwarrants?\\s+" + OUTCOME), "a verdict"),
+            new Rule(Pattern.compile(
+                    "(?i)\\bstrong\\s+case\\s+for\\s+" + OUTCOME), "a verdict")
     );
 
     private ResearchSummary() {
