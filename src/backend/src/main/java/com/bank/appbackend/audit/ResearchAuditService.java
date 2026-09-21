@@ -24,11 +24,16 @@ public class ResearchAuditService {
     private static final Logger log = LoggerFactory.getLogger(ResearchAuditService.class);
 
     /**
-     * What a row carries until the service that owns the run stamps it. The
-     * wrapper is called from inside the PAF run and cannot know the run id, so
-     * the trail is written first and correlated afterwards.
+     * The run id a row carries until the service that owns the run stamps it. It is
+     * scoped to the task because uq_research_audit_step is unique on
+     * (research_run_id, step_no): one placeholder shared across tasks collides as
+     * soon as two of them are un-stamped at the same time.
      */
-    public static final String PENDING_RUN_ID = "pending";
+    public static final String PENDING_RUN_ID_PREFIX = "pending-";
+
+    public static String pendingRunId(Long hitlTaskId) {
+        return PENDING_RUN_ID_PREFIX + hitlTaskId;
+    }
 
     private final JdbcTemplate jdbc;
 
@@ -42,19 +47,23 @@ public class ResearchAuditService {
                 log.warn("research audit skipped: no task id (tool={})", req.toolName());
                 return;
             }
+            String pending = pendingRunId(req.hitlTaskId());
             Long durationMs = (req.startedAt() != null && req.endedAt() != null)
                     ? Duration.between(req.startedAt(), req.endedAt()).toMillis()
                     : null;
+            // Counted over the same key the unique index constrains, so the counter
+            // and the index share one scope by construction.
             Integer stepNo = jdbc.queryForObject(
-                    "SELECT NVL(MAX(step_no), 0) + 1 FROM BANK_CORE.research_audit WHERE hitl_task_id = ?",
-                    Integer.class, req.hitlTaskId());
+                    "SELECT NVL(MAX(step_no), 0) + 1 FROM BANK_CORE.research_audit "
+                            + "WHERE research_run_id = ?",
+                    Integer.class, pending);
             jdbc.update("""
                     INSERT INTO BANK_CORE.research_audit
                         (research_run_id, hitl_task_id, reviewer, step_no, tool_name,
                          tool_input, tool_output, started_at, ended_at, duration_ms, status)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                    PENDING_RUN_ID, req.hitlTaskId(), "Backoffice Reviewer",
+                    pending, req.hitlTaskId(), "Backoffice Reviewer",
                     stepNo, req.toolName(), req.toolInput(), req.toolOutput(),
                     toTimestamp(req.startedAt()), toTimestamp(req.endedAt()), durationMs,
                     req.status() == null ? "SUCCESS" : req.status());

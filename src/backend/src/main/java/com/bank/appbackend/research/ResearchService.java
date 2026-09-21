@@ -43,14 +43,17 @@ public class ResearchService {
             return new ResearchView(taskId, ResearchSummary.BLOCKED, who, Instant.now(), null);
         }
         String runId = UUID.randomUUID().toString();
+        Instant startedAt = Instant.now();
         // The task id is the flow's only input, and PAF accepts no input beyond
         // the chat message, so it travels in-band exactly as the session token
         // does on the customer path.
         String raw = paf.run("[[TASK " + taskId + "]]");
         // The wrapper wrote its trail while the run was in flight, with no way
         // to know the run id. Stamp it now, so the summary row and the tool
-        // calls that produced it share one key.
-        stampAuditTrail(taskId, runId);
+        // calls that produced it share one key. Scoped to rows started at or
+        // after this run began, so an earlier failed run's orphaned pending
+        // rows for the same task are left alone rather than reclaimed.
+        stampAuditTrail(taskId, runId, who, startedAt);
         String shown = ResearchSummary.screen(raw);
         if (!shown.equals(raw)) {
             // Name the rule, never the text that broke it.
@@ -87,13 +90,16 @@ public class ResearchService {
                 String.valueOf(row.get("RESEARCH_RUN_ID")));
     }
 
-    private void stampAuditTrail(Long taskId, String runId) {
+    private void stampAuditTrail(Long taskId, String runId, String reviewer, Instant startedAt) {
         try {
             jdbc.update("""
                     UPDATE BANK_CORE.research_audit
-                       SET research_run_id = ?
-                     WHERE hitl_task_id = ? AND research_run_id = ?
-                    """, runId, taskId, ResearchAuditService.PENDING_RUN_ID);
+                       SET research_run_id = ?, reviewer = ?
+                     WHERE hitl_task_id = ?
+                       AND research_run_id = ?
+                       AND started_at >= ?
+                    """, runId, reviewer, taskId,
+                    ResearchAuditService.pendingRunId(taskId), Timestamp.from(startedAt));
         } catch (RuntimeException e) {
             // Correlation is not worth failing a completed run over.
             log.warn("could not stamp the research trail for task {}", taskId, e);
