@@ -1312,6 +1312,9 @@ def cloud_test(pytest_args: tuple) -> None:
     remote_env = "/home/opc/.poc-test-env"
     # The unit tests import from src/, which stays on the host, so the bastion
     # runs the end-to-end suite only; extra arguments (-k, -x, -vv) pass through.
+    # tests/test_research_workflow.py needs RESEARCH_WORKFLOW published, so it
+    # is not in the default target; run it by naming it explicitly, e.g.
+    # `cloud test tests/test_research_workflow.py`.
     # Quoted: a multi-word selector (-k "alice or frank") reaches the bastion as
     # one pytest argument instead of three shell words.
     args = " ".join([
@@ -1323,6 +1326,7 @@ def cloud_test(pytest_args: tuple) -> None:
         f"cd /home/opc/artifact/roles/opstools/files && "
         f"POC_ENV_FILE={remote_env} "
         f"PAF_BASE={_paf_base_url()} "
+        f"BACKEND_BASE={_paf_base_url()} "
         f"PAF_CA={BASTION_LB_CA} "
         f"TNS_ADMIN=/opt/paf-poc/wallet "
         f"{'{{ tests_venv }}'} -m pytest {args} -q; rc=$?; rm -f {remote_env}; exit $rc"

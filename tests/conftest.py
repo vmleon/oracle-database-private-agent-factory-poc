@@ -19,7 +19,9 @@ Required env vars (`cloud test` writes them on the bastion for the run):
   - DB_SERVICE, DB_BACKEND_PASSWORD, DB_WALLET_PASSWORD, TNS_ADMIN — the ADB wallet
     connection as APP
   - PAF_BASE — PAF's address behind the public load balancer
-  - PAF_CA — the listener's certificate, which PAF's address is verified against
+  - BACKEND_BASE — the load balancer, where /v1 is served
+  - PAF_CA — the listener's certificate, which PAF_BASE and BACKEND_BASE are
+    verified against
 
 The key is bound to one published workflow, so no agent lookup is needed.
 """
@@ -68,7 +70,7 @@ def env() -> dict[str, str]:
     # Autonomous Database is reached through a wallet alias, so there is no
     # host or port to supply.
     required = ("PAF_API_KEY", "PAF_AGENT_ID", "DB_SERVICE", "DB_BACKEND_PASSWORD", "TNS_ADMIN",
-                "PAF_BASE", "PAF_CA")
+                "PAF_BASE", "BACKEND_BASE", "PAF_CA")
     missing = [k for k in required if not os.getenv(k)]
     if missing:
         pytest.exit(
@@ -189,6 +191,22 @@ def chat(paf, agent_id):
                 pytest.fail(f"PAF runner returned errors: {errs}")
             return body.get("data", body)
         return body
+    return _run
+
+
+@pytest.fixture
+def research(env):
+    """POST /v1/research/tasks/<id>/run against the deployed backend, which runs
+    RESEARCH_WORKFLOW and returns the resulting ResearchView."""
+    def _run(task_id: int, reviewer: str = "Backoffice Reviewer") -> dict:
+        r = requests.post(
+            f"{env['BACKEND_BASE']}/v1/research/tasks/{task_id}/run",
+            json={"reviewer": reviewer},
+            timeout=300,  # a full research run can take a minute or more
+            verify=env["PAF_CA"],
+        )
+        r.raise_for_status()
+        return r.json()
     return _run
 
 
