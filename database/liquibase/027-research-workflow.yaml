@@ -1,0 +1,90 @@
+databaseChangeLog:
+  # The research identity reads the case under review through this view. It
+  # carries the recommendation packet because the summary is written against
+  # it, and the application's own values because comparable cases are matched
+  # on them.
+  - changeSet:
+      id: 027-research-view-hitl-task
+      author: paf-poc
+      runOnChange: true
+      changes:
+        - sql:
+            sql: |-
+              CREATE OR REPLACE VIEW BANK_VIEWS.research_v_hitl_task AS
+              SELECT
+                t.task_id,
+                t.application_id,
+                la.customer_id,
+                t.assigned_to,
+                t.state,
+                t.agent_recommendation,
+                t.agent_reasoning,
+                t.agent_evidence,
+                t.agent_explore_hints,
+                t.agent_run_id,
+                t.human_outcome,
+                t.human_user,
+                t.created_at,
+                t.closed_at,
+                la.amount_requested,
+                la.term_months,
+                la.purpose
+              FROM BANK_CORE.hitl_task t
+              JOIN BANK_CORE.loan_application la
+                ON la.application_id = t.application_id
+
+  # customer_id is what makes "this customer's past decisions" answerable;
+  # the decision row carries only the application it closed.
+  - changeSet:
+      id: 027-research-view-decision-history
+      author: paf-poc
+      runOnChange: true
+      changes:
+        - sql:
+            sql: |-
+              CREATE OR REPLACE VIEW BANK_VIEWS.research_v_decision_history AS
+              SELECT
+                d.decision_id,
+                d.application_id,
+                la.customer_id,
+                d.human_outcome,
+                d.human_user,
+                d.decided_at,
+                d.agent_recommendation,
+                d.agent_run_id,
+                d.computed_dti,
+                d.computed_pti
+              FROM BANK_CORE.decision d
+              JOIN BANK_CORE.loan_application la
+                ON la.application_id = d.application_id
+
+  # One row per research run, appended when the reviewer runs it rather than
+  # copied onto the decision at close, so the record carries the moment the
+  # reviewer read it. application_id is a plain indexed column: a blockchain
+  # table cannot carry a foreign key, which is why `decision` links the same way.
+  - changeSet:
+      id: 027-create-research-summary-blockchain-table
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              CREATE BLOCKCHAIN TABLE BANK_CORE.research_summary (
+                research_id     NUMBER GENERATED ALWAYS AS IDENTITY,
+                application_id  NUMBER NOT NULL,
+                hitl_task_id    NUMBER NOT NULL,
+                research_run_id VARCHAR2(60) NOT NULL,
+                reviewer        VARCHAR2(120) NOT NULL,
+                summary         CLOB NOT NULL,
+                created_at      TIMESTAMP DEFAULT SYSTIMESTAMP NOT NULL,
+                CONSTRAINT uq_research_id UNIQUE (research_id)
+              ) NO DROP UNTIL 2555 DAYS IDLE
+                NO DELETE LOCKED
+                HASHING USING "SHA2_512" VERSION "v1"
+        - sql:
+            sql: |-
+              CREATE INDEX BANK_CORE.ix_research_summary_application
+                ON BANK_CORE.research_summary(application_id)
+        - sql:
+            sql: |-
+              CREATE INDEX BANK_CORE.ix_research_summary_task
+                ON BANK_CORE.research_summary(hitl_task_id)

@@ -170,3 +170,25 @@ databaseChangeLog:
         - sql:
             sql: |-
               GRANT SELECT ON BANK_CORE.case_history TO BACKOFFICE_AGENT_RO
+
+  # ------------------------------------------ SVC_BACKEND (research) --
+  # The Application Service writes both research records, as it writes the
+  # decision row: the MCP wrapper posts and the backend inserts, so
+  # BACKOFFICE_AGENT_RO needs no write grant anywhere.
+  - changeSet:
+      id: 020-grant-svc-backend-research-summary
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              GRANT SELECT, INSERT ON BANK_CORE.research_summary TO SVC_BACKEND
+
+  # research_audit was created in 003 and has never had a writer. UPDATE is
+  # here because the run id is stamped on after the fact — see Task 5.
+  - changeSet:
+      id: 020-grant-svc-backend-research-audit
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              GRANT SELECT, INSERT, UPDATE ON BANK_CORE.research_audit TO SVC_BACKEND

@@ -56,6 +56,12 @@ databaseChangeLog:
   - include:
       file: 019-paf-install-prerequisites.yaml
       relativeToChangelogFile: true
+  # 027 registers here, ahead of its number, because 020 grants privileges
+  # on the table it creates and Liquibase applies changesets in the order
+  # they appear in this file.
+  - include:
+      file: 027-research-workflow.yaml
+      relativeToChangelogFile: true
   - include:
       file: 020-client-grants.yaml
       relativeToChangelogFile: true
