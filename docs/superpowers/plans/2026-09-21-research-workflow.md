@@ -193,20 +193,33 @@ Read the `026` entry first and copy its exact key ordering and context value.
 
 - [ ] **Step 3: Append the grant changeset**
 
-Append to the **end** of `database/liquibase/020-client-grants.yaml` — a new id, same file, so the grant matrix stays in one place:
+Append the two changesets below to the **end** of `database/liquibase/020-client-grants.yaml` — new ids in the same file, so the whole grant matrix stays readable in one place.
+
+The block below is shown as a complete document so it renders correctly. **Append only the part under `databaseChangeLog:`**, at the indentation `020-client-grants.yaml` already uses for its other changesets (`  - changeSet:` at two spaces, `      id:` at six). Read the end of that file first and match it exactly.
 
 ```yaml
-# ------------------------------------------ SVC_BACKEND (research) --
-# The Application Service writes the research summary, as it writes the
-# decision row: the MCP wrapper posts and the backend inserts, so
-# BACKOFFICE_AGENT_RO needs no write grant anywhere.
-- changeSet:
-    id: 020-grant-svc-backend-research-summary
-    author: paf-poc
-    changes:
-      - sql:
-          sql: |-
-            GRANT SELECT, INSERT ON BANK_CORE.research_summary TO SVC_BACKEND
+databaseChangeLog:
+  # ------------------------------------------ SVC_BACKEND (research) --
+  # The Application Service writes both research records, as it writes the
+  # decision row: the MCP wrapper posts and the backend inserts, so
+  # BACKOFFICE_AGENT_RO needs no write grant anywhere.
+  - changeSet:
+      id: 020-grant-svc-backend-research-summary
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              GRANT SELECT, INSERT ON BANK_CORE.research_summary TO SVC_BACKEND
+
+  # research_audit was created in 003 and has never had a writer. UPDATE is
+  # here because the run id is stamped on after the fact — see Task 5.
+  - changeSet:
+      id: 020-grant-svc-backend-research-audit
+      author: paf-poc
+      changes:
+        - sql:
+            sql: |-
+              GRANT SELECT, INSERT, UPDATE ON BANK_CORE.research_audit TO SVC_BACKEND
 ```
 
 - [ ] **Step 4: Apply and verify against the deployed ADB**
@@ -235,10 +248,10 @@ Expected: `RESEARCH_SUMMARY` listed beside `DECISION`, hash algorithm `SHA2_512`
 - [ ] **Step 6: Verify the grant**
 
 ```bash
-python manage.py cloud sql "SELECT grantee, privilege FROM ALL_TAB_PRIVS WHERE table_name = 'RESEARCH_SUMMARY'"
+python manage.py cloud sql "SELECT table_name, grantee, privilege FROM ALL_TAB_PRIVS WHERE table_name IN ('RESEARCH_SUMMARY','RESEARCH_AUDIT')"
 ```
 
-Expected: `SVC_BACKEND` with `SELECT` and `INSERT`, and nothing else.
+Expected: `RESEARCH_SUMMARY` granted `SELECT` and `INSERT` to `SVC_BACKEND`; `RESEARCH_AUDIT` granted `SELECT`, `INSERT` and `UPDATE` to `SVC_BACKEND`. No other grantee on either.
 
 - [ ] **Step 7: Commit**
 
@@ -1354,6 +1367,10 @@ public class ResearchService {
         // the chat message, so it travels in-band exactly as the session token
         // does on the customer path.
         String raw = paf.run("[[TASK " + taskId + "]]");
+        // The wrapper wrote its trail while the run was in flight, with no way
+        // to know the run id. Stamp it now, so the summary row and the tool
+        // calls that produced it share one key.
+        stampAuditTrail(taskId, runId);
         String shown = ResearchSummary.screen(raw);
         if (!shown.equals(raw)) {
             // Name the rule, never the text that broke it.
@@ -1388,6 +1405,19 @@ public class ResearchService {
                 String.valueOf(row.get("REVIEWER")),
                 created == null ? null : created.toInstant(),
                 String.valueOf(row.get("RESEARCH_RUN_ID")));
+    }
+
+    private void stampAuditTrail(Long taskId, String runId) {
+        try {
+            jdbc.update("""
+                    UPDATE BANK_CORE.research_audit
+                       SET research_run_id = ?
+                     WHERE hitl_task_id = ? AND research_run_id = ?
+                    """, runId, taskId, ResearchAuditService.PENDING_RUN_ID);
+        } catch (RuntimeException e) {
+            // Correlation is not worth failing a completed run over.
+            log.warn("could not stamp the research trail for task {}", taskId, e);
+        }
     }
 
     private Long applicationFor(Long taskId) {
@@ -1481,6 +1511,13 @@ public class ResearchAuditService {
 
     private static final Logger log = LoggerFactory.getLogger(ResearchAuditService.class);
 
+    /**
+     * What a row carries until the service that owns the run stamps it. The
+     * wrapper is called from inside the PAF run and cannot know the run id, so
+     * the trail is written first and correlated afterwards.
+     */
+    public static final String PENDING_RUN_ID = "pending";
+
     private final JdbcTemplate jdbc;
 
     public ResearchAuditService(JdbcTemplate jdbc) {
@@ -1505,7 +1542,7 @@ public class ResearchAuditService {
                          tool_input, tool_output, started_at, ended_at, duration_ms, status)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                    "task-" + req.hitlTaskId(), req.hitlTaskId(), "Backoffice Reviewer",
+                    PENDING_RUN_ID, req.hitlTaskId(), "Backoffice Reviewer",
                     stepNo, req.toolName(), req.toolInput(), req.toolOutput(),
                     toTimestamp(req.startedAt()), toTimestamp(req.endedAt()), durationMs,
                     req.status() == null ? "SUCCESS" : req.status());
