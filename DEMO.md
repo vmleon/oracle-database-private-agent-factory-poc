@@ -12,6 +12,8 @@ python manage.py info
 The reviewer queue is already busy. Three customers are fresh: no application,
 no task. Each holds a different conversation, the agent collects the
 application, files it, and the row appears in the queue. A turn takes 20–60 s.
+The fourth is reviewer-side only: a case already in the queue, researched on
+demand.
 
 Say it out loud once: the model writes every sentence, the database computes
 every decision, and no number ever reaches the customer.
@@ -103,11 +105,36 @@ her thread: the reviewer's outcome.
 
 ---
 
+## 4. Sam RoundNumbers → research the case
+
+Already in the queue. No customer tab for this one.
+
+**Reviewer tab** → **Sam RoundNumbers**, amber, `AML_PATTERN`. The evidence
+panel says what the policy found. It does not say what the account looks like.
+
+Scroll to **Case research** → **Run research**. 10–30 s.
+
+Four sections come back: the case, what supports approving, what argues
+against, and what is not established. The transfers are in it, because a tool
+read the full ledger — the customer's agent cannot see that table at all, and a
+second database identity is what makes the difference.
+
+Say it out loud: it named no outcome. It is not allowed to. A summary that
+states one is refused before it reaches this screen, and the reviewer still
+decides.
+
+**Approve** or **Decline** — your call.
+
+---
+
 ## If it wanders
 
 - Asks for the amount again after the submit line: paste the amount line
   again, then the submit line. Rehearsed; the second pass files it.
 - _"We couldn't get a response"_: send the same line again.
+- _"Research could not be completed for this case"_: the agent stated an
+  outcome and the screen refused it. Press **Run research** again. Worth
+  naming out loud — a refusal is the rule holding, not the demo breaking.
 
 > **Only if the bubble stays pending with no error** — reload the tab, then
 > send the line again.
@@ -134,6 +161,7 @@ her thread: the reviewer's outcome.
 | Paula Statesman              | REVIEW  | politically exposed person, nothing is named      |
 | Sam RoundNumbers             | REVIEW  | six large round transfers out in thirty days      |
 
-The first three are the live demo. The rest are the backfill: one open case
-each in the queue, and Alice and David also in the decision history, approved
-and declined.
+The first three are the live demo and Sam RoundNumbers is the fourth: his
+transfers are what the research agent reads, and his case carries no research
+until you run it. The rest are the backfill: one open case each in the queue,
+and Alice and David also in the decision history, approved and declined.
