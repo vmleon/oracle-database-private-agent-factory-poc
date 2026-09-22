@@ -1,6 +1,6 @@
 # Demo
 
-Prepared per [`CLOUD.md §13`](CLOUD.md#13-prepare-the-demo). One command
+Prepared per [`CLOUD.md §12`](CLOUD.md#12-prepare-the-demo). One command
 before opening a browser, every line green:
 
 ```bash

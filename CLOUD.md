@@ -158,20 +158,25 @@ it top to bottom; its last line sends you back here to §9.
 Expect: PAF installed, both model configurations answering a test call, the
 data sources registered, and three MCP servers reporting connected.
 
-## 9. Load `CHAT_FLOW`
+## 9. Load the flows
 
-Four steps, two in the browser and two on the command line. Each one is
-required, and the integration endpoint answers only after the last.
+Four steps, two in the browser and two on the command line, each covering
+both flows at once. Each one is required: the customer chat reaches
+`CHAT_FLOW` and the backoffice case research panel reaches `RESEARCH_WORKFLOW`
+only after the last.
 
 ### 9.1 Import
 
-Agent Builder → **My Custom Flows** → **Import** → `paf/flows/CHAT_FLOW.paf`,
-bundle password `WelcomeAmigo123!`.
+Agent Builder → **My Custom Flows** → **Import**, once per bundle, bundle
+password `WelcomeAmigo123!`:
+
+- `paf/flows/CHAT_FLOW.paf`
+- `paf/flows/RESEARCH_WORKFLOW.paf`
 
 ### 9.2 `link-flow`
 
 A bundle carries the MCP server ids of the install it came from, so rebind
-every MCP node by server name:
+every MCP node in both flows by server name:
 
 ```bash
 python manage.py paf link-flow
@@ -179,29 +184,32 @@ python manage.py paf link-flow
 
 ### 9.3 Publish
 
-Open `CHAT_FLOW` in Agent Builder and **Publish** it. An imported flow arrives
+Open each flow in Agent Builder and **Publish** it. An imported flow arrives
 unpublished, and the integration endpoint serves only the published version, so
-the next step has nothing to mint a key against until this is done. The same
-holds after every later edit to the flow: publish, or the endpoint keeps
-serving the version before it.
+the next step has nothing to mint a key against until both are done. The same
+holds after every later edit to a flow: publish, or the endpoint keeps serving
+the version before it.
 
 `info` shows the state under Agent: `CHAT_FLOW published — serving through the
-integration endpoint`.
+integration endpoint`, and the same line for `RESEARCH_WORKFLOW`.
 
 ### 9.4 `api-key`
 
-Mint the key the backend calls the published flow with:
+Mint the keys the backend calls the published flows with:
 
 ```bash
 python manage.py paf api-key
 ```
 
-Expect: `PAF_AGENT_ID` and `PAF_API_KEY` in `.env`, and a restarted
-`paf-poc-backend` holding them.
+Expect: `PAF_AGENT_ID` and `PAF_API_KEY` for CHAT_FLOW, `PAF_RESEARCH_AGENT_ID`
+and `PAF_RESEARCH_API_KEY` for RESEARCH_WORKFLOW, all in `.env`, and a restarted
+`paf-poc-backend` holding both pairs. `api-key` mints for every imported flow
+and PAF refuses a key to an unpublished one, so it runs once, after both are
+published. Re-running it replaces both keys.
 
-The backend's unit reads the key from `/etc/paf-poc-backend.env`, which its
-play creates empty: the flow is published long after the tier builds itself, so
-the key cannot be rendered into the unit. The same delivery carries the
+The backend's unit reads the keys from `/etc/paf-poc-backend.env`, which its
+play creates empty: the flows are published long after the tier builds itself,
+so the keys cannot be rendered into the unit. The same delivery carries the
 certificate PAF serves, which the backend verifies every turn against — until it
 arrives, PAF calls fail on TLS. Minting and delivering are therefore one
 command. `--no-push` mints without delivering, which only the harness can use.
@@ -212,63 +220,10 @@ Check where the sequence stands at any point:
 python manage.py info
 ```
 
-It reports the four tiers and then the agent: imported, published, MCP nodes
-linked, key minted, key delivered.
+It reports the four tiers and then both flows under Agent, each with its own
+imported / published / MCP nodes linked / key minted / key delivered line.
 
-## 10. Load `RESEARCH_WORKFLOW`
-
-Four steps, mirroring §9. The backoffice case research panel reaches this flow
-only after the last one.
-
-### 10.1 Import
-
-Agent Builder → **My Custom Flows** → **Import** →
-`paf/flows/RESEARCH_WORKFLOW.paf`, bundle password `WelcomeAmigo123!`.
-
-### 10.2 `link-flow`
-
-A bundle carries the MCP server ids of the install it came from, so rebind
-every MCP node by server name:
-
-```bash
-python manage.py paf link-flow
-```
-
-This rebinds every imported flow, CHAT_FLOW included — re-running it here is a
-no-op for a flow that is already linked.
-
-### 10.3 Publish
-
-Open `RESEARCH_WORKFLOW` in Agent Builder and **Publish** it. An imported flow
-arrives unpublished, and the integration endpoint serves only the published
-version, so the next step has nothing to mint a key against until this is done.
-
-`info` shows the state under Agent: `RESEARCH_WORKFLOW published — serving
-through the integration endpoint`.
-
-### 10.4 `api-key`
-
-Mint the key the backend calls the published flow with:
-
-```bash
-python manage.py paf api-key
-```
-
-Expect: `PAF_RESEARCH_AGENT_ID` and `PAF_RESEARCH_API_KEY` in `.env` beside
-CHAT_FLOW's pair, and a restarted `paf-poc-backend` holding both. The same
-command mints a fresh key for CHAT_FLOW too — `api-key` replaces both flows'
-keys together.
-
-Check where the sequence stands at any point:
-
-```bash
-python manage.py info
-```
-
-It reports both flows under Agent, each with its own imported / published
-/ MCP nodes linked / key minted / key delivered line.
-
-## 11. `cloud test`
+## 10. `cloud test`
 
 ```bash
 python manage.py cloud test
@@ -286,7 +241,7 @@ binding and prompt injection, and a reviewer closing two cases through the
 backend, one approved and one declined.
 
 > **Optional — not part of a deployment from scratch.** Skip it and continue at
-> §12.
+> §11.
 >
 > `cloud test` proves the pipeline computes the right tier on one scripted turn.
 > The **conversation bench** attacks the product instead: it signs in as a
@@ -316,7 +271,7 @@ backend, one approved and one declined.
 > personas created. It does not restore a seeded application an earlier run
 > edited.
 
-## 12. `info`
+## 11. `info`
 
 ```bash
 python manage.py info
@@ -327,7 +282,7 @@ Expect the load balancer address and the paths `/`, `/backoffice`, `/v1` and
 database answering over the bastion, and every agent line green. The
 certificate is self-signed, so a browser warns once.
 
-## 13. Prepare the demo
+## 12. Prepare the demo
 
 [`DEMO.md`](DEMO.md) assumes the stack has been through this, in this order:
 
@@ -424,8 +379,8 @@ python manage.py cloud up
 python manage.py paf bootstrap
 ```
 
-The install sheet ends at PAF's UI; §9 and §10 — import, `link-flow`,
-**publish**, `api-key`, each its own step, once per flow — close the loop.
+The install sheet ends at PAF's UI; §9 — import both flows, `link-flow`,
+**publish** both, `api-key` — closes the loop.
 `manage.py info` says how far it has got.
 
 ## When something does not come up

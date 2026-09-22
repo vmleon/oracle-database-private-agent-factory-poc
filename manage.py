@@ -286,15 +286,14 @@ def _paf_session() -> requests.Session:
     return session
 
 
-# The two flows PAF serves, each imported, linked, published and keyed in its
-# own CLOUD.md section (§9 for CHAT_FLOW, §10 for RESEARCH_WORKFLOW). Every
-# command that iterates this list skips a flow it cannot find rather than
-# failing, because the two are set up as separate steps and one is routinely
-# absent while the other is being worked on.
+# The two flows PAF serves, imported, linked, published and keyed together in
+# CLOUD.md §9. Every command that iterates this list skips a flow it cannot
+# find rather than failing, so each one also works with a single flow
+# imported.
 FLOWS = (
-    # (flow name, .env agent-id key, .env api-key key, CLOUD.md section, PAF key label)
-    ("CHAT_FLOW", "PAF_AGENT_ID", "PAF_API_KEY", "9", "application-backend"),
-    ("RESEARCH_WORKFLOW", "PAF_RESEARCH_AGENT_ID", "PAF_RESEARCH_API_KEY", "10", "research-backend"),
+    # (flow name, .env agent-id key, .env api-key key, PAF key label)
+    ("CHAT_FLOW", "PAF_AGENT_ID", "PAF_API_KEY", "application-backend"),
+    ("RESEARCH_WORKFLOW", "PAF_RESEARCH_AGENT_ID", "PAF_RESEARCH_API_KEY", "research-backend"),
 )
 
 
@@ -931,10 +930,10 @@ def _agent_readiness() -> list[tuple[bool, str, str]]:
         return checks
 
     live = None  # fetched once, lazily, only if some flow is imported
-    for flow_name, agent_id_env, api_key_env, section, _ in FLOWS:
+    for flow_name, agent_id_env, api_key_env, _ in FLOWS:
         entry = next((a for a in agents or [] if a.get("name") == flow_name), None)
         if entry is None:
-            checks.append((False, flow_name, f"not imported — CLOUD.md §{section}"))
+            checks.append((False, flow_name, "not imported — CLOUD.md §9"))
             continue
         checks.append((True, flow_name, "imported"))
 
@@ -1050,8 +1049,7 @@ def info() -> None:
                           "[cyan]python manage.py cloud test[/cyan]")
         else:
             console.print("\n[yellow]The tiers are up; the agent is not wired yet.[/yellow] "
-                          "Follow [cyan]python manage.py paf bootstrap[/cyan] and CLOUD.md §9 "
-                          "(then §10 for RESEARCH_WORKFLOW).")
+                          "Follow [cyan]python manage.py paf bootstrap[/cyan] and CLOUD.md §9.")
     else:
         console.print(
             "\n[yellow]Not ready yet.[/yellow] Cloud-init retries every 60s; re-run "
@@ -1759,7 +1757,7 @@ def _iter_server_source_fields(node):
             yield from _iter_server_source_fields(value)
 
 
-def _link_flow(session: requests.Session, flow_name: str, agent_id: str, section: str) -> None:
+def _link_flow(session: requests.Session, flow_name: str, agent_id: str) -> None:
     """Rebind one flow's MCP tool nodes by server name. See `paf link-flow`."""
     r = session.get(f"{_paf_base_url()}/agentFactory/v1/agents/{agent_id}", timeout=30)
     if r.status_code != 200:
@@ -1819,7 +1817,7 @@ def _link_flow(session: requests.Session, flow_name: str, agent_id: str, section
         console.print(f"  [cyan]{name}[/cyan]: {before} → {after}")
     console.print(f"[green]✓[/green] Rebound {len(changes)} MCP node(s) in {flow_name}.")
     console.print(f"\n[bold]Next:[/bold] open {flow_name} in Agent Builder and [bold]Publish[/bold] it "
-                  f"(CLOUD.md §{section}.3) — the endpoint serves only the published version — "
+                  "(CLOUD.md §9.3) — the endpoint serves only the published version — "
                   "then [cyan]python manage.py paf api-key[/cyan].")
 
 
@@ -1830,26 +1828,24 @@ def paf_link_flow() -> None:
     A flow stores its MCP servers as numeric source ids, which depend on the
     order the servers were registered. This rebinds every node by server name,
     so the flow works whatever ids this instance assigned. Run after importing
-    a flow, and again after re-registering any MCP server. CHAT_FLOW and
-    RESEARCH_WORKFLOW are imported in separate steps (CLOUD.md §9, §10), so a
-    flow not imported yet is skipped rather than failing the command.
+    the flows, and again after re-registering any MCP server. A flow not
+    imported yet is skipped rather than failing the command.
     """
     _ensure_env()
     session = _paf_session()
 
     found_any = False
-    for flow_name, _, _, section, _ in FLOWS:
+    for flow_name, _, _, _ in FLOWS:
         agent_id = _find_flow_id(session, flow_name)
         if agent_id is None:
-            console.print(f"[dim]{flow_name} is not imported yet — skipping (CLOUD.md §{section}).[/dim]")
+            console.print(f"[dim]{flow_name} is not imported yet — skipping (CLOUD.md §9.1).[/dim]")
             continue
         found_any = True
-        _link_flow(session, flow_name, agent_id, section)
+        _link_flow(session, flow_name, agent_id)
 
     if not found_any:
         console.print(
-            "[red]No flow is imported yet.[/red] Import CHAT_FLOW per CLOUD.md §9 "
-            "(and RESEARCH_WORKFLOW per §10), then re-run."
+            "[red]No flow is imported yet.[/red] Import both flows per CLOUD.md §9.1, then re-run."
         )
         sys.exit(1)
 
@@ -1909,9 +1905,8 @@ def paf_api_key(no_push: bool) -> None:
     was minted to the backend tier in one pass and restarts it — a key that is
     minted but not delivered leaves the corresponding UI unable to reach its
     agent while `cloud test` still passes, because the harness calls the
-    integration endpoint directly. CHAT_FLOW and RESEARCH_WORKFLOW are
-    imported in separate steps (CLOUD.md §9, §10), so a flow not imported yet
-    is skipped rather than failing the command.
+    integration endpoint directly. A flow not imported yet is skipped rather
+    than failing the command.
 
     Each flow must be published first: PAF refuses to run an unpublished
     workflow through an integration key. Keys last at most 90 days; re-run to
@@ -1922,10 +1917,10 @@ def paf_api_key(no_push: bool) -> None:
 
     minted_any = False
     failures = []
-    for flow_name, agent_id_env, api_key_env, section, key_name in FLOWS:
+    for flow_name, agent_id_env, api_key_env, key_name in FLOWS:
         agent_id = _find_flow_id(session, flow_name)
         if agent_id is None:
-            console.print(f"[dim]{flow_name} is not imported yet — skipping (CLOUD.md §{section}).[/dim]")
+            console.print(f"[dim]{flow_name} is not imported yet — skipping (CLOUD.md §9.1).[/dim]")
             continue
         r = session.post(
             f"{_paf_base_url()}/agentFactory/v1/integrations/agents/{agent_id}/keys",
@@ -1957,8 +1952,7 @@ def paf_api_key(no_push: bool) -> None:
 
     if not minted_any and not failures:
         console.print(
-            "[red]No flow is imported yet.[/red] Import CHAT_FLOW per CLOUD.md §9 "
-            "(and RESEARCH_WORKFLOW per §10), then re-run."
+            "[red]No flow is imported yet.[/red] Import both flows per CLOUD.md §9.1, then re-run."
         )
         sys.exit(1)
 
@@ -2144,7 +2138,7 @@ def paf_bootstrap() -> None:
     admin_user = os.getenv("PAF_ADMIN_USER", "")
 
     console.print("This sheet walks the whole PAF install, browser steps and commands")
-    console.print("alike, in order. It ends by handing you back to CLOUD.md §9 (then §10).\n")
+    console.print("alike, in order. It ends by handing you back to CLOUD.md §9.\n")
 
     if lb_ip:
         console.print(f"Open the installer:\n  [cyan]https://{lb_ip}/agentFactory/installation[/cyan]\n"
@@ -2251,8 +2245,7 @@ def paf_bootstrap() -> None:
         console.print(f"    [cyan]{label:<16}[/cyan] {url}")
     console.print("  [dim]Each should report connected, and its tools surface inside the Agent node.[/dim]\n")
 
-    console.print("[bold]Done here.[/bold] Continue at [cyan]CLOUD.md §9 — Load CHAT_FLOW[/cyan], "
-                  "then [cyan]§10 — Load RESEARCH_WORKFLOW[/cyan].")
+    console.print("[bold]Done here.[/bold] Continue at [cyan]CLOUD.md §9 — Load the flows[/cyan].")
     console.print(
         "\n[yellow]Note:[/yellow] API automation for these UI steps is intentionally out of "
         "scope (Playwright-style driving is fragile across PAF versions)."

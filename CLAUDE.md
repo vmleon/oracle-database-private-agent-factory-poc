@@ -12,17 +12,6 @@ OCI is the only deployment target. There is no local/podman path.
 
 Everything goes through `manage.py` (Click). Activate the venv first: `source venv/bin/activate`.
 
-```bash
-python manage.py setup          # interactive: discovers OCI regions/models, writes .env
-python manage.py build          # stage payloads into deploy/ansible/*/roles/*/files/
-python manage.py tf             # render terraform.tfvars from .env
-python manage.py cloud iam      # tenancy-level dynamic groups + GenAI policy (tenancy-admin profile)
-python manage.py cloud up       # apply the workload stack
-python manage.py info           # URLs + per-tier readiness (reads each tier's bootstrap.ok)
-python manage.py paf bootstrap  # prints the PAF install as one ordered sheet
-python manage.py cloud down     # teardown (leaves the IAM root behind)
-```
-
 Tests:
 
 ```bash
@@ -30,8 +19,6 @@ Tests:
 python manage.py cloud test                        # end-to-end, runs on the bastion
 python manage.py cloud test -k alice               # single e2e scenario (args pass through to pytest)
 python manage.py cloud bench                       # adversarial conversation bench, 25-45 min
-cd src/backend && ./gradlew test                   # Spring unit tests
-cd src/customer-ui && npm test                     # vitest (same in src/backoffice-ui)
 ```
 
 `tests/unit` runs anywhere. `tests/test_chat_workflow.py` needs PAF and the private-endpoint ADB, and `tests/conversation/` needs the backend as well, so `cloud test` and `cloud bench` ship them to the bastion — never run either from the host.

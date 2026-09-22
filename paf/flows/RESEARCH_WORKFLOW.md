@@ -10,7 +10,7 @@ Two principles carried over from `CHAT_FLOW` shape this design:
 1. **The database is the memory, loaded once deterministically.** The task id enters the flow in-band (`[[TASK <id>]]` envelope → `Regex extractor` → `Prompt` JSON-wrap → `Type Convert` → five `Deterministic MCP` nodes), so no model ever transcribes it before a tool call reads the database.
 2. **A pure function of values already in the database belongs in a deterministic node, not in a model.** Every fact the case file is built from — the recommendation under review, comparable cases, this customer's history, their transactions, policy drift — is computed and returned server-side; the agent's only job is to organise it in prose and never conclude.
 
-This is the **flow-build SSOT** for `RESEARCH_WORKFLOW`. Design rationale: [`docs/superpowers/specs/2026-09-21-research-workflow-design.md`](../../docs/superpowers/specs/2026-09-21-research-workflow-design.md); deploy + register the server: [`CLOUD.md §10`](../../CLOUD.md#10-load-research_workflow).
+This is the **flow-build SSOT** for `RESEARCH_WORKFLOW`. Design rationale: [`docs/superpowers/specs/2026-09-21-research-workflow-design.md`](../../docs/superpowers/specs/2026-09-21-research-workflow-design.md); deploy + register the server: [`CLOUD.md §9`](../../CLOUD.md#9-load-the-flows).
 
 Source-of-truth references:
 
@@ -414,7 +414,7 @@ Two portable forms of this flow live in the repo, and they must agree.
 
 **This blueprint is the record.** It is what the flow is rebuilt from after a fresh install, and the only form that carries the reasoning behind each node.
 
-**[`RESEARCH_WORKFLOW.paf`](RESEARCH_WORKFLOW.paf) is a snapshot of it**, exported from the canvas and password-protected. Import it through Agent Builder → **My Custom Flows** → **Import**, with the bundle password `WelcomeAmigo123!`. Register the MCP servers, the datasources and the `gen-model` LLM first (`paf bootstrap` steps 4–8) — the flow references `research-mcp` by name — then run `python manage.py paf link-flow` to rebind every MCP node to your install's own server ids, and publish. Full runbook: [CLOUD.md §10](../../CLOUD.md#10-load-research_workflow).
+**[`RESEARCH_WORKFLOW.paf`](RESEARCH_WORKFLOW.paf) is a snapshot of it**, exported from the canvas and password-protected. Import it through Agent Builder → **My Custom Flows** → **Import**, with the bundle password `WelcomeAmigo123!`. Register the MCP servers, the datasources and the `gen-model` LLM first (`paf bootstrap` steps 4–8) — the flow references `research-mcp` by name — then run `python manage.py paf link-flow` to rebind every MCP node to your install's own server ids, and publish. Full runbook: [CLOUD.md §9](../../CLOUD.md#9-load-the-flows).
 
 Re-export whenever you change the canvas and commit the bundle together with the blueprint edit that describes the same change. A bundle that disagrees with the blueprint is worse than no bundle: it silently reinstates whatever the blueprint says was fixed.
 

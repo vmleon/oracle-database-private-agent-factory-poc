@@ -693,7 +693,7 @@ Two portable forms of this flow live in the repo, and they must agree.
 
 **This blueprint is the record.** It is what the flow is rebuilt from after a fresh install, and the only form that carries the reasoning behind each node.
 
-**[`CHAT_FLOW.paf`](CHAT_FLOW.paf) is a snapshot of it**, exported from the canvas and password-protected. Import it through Agent Builder → **My Custom Flows** → **Import**, with the bundle password `WelcomeAmigo123!`. Register the MCP servers, the datasources and the `gen-model` LLM first (`paf bootstrap` steps 4–8) — the flow references them by name — then run `python manage.py paf link-flow` to rebind every MCP node to your install's own server ids, and publish. Full runbook: [CLOUD.md §9](../../CLOUD.md#9-load-chat_flow).
+**[`CHAT_FLOW.paf`](CHAT_FLOW.paf) is a snapshot of it**, exported from the canvas and password-protected. Import it through Agent Builder → **My Custom Flows** → **Import**, with the bundle password `WelcomeAmigo123!`. Register the MCP servers, the datasources and the `gen-model` LLM first (`paf bootstrap` steps 4–8) — the flow references them by name — then run `python manage.py paf link-flow` to rebind every MCP node to your install's own server ids, and publish. Full runbook: [CLOUD.md §9](../../CLOUD.md#9-load-the-flows).
 
 Re-export whenever you change the canvas and commit the bundle together with the blueprint edit that describes the same change. A bundle that disagrees with the blueprint is worse than no bundle: it silently reinstates whatever the blueprint says was fixed.
 
